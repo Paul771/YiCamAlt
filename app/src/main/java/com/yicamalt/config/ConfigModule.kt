@@ -11,6 +11,10 @@
 package com.yicamalt.config
 
 import com.yicamalt.BuildConfig
+import dagger.Binds
+import dagger.Module
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,8 +37,20 @@ object FeatureFlag {
     const val MULTI_CAMERA_VIEW = "multi_camera_view"
 }
 
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class SettingsStoreModule {
+    @Binds
+    abstract fun bindSettingsStore(impl: PrefsSettingsStore): SettingsStore
+}
+
 @Singleton
-open class ConfigModule @Inject constructor() {
+open class ConfigModule @Inject constructor(
+    private val settings: SettingsStore,
+) {
+
+    // Secondary no-arg constructor so unit tests can build a config with an in-memory store.
+    constructor() : this(InMemorySettingsStore())
 
     // START_BLOCK_INIT_CONFIG
     private val apiBaseUrl: String = BuildConfig.YI_API_BASE_URL
@@ -55,12 +71,19 @@ open class ConfigModule @Inject constructor() {
         // END_BLOCK_INIT_CONFIG_LOG
     }
 
-    /** Return base URL for the Yi Cloud API. Throws if blank. */
+    /** Return base URL for the Yi Cloud API. Prefers a user override, else the BuildConfig default. Throws if blank. */
     open fun getApiBaseUrl(): String {
         // START_BLOCK_VALIDATE_KEY
-        if (apiBaseUrl.isBlank()) throw ConfigError.MissingKey
+        val override = settings.getApiBaseUrl()
+        val url = if (!override.isNullOrBlank()) override else apiBaseUrl
+        if (url.isBlank()) throw ConfigError.MissingKey
         // END_BLOCK_VALIDATE_KEY
-        return apiBaseUrl
+        return url
+    }
+
+    /** Persist a runtime API base URL override; pass null/blank to clear and fall back to the default. */
+    open fun setApiBaseUrl(url: String?) {
+        settings.setApiBaseUrl(url?.trim()?.takeIf { it.isNotBlank() })
     }
 
     /** Return runtime feature flag map. */

@@ -120,7 +120,9 @@ class HttpClientModule @Inject constructor(
         .build()
     // END_BLOCK_INIT_HTTP_CLIENT
 
-    private val retrofit: Retrofit = Retrofit.Builder()
+    private var retrofit: Retrofit = buildRetrofit()
+
+    private fun buildRetrofit(): Retrofit = Retrofit.Builder()
         .baseUrl(config.getApiBaseUrl())
         .client(client)
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
@@ -132,6 +134,12 @@ class HttpClientModule @Inject constructor(
 
     /** Build Retrofit instance with interceptors. */
     fun createRetrofit(): Retrofit = retrofit
+
+    /** Rebuild Retrofit from the current config base URL (e.g. after the user changes the API server). */
+    fun rebuild() {
+        retrofit = buildRetrofit()
+        TimberLog.d("[Network][rebuild][BLOCK_INIT_HTTP_CLIENT] http client rebuilt baseUrl=${config.getApiBaseUrl()}")
+    }
 
     /** Return raw OkHttp client. */
     fun getHttpClient(): OkHttpClient = client

@@ -13,6 +13,10 @@ package com.yicamalt
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -23,7 +27,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             // Shell graph is wired in M-UI-SHELL (Phase-2). For Phase-1 the host
             // mounts the LoginScreen directly so the auth pipeline is testable.
-            com.yicamalt.ui.login.LoginScreen(onLoggedIn = { /* nav -> shell in Phase-2 */ })
+            var showSettings by remember { mutableStateOf(false) }
+            if (showSettings) {
+                com.yicamalt.ui.settings.SettingsScreen(onBack = { showSettings = false })
+            } else {
+                com.yicamalt.ui.login.LoginScreen(
+                    onLoggedIn = { /* nav -> shell in Phase-2 */ },
+                    onOpenSettings = { showSettings = true },
+                )
+            }
         }
         // END_BLOCK_RENDER_HOST
     }
