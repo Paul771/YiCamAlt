@@ -30,6 +30,10 @@ abstract class AuthModule {
     @Binds
     @Singleton
     abstract fun bindAuthProvider(impl: AuthRepository): AuthProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindLoginPort(impl: AuthRepository): LoginPort
 }
 
 @Module

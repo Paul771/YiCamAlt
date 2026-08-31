@@ -16,26 +16,32 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   AuthRepository - singleton auth facade; implements AuthProvider so the HTTP layer can read/refresh tokens.
+//   AuthRepository - singleton auth facade; implements AuthProvider + LoginPort.
 //   Clock - injectable time source for expiry testing.
+//   LoginPort - thin login contract consumed by M-UI-LOGIN.
 // END_MODULE_MAP
 
 /** Injectable clock so expiry logic is deterministic in tests. */
 interface Clock { fun nowMillis(): Long }
 object SystemClock : Clock { override fun nowMillis(): Long = System.currentTimeMillis() }
 
+/** Thin login contract consumed by the login view-model so it can be tested without the full repository. */
+interface LoginPort {
+    suspend fun login(email: String, password: String, method: AuthMethod = AuthMethod.PASSWORD): AuthSession
+}
+
 @Singleton
 class AuthRepository @Inject constructor(
     private val api: YiCloudAuthApi,
     private val store: AuthStore,
     private val clock: Clock = SystemClock,
-) : AuthProvider {
+) : AuthProvider, LoginPort {
 
     @Volatile private var sessionRef: AuthSession? = store.getSession()
     private val refreshInFlight = AtomicReference<Any?>(null)
 
     /** Authenticate with email + password. Throws AuthError on failure. */
-    suspend fun login(email: String, password: String, method: AuthMethod = AuthMethod.PASSWORD): AuthSession {
+    override suspend fun login(email: String, password: String, method: AuthMethod): AuthSession {
         // START_BLOCK_VALIDATE_CREDENTIALS
         AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] method=${method.name} user=${email.redact()}")
         val response = api.login(LoginRequest(email, password, method.name.lowercase()))
