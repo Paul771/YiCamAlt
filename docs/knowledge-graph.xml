@@ -11,12 +11,13 @@
       <depends>none</depends>
       <verification-ref>V-M-CONFIG</verification-ref>
       <annotations>
-        <fn-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
+        <fn-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API (prefers user override, else BuildConfig)" />
+        <fn-setApiBaseUrl PURPOSE="Persist a runtime API base URL override" />
         <fn-getFeatureFlags PURPOSE="Return runtime feature flag map" />
         <fn-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
         <fn-flag PURPOSE="Look up a single flag by name; throws MissingKey if absent" />
       </annotations>
-      <change-summary step="1" phase="1" commit="5adf835" verification="deferred">ConfigModule implemented: reads BuildConfig once at construction, exposes typed accessors + feature flags. ConfigError.MissingKey. Test written, deferred (no Android SDK).</change-summary>
+      <change-summary step="1" phase="1" commit="64ac154" verification="verified">ConfigModule implemented: reads BuildConfig once at construction, exposes typed accessors + feature flags. ConfigError.MissingKey. Runtime API base URL override via SettingsStore (PrefsSettingsStore + InMemorySettingsStore) so the app can point at a real Yi Cloud endpoint; setApiBaseUrl persists the override. Phase-1 gate green (39 tests).</change-summary>
     </M-CONFIG>
 
     <M-HTTP NAME="HttpClient" TYPE="UTILITY" STATUS="implemented-deferred">
@@ -28,8 +29,9 @@
         <fn-createRetrofit PURPOSE="Build Retrofit with interceptors" />
         <fn-getHttpClient PURPOSE="Return raw OkHttp client" />
         <fn-setAuthToken PURPOSE="Update auth header via interceptor" />
+        <fn-rebuild PURPOSE="Rebuild Retrofit from current config base URL" />
       </annotations>
-      <change-summary step="2" phase="1" commit="d0a9171" verification="deferred">HttpClientModule implemented: OkHttp+Retrofit, auth interceptor, redacted logging (redactHeader), single-refresh 401 authenticator. AuthProvider contract introduced. Test written, deferred (no Android SDK).</change-summary>
+      <change-summary step="2" phase="1" commit="64ac154" verification="verified">HttpClientModule implemented: OkHttp+Retrofit, auth interceptor, redacted logging (redactHeader), single-refresh 401 authenticator. AuthProvider contract introduced. Retrofit made rebuildable via rebuild() so a runtime base URL change takes effect. Phase-1 gate green (39 tests).</change-summary>
     </M-HTTP>
 
     <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" STATUS="implemented-deferred">
