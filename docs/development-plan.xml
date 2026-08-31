@@ -741,13 +741,15 @@
   </DataFlow>
 
   <ImplementationOrder>
-    <Phase-1 name="Foundation &amp; Auth" status="pending">
+    <Phase-1 name="Foundation &amp; Auth" status="implemented-deferred">
       <goal>Configuration, HTTP client, local database, and user authentication pipeline working end-to-end.</goal>
-      <step-1 module="M-CONFIG" status="pending" verification="V-M-CONFIG">Initialize configuration module</step-1>
-      <step-2 module="M-HTTP" status="pending" verification="V-M-HTTP">Build HTTP client with auth interceptor</step-2>
-      <step-3 module="M-LOCAL-DB" status="pending" verification="V-M-LOCAL-DB">Set up Room database schema</step-3>
-      <step-4 module="M-AUTH" status="pending" verification="V-M-AUTH">Implement login, token storage, and refresh</step-4>
-      <step-5 module="M-UI-LOGIN" status="pending" verification="V-M-UI-LOGIN">Build login screen connected to auth</step-5>
+      <step-0 module="M-SCAFFOLD" status="implemented-deferred" verification="V-M-SCAFFOLD">Scaffold Gradle/Android project + TestInfrastructure harnesses</step-0>
+      <step-1 module="M-CONFIG" status="implemented-deferred" verification="V-M-CONFIG">Initialize configuration module</step-1>
+      <step-2 module="M-HTTP" status="implemented-deferred" verification="V-M-HTTP">Build HTTP client with auth interceptor</step-2>
+      <step-3 module="M-LOCAL-DB" status="implemented-deferred" verification="V-M-LOCAL-DB">Set up Room database schema</step-3>
+      <step-4 module="M-AUTH" status="implemented-deferred" verification="V-M-AUTH">Implement login, token storage, and refresh</step-4>
+      <step-5 module="M-UI-LOGIN" status="implemented-deferred" verification="V-M-UI-LOGIN">Build login screen connected to auth</step-5>
+      <phase-note>Option B: all Phase-1 code + tests written and committed (c99f97b..8083399). Verification deferred — no Android SDK in build environment; ./gradlew gates cannot run yet. Gate-Phase-1 remains blocked until SDK is provisioned.</phase-note>
     </Phase-1>
 
     <Phase-2 name="Camera Management" status="pending">

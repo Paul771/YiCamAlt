@@ -126,7 +126,8 @@
   </VerificationMatrix>
 
   <ModuleVerification>
-    <V-M-CONFIG MODULE="M-CONFIG" PRIORITY="high">
+<V-M-CONFIG MODULE="M-CONFIG" PRIORITY="high" STATUS="deferred">
+      <deferred-note>Code + test written (commit 5adf835). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/test/java/com/yicamalt/config/ConfigModuleTest.kt</file>
       </test-files>
@@ -150,7 +151,8 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-CONFIG>
 
-    <V-M-HTTP MODULE="M-HTTP" PRIORITY="high">
+<V-M-HTTP MODULE="M-HTTP" PRIORITY="high" STATUS="deferred">
+      <deferred-note>Code + test written (commit d0a9171). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/test/java/com/yicamalt/network/HttpClientModuleTest.kt</file>
       </test-files>
@@ -177,7 +179,8 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-HTTP>
 
-    <V-M-LOCAL-DB MODULE="M-LOCAL-DB" PRIORITY="high">
+<V-M-LOCAL-DB MODULE="M-LOCAL-DB" PRIORITY="high" STATUS="deferred">
+      <deferred-note>Code + test written (commit 5d546b3). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/test/java/com/yicamalt/database/LocalDatabaseTest.kt</file>
       </test-files>
@@ -199,7 +202,8 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-LOCAL-DB>
 
-    <V-M-AUTH MODULE="M-AUTH" PRIORITY="high">
+<V-M-AUTH MODULE="M-AUTH" PRIORITY="high" STATUS="deferred">
+      <deferred-note>Code + test written (commit 3e901ae). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</file>
       </test-files>
@@ -578,7 +582,8 @@
       <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
     </V-M-UI-SETTINGS>
 
-    <V-M-UI-LOGIN MODULE="M-UI-LOGIN" PRIORITY="high">
+<V-M-UI-LOGIN MODULE="M-UI-LOGIN" PRIORITY="high" STATUS="deferred">
+      <deferred-note>VM unit test + Compose UI test written (commit 8083399). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest and :app:connectedDebugAndroidTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/androidTest/java/com/yicamalt/ui/login/LoginScreenTest.kt</file>
       </test-files>
@@ -720,7 +725,8 @@
   </StopConditions>
 
   <PhaseGates>
-    <Gate-Phase-1 PHASE="Phase-1">
+<Gate-Phase-1 PHASE="Phase-1" STATUS="deferred">
+      <deferred-note>Phase-1 code complete (Steps 0-5, commits c99f97b..8083399). Gate BLOCKED on environment: no Android SDK installed, so ./gradlew commands cannot execute. All module verification entries are deferred. Re-run this gate once the Android SDK is provisioned.</deferred-note>
       <goal>Foundation modules + TestInfrastructure harnesses ready, auth pipeline works, app compiles and launches.</goal>
       <commands>
         <command-1>./gradlew :app:testDebugUnitTest</command-1>

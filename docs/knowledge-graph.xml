@@ -1,11 +1,11 @@
 <KnowledgeGraph>
-  <Project NAME="YiCamAlt" VERSION="0.2.0">
+  <Project NAME="YiCamAlt" VERSION="0.3.0">
     <keywords>yi-camera, android, rtsp, streaming, alternative-client, camera, protocol-reverse-engineering, live-view</keywords>
     <annotation>Альтернативный Android-клиент для камер Yi Home / Yi Dome с открытой архитектурой, обходящий ограничения платной подписки. Приложение обеспечивает live-view, просмотр архива событий, управление камерой и работу с облачными/локальными хранилищами.</annotation>
 
     <!-- Layer 0: Foundation -->
 
-    <M-CONFIG NAME="Config" TYPE="UTILITY" STATUS="planned">
+    <M-CONFIG NAME="Config" TYPE="UTILITY" STATUS="implemented-deferred">
       <purpose>Central application configuration: feature flags, API base URLs, build variants, and runtime settings.</purpose>
       <path>app/src/main/java/com/yicamalt/config/ConfigModule.kt</path>
       <depends>none</depends>
@@ -14,10 +14,12 @@
         <fn-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
         <fn-getFeatureFlags PURPOSE="Return runtime feature flag map" />
         <fn-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
+        <fn-flag PURPOSE="Look up a single flag by name; throws MissingKey if absent" />
       </annotations>
+      <change-summary step="1" phase="1" commit="5adf835" verification="deferred">ConfigModule implemented: reads BuildConfig once at construction, exposes typed accessors + feature flags. ConfigError.MissingKey. Test written, deferred (no Android SDK).</change-summary>
     </M-CONFIG>
 
-    <M-HTTP NAME="HttpClient" TYPE="UTILITY" STATUS="planned">
+    <M-HTTP NAME="HttpClient" TYPE="UTILITY" STATUS="implemented-deferred">
       <purpose>Shared HTTP client (OkHttp + Retrofit2) with TLS config, auth interceptor, error mapping, and retry policy.</purpose>
       <path>app/src/main/java/com/yicamalt/network/HttpClientModule.kt</path>
       <depends>M-CONFIG</depends>
@@ -27,23 +29,25 @@
         <fn-getHttpClient PURPOSE="Return raw OkHttp client" />
         <fn-setAuthToken PURPOSE="Update auth header via interceptor" />
       </annotations>
+      <change-summary step="2" phase="1" commit="d0a9171" verification="deferred">HttpClientModule implemented: OkHttp+Retrofit, auth interceptor, redacted logging (redactHeader), single-refresh 401 authenticator. AuthProvider contract introduced. Test written, deferred (no Android SDK).</change-summary>
     </M-HTTP>
 
-    <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" STATUS="planned">
+    <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" STATUS="implemented-deferred">
       <purpose>Room-based local persistence for event cache, config state, and offline playback manifest.</purpose>
       <path>app/src/main/java/com/yicamalt/database/YiDatabase.kt</path>
       <depends>M-CONFIG</depends>
       <verification-ref>V-M-LOCAL-DB</verification-ref>
       <annotations>
-        <fn-eventDao PURPOSE="Access event table operations" />
-        <fn-deviceDao PURPOSE="Access device registry operations" />
-        <fn-syncDao PURPOSE="Access sync status table" />
+        <fn-cameraDao PURPOSE="Access camera cache table operations" />
+        <fn-eventDao PURPOSE="Access event cache table operations" />
+        <fn-appMetaDao PURPOSE="Access app metadata key/value store" />
       </annotations>
+      <change-summary step="3" phase="1" commit="5d546b3" verification="deferred">YiDatabase implemented: CameraEntity/EventEntity/AppMetaEntity + DAOs (abstract-class DAOs emit BLOCK_DB_WRITE). DatabaseModule Hilt provider with onCreate callback (BLOCK_INIT_DB). Test written (Robolectric), deferred (no Android SDK).</change-summary>
     </M-LOCAL-DB>
 
     <!-- Layer 1: Core Domain -->
 
-    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" STATUS="planned">
+    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" STATUS="implemented-deferred">
       <purpose>Handle Yi Cloud authentication: login, token refresh, session management, secure token storage.</purpose>
       <path>app/src/main/java/com/yicamalt/auth/AuthModule.kt</path>
       <depends>M-HTTP, M-LOCAL-DB</depends>
@@ -52,9 +56,12 @@
         <fn-login PURPOSE="Authenticate with Yi Cloud and store tokens" />
         <fn-refreshToken PURPOSE="Refresh access token using refresh token" />
         <fn-logout PURPOSE="Invalidate tokens and clear session" />
-        <fn-getAccessToken PURPOSE="Return current valid access token" />
+        <fn-getAccessToken PURPOSE="Return current valid access token (refreshes on expiry)" />
         <fn-isLoggedIn PURPOSE="Check if user has valid session" />
+        <fn-refresh PURPOSE="Refresh access token using refresh token; returns null on failure" />
+        <contract-LoginPort PURPOSE="Thin login contract consumed by M-UI-LOGIN; implemented by AuthRepository" />
       </annotations>
+      <change-summary step="4" phase="1" commit="3e901ae" verification="deferred">AuthRepository implemented: login/refresh/logout/getSession, implements AuthProvider + LoginPort. EncryptedAuthStore (EncryptedSharedPreferences). YiCloudAuthApi (Retrofit). Hilt bindings. Test written (MockWebServer), deferred (no Android SDK).</change-summary>
     </M-AUTH>
 
     <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" STATUS="planned">
@@ -233,16 +240,17 @@
       </annotations>
     </M-UI-SETTINGS>
 
-    <M-UI-LOGIN NAME="LoginScreen" TYPE="UI_COMPONENT" STATUS="planned">
+    <M-UI-LOGIN NAME="LoginScreen" TYPE="UI_COMPONENT" STATUS="implemented-deferred">
       <purpose>Login/registration screen: email/password form, loading state, error display.</purpose>
       <path>app/src/main/java/com/yicamalt/ui/login/LoginScreen.kt</path>
       <depends>M-UI-SHELL, M-AUTH</depends>
       <verification-ref>V-M-UI-LOGIN</verification-ref>
       <annotations>
         <fn-LoginScreen PURPOSE="Compose login form screen" />
-        <fn-LoginForm PURPOSE="Login form with email + password fields" />
+        <fn-LoginViewModel PURPOSE="View-model driving login form state + submit flow" />
         <fn-LoginErrorDisplay PURPOSE="Show error message from auth result" />
       </annotations>
+      <change-summary step="5" phase="1" commit="8083399" verification="deferred">LoginScreen + LoginViewModel implemented: Compose form, LoginUiState (Idle/Loading/Success/Error), depends on LoginPort. onLoggedIn callback on Success. VM unit test written (JUnit5+coroutines-test); Compose UI test written (androidTest, deferred). No Android SDK to run yet.</change-summary>
     </M-UI-LOGIN>
 
     <M-ONBOARDING NAME="Onboarding" TYPE="UI_COMPONENT" STATUS="planned">
