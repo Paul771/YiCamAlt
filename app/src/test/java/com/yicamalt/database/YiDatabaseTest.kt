@@ -105,7 +105,7 @@ class YiDatabaseTest {
     @Test
     fun `trace init emits BLOCK_INIT_DB exactly once`() {
         val initMarkers = recorder.all().count { it.message.contains("BLOCK_INIT_DB") }
-        assertEquals(1, initMarkers, "BLOCK_INIT_DB must appear exactly once per creation")
+        assertEquals("BLOCK_INIT_DB must appear exactly once per creation", 1, initMarkers)
     }
 
     @Test

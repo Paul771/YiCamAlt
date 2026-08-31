@@ -11,6 +11,10 @@
 package com.yicamalt.network
 
 import com.yicamalt.config.ConfigModule
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,12 +24,13 @@ import okhttp3.Response
 import okhttp3.Route
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 // START_MODULE_MAP
@@ -38,19 +43,38 @@ sealed class HttpError(message: String) : Error(message) {
     object Unauthorized : HttpError("HTTP_UNAUTHORIZED: refresh failed or token rejected")
 }
 
+// START_MODULE_MAP
+//   NetworkModule - Hilt module: provides Retrofit (and OkHttpClient) from HttpClientModule.
+// END_MODULE_MAP
+
+@Module
+@InstallIn(SingletonComponent::class)
+object NetworkModule {
+
+    @Provides
+    @Singleton
+    fun provideRetrofit(client: HttpClientModule): Retrofit = client.createRetrofit()
+
+    @Provides
+    @Singleton
+    fun provideOkHttpClient(client: HttpClientModule): OkHttpClient = client.getHttpClient()
+}
+
 @Singleton
 class HttpClientModule @Inject constructor(
     private val config: ConfigModule,
-    private val authProvider: AuthProvider,
-    private val logSink: ((String) -> Unit)? = null,
+    private val authProvider: Provider<AuthProvider>,
 ) {
 
+    /** Optional capturing log sink for tests; production leaves it null (Timber). */
+    var logSink: ((String) -> Unit)? = null
+
     // START_BLOCK_INIT_HTTP_CLIENT
-    private val json = Json { ignoreMissingKeys = true; isLenient = true; encodeDefaults = false }
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true; encodeDefaults = false }
     private val currentToken = AtomicReference<String?>()
 
     private val authInterceptor = Interceptor { chain ->
-        val token = currentToken.get() ?: authProvider.getAccessTokenBlocking()
+        val token = currentToken.get() ?: authProvider.get().getAccessTokenBlocking()
         val req = if (token != null) {
             chain.request().newBuilder().header("Authorization", "Bearer $token").build()
         } else chain.request()
@@ -61,7 +85,8 @@ class HttpClientModule @Inject constructor(
         // START_BLOCK_REDACTED_LOG
         // Authorization/Cookie headers are redacted via redactHeader() above.
         // Production sinks to Timber; tests inject a capturing sink for RedactionScanner.
-        if (logSink != null) logSink.invoke(msg) else timber.log.Timber.d(msg)
+        val sink = logSink
+        if (sink != null) sink.invoke(msg) else timber.log.Timber.d(msg)
         // END_BLOCK_REDACTED_LOG
     }.apply {
         level = HttpLoggingInterceptor.Level.HEADERS
@@ -76,7 +101,7 @@ class HttpClientModule @Inject constructor(
         // START_BLOCK_REFRESH_RETRY
         if (response.code != 401) return@Authenticator null
         if (!refreshGuard.compareAndSet(false, true)) return@Authenticator null // only one refresh per call
-        val refreshed = authProvider.refreshBlocking()
+        val refreshed = authProvider.get().refreshBlocking()
         refreshGuard.set(false)
         if (refreshed == null) return@Authenticator null
         response.request.newBuilder()

@@ -11,7 +11,6 @@
 package com.yicamalt
 
 import android.app.Application
-import androidx.hilt.navigation.HiltViewModelFactory
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 
@@ -33,6 +32,3 @@ class YiCamAltApp : Application() {
         // END_BLOCK_INIT_APP
     }
 }
-
-// Re-exported so Hilt view-model factory symbol is referenced by the view-model layer.
-typealias HiltVmFactory = HiltViewModelFactory

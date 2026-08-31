@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.atomic.AtomicLong
 
 /** In-memory AuthStore for tests. */
@@ -59,7 +59,7 @@ class AuthRepositoryTest {
         recorder.plant()
         store = TestAuthStore()
         clock = FakeClock()
-        val json = Json { ignoreMissingKeys = true; isLenient = true }
+        val json = Json { ignoreUnknownKeys = true; isLenient = true }
         api = Retrofit.Builder()
             .baseUrl(server.url("/v1/").toString())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
@@ -108,7 +108,7 @@ class AuthRepositoryTest {
         server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2")))
         val r = repo
         runBlocking { r.login("user@example.com", "pw") }
-        val refreshed = runBlocking { r.refresh() }
+        val refreshed = runBlocking { r.refreshSession() }
         assertNotNull(refreshed)
         assertEquals("acc-2", refreshed!!.accessToken)
         assertEquals("acc-2", store.getSession()?.accessToken)
@@ -121,7 +121,7 @@ class AuthRepositoryTest {
         server.enqueue(MockResponse().setBody(invalidBody()))
         val r = repo
         runBlocking { r.login("user@example.com", "pw") }
-        val refreshed = runBlocking { r.refresh() }
+        val refreshed = runBlocking { r.refreshSession() }
         assertNull(refreshed)
         assertEquals("acc-1", store.getSession()?.accessToken, "old session must remain")
     }

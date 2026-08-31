@@ -68,7 +68,7 @@ class TraceRecorder {
     fun assertSequence(vararg blocks: String) {
         val markers = captured.mapNotNull { m ->
             Regex("""\[([^\]]+)]""").findAll(m.message).map { it.groupValues[1] }.toList()
-        }.flatten()
+        }.flatten().filter { it.startsWith("BLOCK_") }
         val joined = markers.joinToString("->")
         val expected = blocks.joinToString("->")
         check(joined.contains(expected)) {

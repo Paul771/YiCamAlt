@@ -33,6 +33,10 @@ abstract class AuthModule {
 
     @Binds
     @Singleton
+    abstract fun bindAuthStore(impl: EncryptedAuthStore): AuthStore
+
+    @Binds
+    @Singleton
     abstract fun bindLoginPort(impl: AuthRepository): LoginPort
 }
 

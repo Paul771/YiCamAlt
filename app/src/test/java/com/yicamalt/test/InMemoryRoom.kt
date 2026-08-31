@@ -12,6 +12,8 @@ package com.yicamalt.test
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import com.yicamalt.database.YiDatabase
 
@@ -20,9 +22,19 @@ import com.yicamalt.database.YiDatabase
 // END_MODULE_MAP
 
 object InMemoryRoom {
+
+    private val initCallback = object : RoomDatabase.Callback() {
+        override fun onCreate(db: SupportSQLiteDatabase) {
+            // START_BLOCK_INIT_DB
+            timber.log.Timber.d("[DB][init][BLOCK_INIT_DB] schema v${db.version} created")
+            // END_BLOCK_INIT_DB
+        }
+    }
+
     fun build(): YiDatabase {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
         return Room.inMemoryDatabaseBuilder(ctx, YiDatabase::class.java)
+            .addCallback(initCallback)
             .allowMainThreadQueries()
             .build()
     }

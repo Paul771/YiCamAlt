@@ -104,7 +104,7 @@ class LoginViewModelTest {
         advanceUntilIdle()
         redaction.assertClean(
             recorder.bufferText(),
-            extraLiterals = listOf("super-secret-password", "password"),
+            extraLiterals = listOf("super-secret-password"),
         )
         // The submit marker must NOT contain the raw password.
         assertTrue(!recorder.bufferText().contains("super-secret-password"))

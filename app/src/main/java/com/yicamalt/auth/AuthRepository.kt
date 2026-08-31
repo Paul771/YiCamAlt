@@ -67,8 +67,13 @@ class AuthRepository @Inject constructor(
         return session
     }
 
-    /** Refresh the access token using the stored refresh token. Returns null on failure. */
-    override suspend fun refresh(): AuthSession? {
+    /** Refresh the access token using the stored refresh token. Returns the new token, or null on failure. */
+    override suspend fun refresh(): String? = doRefresh()?.accessToken
+
+    /** Refresh and return the full updated session, or null on failure. */
+    suspend fun refreshSession(): AuthSession? = doRefresh()
+
+    private suspend fun doRefresh(): AuthSession? {
         val current = sessionRef ?: store.getSession() ?: return null
         // START_BLOCK_REFRESH_TOKEN
         AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refreshing user=${current.userId}")
@@ -94,7 +99,7 @@ class AuthRepository @Inject constructor(
         val s = sessionRef ?: return null
         if (clock.nowMillis() >= s.expiresAt) {
             // Token expired: attempt one refresh; return null if it fails.
-            return refresh()?.accessToken
+            return doRefresh()?.accessToken
         }
         return s.accessToken
     }

@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import retrofit2.http.GET
 import java.util.concurrent.atomic.AtomicInteger
+import javax.inject.Provider
 
 /** Fake AuthProvider that counts refresh calls and returns a scripted token. */
 private class FakeAuthProvider(
@@ -68,7 +69,9 @@ class HttpClientModuleTest {
 
     private fun buildWithBaseUrl(baseUrl: String, auth: AuthProvider): HttpClientModule {
         val testConfig = TestConfig(baseUrl)
-        return HttpClientModule(testConfig, auth) { msg -> logBuffer.appendLine(msg) }
+        return HttpClientModule(testConfig, Provider { auth }).apply {
+            logSink = { msg -> logBuffer.appendLine(msg) }
+        }
     }
 
     @Test
