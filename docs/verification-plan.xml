@@ -1,0 +1,816 @@
+<VerificationPlan VERSION="0.3.0">
+  <GlobalPolicy>
+    <log-format>[ModuleTag][fnName][BLOCK_NAME] message</log-format>
+    <deterministic-first>true</deterministic-first>
+    <module-level-focus>Fast deterministic checks: unit tests with Mockk fakes + TraceRecorder for trajectory checks. Must run in &lt; 10s per module for worker loops.</module-level-focus>
+    <wave-level-focus>Checks only merged surfaces touched in the wave — integration tests against FakeYiApi + FakeCameraStreamServer.</wave-level-focus>
+    <phase-level-focus>Full regression suite plus instrumented Compose UI tests on emulator; trace-coverage and redaction-scan must pass.</phase-level-focus>
+    <autonomy-gate>Every shared module needs: (a) fast module-local command, (b) both success and failure scenarios, (c) required markers that make divergence observable via TraceRecorder, (d) wave/phase follow-up, (e) stop-conditions for risky surfaces. Missing any item blocks autonomous execution.</autonomy-gate>
+    <redaction>Never log tokens, auth headers, passwords, raw stream bytes, AES keys, device serial numbers, or user PII (email/phone) in plaintext. Verified by RedactionScanner on every captured trace.</redaction>
+    <redaction-scan-rule>RedactionScanner asserts no forbidden-substring match in any captured TraceRecorder output. A single match fails the module gate.</redaction-scan-rule>
+    <trace-coverage-rule>Every required-log-marker listed in a V-M-* entry must appear at least once in the module's passing test trace. Missing marker = verification defect.</trace-coverage-rule>
+    <evidence-precedence>deterministic > trace > integration > semantic. Never replace a working exact assertion with a fuzzy semantic check.</evidence-precedence>
+  </GlobalPolicy>
+
+  <EvidenceTypes>
+    <type-deterministic>Exact assertion on return value, state transition, error code, or invariant. First choice wherever equality is stable.</type-deterministic>
+    <type-trace>Assertion on ordered BLOCK markers, branch decisions, retry counts, or forbidden-marker absence via TraceRecorder. Used when trajectory matters.</type-trace>
+    <type-integration>End-to-end check across merged surfaces using FakeYiApi / FakeCameraStreamServer / in-memory Room. Used at wave and phase level.</type-integration>
+    <type-semantic>Bounded LLM evaluation with explicit rubric + contract + observed trace. Used ONLY when domain correctness cannot be expressed with stable asserts (e.g. thumbnail visual quality). Never as a substitute for a working exact check.</type-semantic>
+  </EvidenceTypes>
+
+  <TestInfrastructure>
+    <!-- Shared test infrastructure. Private to tests; not in knowledge-graph.xml.
+         All module tests depend on these. Build them in Phase-1 before any other module. -->
+    <harness-1 name="TraceRecorder" purpose="Captures Timber output into an ordered list of [Module][fn][BLOCK] markers + structured fields. Provides assertMarkerAppeared, assertMarkerAbsent, assertSequence, assertMaxRetries, assertRedactionClean." path="app/src/test/java/com/yicamalt/test/TraceRecorder.kt" />
+    <harness-2 name="RedactionScanner" purpose="Scans a captured TraceRecorder buffer for forbidden substrings (token patterns, 'password', AES key bytes, email/phone regex, Authorization header). One match fails the gate." path="app/src/test/java/com/yicamalt/test/RedactionScanner.kt" />
+    <harness-3 name="FakeYiApi" purpose="In-memory Yi Cloud API mock with scripted responses per endpoint (/v1/account/login, /v1/user/camera/list, /v1/camera/event/list, /v1/camera/control, /v1/camera/live/key). Supports delay, 401, 5xx, and network-failure injection." path="app/src/test/java/com/yicamalt/test/FakeYiApi.kt" />
+    <harness-4 name="FakeCameraStreamServer" purpose="Local socket server emitting a scripted AES-128-encrypted test H.264 stream with known key/iv. Enables deterministic M-STREAM-DECODE verification without a real camera." path="app/src/test/java/com/yicamalt/test/FakeCameraStreamServer.kt" />
+    <harness-5 name="FakeAuthStore" purpose="In-memory EncryptedSharedPreferences fake backed by a map; lets tests assert token storage without Android Keystore roundtrip." path="app/src/test/java/com/yicamalt/test/FakeAuthStore.kt" />
+    <harness-6 name="InMemoryRoom" purpose="Room database built with in-memory SupportSQLiteDatabase for M-LOCAL-DB and cache tests." path="app/src/test/java/com/yicamalt/test/InMemoryRoom.kt" />
+    <harness-7 name="StreamHandleFake" purpose="Fake StreamHandle that emits scripted StreamState transitions + fps/latency values for M-STREAM-LIVE UI tests." path="app/src/test/java/com/yicamalt/test/StreamHandleFake.kt" />
+  </TestInfrastructure>
+
+  <CriticalFlows>
+    <VF-001 NAME="UserLogin" USE_CASES="UC-001" DATA_FLOW="DF-AUTH" PRIORITY="high" PRIMARY-EVIDENCE="trace + deterministic">
+      <scenario>User logs in with valid credentials, tokens stored, navigation to shell.</scenario>
+      <expected-outcome>AuthState = LOGGED_IN, tokens encrypted on disk, bottom nav visible</expected-outcome>
+      <required-signals>
+        <log-marker>[Auth][login][BLOCK_VALIDATE_CREDENTIALS]</log-marker>
+        <log-marker>[Auth][login][BLOCK_STORE_TOKEN]</log-marker>
+        <trace-sequence>BLOCK_VALIDATE_CREDENTIALS -> BLOCK_STORE_TOKEN -> NAVIGATE_SHELL</trace-sequence>
+      </required-signals>
+      <forbidden-signals>
+        <forbidden-1>Password substring in any captured log</forbidden-1>
+        <forbidden-2>Access token substring in any captured log</forbidden-2>
+      </forbidden-signals>
+      <autonomy-risk>Medium — depends on reverse-engineered /v1/account/login surface.</autonomy-risk>
+    </VF-001>
+
+    <VF-002 NAME="LiveViewConnection" USE_CASES="UC-002" DATA_FLOW="DF-LIVE-STREAM" PRIORITY="high" PRIMARY-EVIDENCE="integration + trace">
+      <scenario>User taps camera, live stream establishes within 2 seconds with readable video.</scenario>
+      <expected-outcome>StreamState = playing, FPS &gt;= 15, latency &lt;= 1500ms, against FakeCameraStreamServer</expected-outcome>
+      <required-signals>
+        <log-marker>[Stream][startStream][BLOCK_CONNECT_STREAM]</log-marker>
+        <log-marker>[Decode][handshake][BLOCK_HANDSHAKE]</log-marker>
+        <log-marker>[Stream][decode][BLOCK_DECODE_FRAME]</log-marker>
+        <trace-sequence>BLOCK_CONNECT_STREAM -> BLOCK_HANDSHAKE -> BLOCK_DECODE_FRAME -> playing</trace-sequence>
+      </required-signals>
+      <forbidden-signals>
+        <forbidden-1>AES key bytes in any captured log</forbidden-1>
+        <forbidden-2>BLOCK_PERSIST_RESULT emitted on the connect path (no persistence on live view)</forbidden-2>
+      </forbidden-signals>
+      <autonomy-risk>High — depends on reverse-engineered AES handshake and stream framing.</autonomy-risk>
+    </VF-002>
+
+    <VF-003 NAME="EventPlayback" USE_CASES="UC-003" DATA_FLOW="DF-PLAYBACK" PRIORITY="high" PRIMARY-EVIDENCE="deterministic + trace">
+      <scenario>User taps event from timeline, event clip plays with correct duration and quality.</scenario>
+      <expected-outcome>Playback starts within 1s, clip plays to completion or user stop, duration matches fixture</expected-outcome>
+      <required-signals>
+        <log-marker>[Playback][start][BLOCK_RESOLVE_URL]</log-marker>
+        <log-marker>[Playback][start][BLOCK_INIT_PLAYER]</log-marker>
+        <log-marker>[Playback][start][BLOCK_PLAY_EVENT]</log-marker>
+        <trace-sequence>BLOCK_RESOLVE_URL -> BLOCK_INIT_PLAYER -> BLOCK_PLAY_EVENT -> playing</trace-sequence>
+      </required-signals>
+      <autonomy-risk>Medium — playback URL resolution depends on cloud API shape.</autonomy-risk>
+    </VF-003>
+
+    <VF-004 NAME="PTZControl" USE_CASES="UC-004" DATA_FLOW="DF-CMD-PTZ" PRIORITY="medium" PRIMARY-EVIDENCE="deterministic + trace">
+      <scenario>User drags PTZ joystick, camera rotates, command acknowledged.</scenario>
+      <expected-outcome>Command returns success within 1s against FakeYiApi; PTZ angle payload matches joystick delta normalization</expected-outcome>
+      <required-signals>
+        <log-marker>[CameraCmd][sendPTZ][BLOCK_VALIDATE_COMMAND]</log-marker>
+        <log-marker>[CameraCmd][sendPTZ][BLOCK_SEND_COMMAND]</log-marker>
+        <log-marker>[CameraCmd][sendPTZ][BLOCK_WAIT_ACK]</log-marker>
+        <trace-sequence>BLOCK_VALIDATE_COMMAND -> BLOCK_SEND_COMMAND -> BLOCK_WAIT_ACK -> success</trace-sequence>
+      </required-signals>
+      <autonomy-risk>Low — command payload is JSON over known endpoint.</autonomy-risk>
+    </VF-004>
+
+    <VF-005 NAME="PushNotification" USE_CASES="UC-005" DATA_FLOW="DF-PUSH-NOTIF" PRIORITY="medium" PRIMARY-EVIDENCE="trace + integration">
+      <scenario>Push notification arrives, user taps -> navigates to event playback.</scenario>
+      <expected-outcome>Notification displayed, deep link resolves to playback screen, eventId preserved end-to-end</expected-outcome>
+      <required-signals>
+        <log-marker>[Push][register][BLOCK_REGISTER_TOKEN]</log-marker>
+        <log-marker>[Push][handle][BLOCK_HANDLE_PAYLOAD]</log-marker>
+        <log-marker>[Push][notify][BLOCK_SHOW_NOTIFICATION]</log-marker>
+        <trace-sequence>BLOCK_HANDLE_PAYLOAD -> BLOCK_SHOW_NOTIFICATION -> DEEP_LINK_PLAYBACK</trace-sequence>
+      </required-signals>
+      <autonomy-risk>Medium — FCM token registration shape depends on cloud API.</autonomy-risk>
+    </VF-005>
+  </CriticalFlows>
+
+  <VerificationMatrix>
+    <!-- Compact per-module evidence map. Full detail lives in ModuleVerification below. -->
+    <row-M-CONFIG success="2" failure="1" deterministic="3" trace="1" integration="0" semantic="0" autonomy="ready" />
+    <row-M-HTTP success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-LOCAL-DB success="3" failure="1" deterministic="4" trace="0" integration="1" semantic="0" autonomy="ready" />
+    <row-M-AUTH success="3" failure="2" deterministic="2" trace="3" integration="1" semantic="0" autonomy="ready" />
+    <row-M-CAMERA-LIST success="3" failure="1" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-CAMERA-CMD success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-EVENT success="3" failure="1" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-STREAM-DECODE success="2" failure="2" deterministic="2" trace="3" integration="1" semantic="1" autonomy="conditional" />
+    <row-M-STREAM-LIVE success="3" failure="2" deterministic="1" trace="3" integration="2" semantic="0" autonomy="conditional" />
+    <row-M-EVENT-PLAYBACK success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-PUSH success="3" failure="1" deterministic="1" trace="3" integration="1" semantic="0" autonomy="ready" />
+    <row-M-MEDIA success="4" failure="0" deterministic="3" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-SHELL success="3" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-LIVEVIEW success="4" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-EVENTS success="4" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-EVENTPLAYBACK success="4" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-SETTINGS success="3" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-LOGIN success="4" failure="1" deterministic="1" trace="3" integration="1" semantic="0" autonomy="ready" />
+    <row-M-ONBOARDING success="3" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-CAMERA-DISCOVERY success="2" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
+    <row-M-CAMERA-SETUP success="1" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
+  </VerificationMatrix>
+
+  <ModuleVerification>
+    <V-M-CONFIG MODULE="M-CONFIG" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/config/ConfigModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.config.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Config returns correct API base URL from BuildConfig + overrides</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Feature flags return expected defaults when not overridden</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">Accessing missing config key throws CONFIG_MISSING_KEY</scenario-3>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Config][init][BLOCK_INIT_CONFIG]</marker-1>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>init reads BuildConfig exactly once</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Config correctly injected into M-HTTP and M-LOCAL-DB.</wave-follow-up>
+      <phase-follow-up>Full DI graph compiles without errors.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-CONFIG>
+
+    <V-M-HTTP MODULE="M-HTTP" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/network/HttpClientModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.network.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-3>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.network.RedactionTest"</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Retrofit instance created with correct base URL, TLS 1.2+, and auth interceptor</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Auth header injected on requests when token present</scenario-2>
+        <scenario-3 kind="failure" evidence-type="trace">401 response triggers exactly one token refresh and one retry</scenario-3>
+        <scenario-4 kind="failure" evidence-type="trace">Authorization header not present in any captured log (RedactionScanner clean)</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Network][init][BLOCK_INIT_HTTP_CLIENT]</marker-1>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>401 triggers exactly one token refresh and one retry</assertion-1>
+        <assertion-2>Auth header redacted from all log output</assertion-2>
+      </required-trace-assertions>
+      <wave-follow-up>M-AUTH uses the HTTP client for the login endpoint against FakeYiApi.</wave-follow-up>
+      <phase-follow-up>API error handling works across all endpoints (login, camera list, events, control).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-HTTP>
+
+    <V-M-LOCAL-DB MODULE="M-LOCAL-DB" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/database/LocalDatabaseTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.database.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Room database opens (InMemoryRoom) and creates all tables</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Event entities insert and query correctly</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">Device registry entities insert and query correctly</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">Corrupted database throws DB_CORRUPTION on open</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Database][init][BLOCK_INIT_DATABASE]</marker-1>
+      </required-log-markers>
+      <wave-follow-up>M-CAMERA-LIST caches to DB successfully (integration check).</wave-follow-up>
+      <phase-follow-up>Migration tests pass for any schema version change.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-LOCAL-DB>
+
+    <V-M-AUTH MODULE="M-AUTH" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.auth.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-3>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.auth.RedactionTest"</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Login with valid credentials returns Success with tokens (FakeYiApi)</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Tokens stored in FakeAuthStore and retrievable in encrypted form</scenario-2>
+        <scenario-3 kind="success" evidence-type="trace">Token refresh on expiry re-validates and stores new tokens</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">Invalid credentials return AuthInvalidCredentials</scenario-4>
+        <scenario-5 kind="failure" evidence-type="deterministic">Network error returns AuthNetworkError without leaking stack trace</scenario-5>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Auth][login][BLOCK_VALIDATE_CREDENTIALS]</marker-1>
+        <marker-2>[Auth][login][BLOCK_STORE_TOKEN]</marker-2>
+        <marker-3>[Auth][refresh][BLOCK_REFRESH_TOKEN]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Password must never appear in any captured log (RedactionScanner clean)</assertion-1>
+        <assertion-2>Token stored before BLOCK_NAVIGATE_SHELL emitted</assertion-2>
+        <assertion-3>BLOCK_STORE_TOKEN precedes BLOCK_REFRESH_TOKEN on the refresh path</assertion-3>
+      </required-trace-assertions>
+      <wave-follow-up>M-CAMERA-LIST and M-EVENT use M-AUTH token via the HTTP interceptor.</wave-follow-up>
+      <phase-follow-up>Full login -> camera list -> logout cycle works end-to-end on emulator.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-AUTH>
+
+    <V-M-CAMERA-LIST MODULE="M-CAMERA-LIST" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraRegistry*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Camera list returned with correct fields (id, name, model, online, streamUrl) from FakeYiApi</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Stream URL resolution returns correct format per camera model</scenario-2>
+        <scenario-3 kind="success" evidence-type="integration">Camera list cached to InMemoryRoom after fetch</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">401 from API returns CameraUnauthorized</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</marker-1>
+        <marker-2>[Camera][resolveUrl][BLOCK_RESOLVE_STREAM_URL]</marker-2>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Response parsed before DB write (BLOCK_FETCH_CAMERA_LIST precedes DB insert)</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Camera list displayed in shell UI.</wave-follow-up>
+      <phase-follow-up>Multi-camera scenario: 3+ cameras with different models.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-CAMERA-LIST>
+
+    <V-M-CAMERA-CMD MODULE="M-CAMERA-CMD" PRIORITY="medium">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/camera/CameraCommandModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraCommand*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">PTZ command sent to FakeYiApi, angle payload matches joystick normalization, acknowledged</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">IR toggle command sent and confirmed</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">Command to offline camera returns CameraOffline</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">Unsupported camera model returns UnsupportedModel</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[CameraCmd][sendPTZ][BLOCK_VALIDATE_COMMAND]</marker-1>
+        <marker-2>[CameraCmd][sendPTZ][BLOCK_SEND_COMMAND]</marker-2>
+        <marker-3>[CameraCmd][sendPTZ][BLOCK_WAIT_ACK]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Invalid command rejected at BLOCK_VALIDATE_COMMAND before any network call</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>UI joystick correctly maps to PTZ angles.</wave-follow-up>
+      <phase-follow-up>All command types (PTZ, IR, sound, capture, recording) verified.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-CAMERA-CMD>
+
+    <V-M-EVENT MODULE="M-MEDIA-CMD" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.event.EventService*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Paginated event list returned with thumbnails from FakeYiApi</scenario-1>
+        <scenario-2 kind="success" evidence-type="integration">Events synced to InMemoryRoom correctly</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">Playback URL resolved for event</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">No recording events returns empty list (not error)</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Event][getEventTimeline][BLOCK_FETCH_EVENTS]</marker-1>
+        <marker-2>[Event][syncToDb][BLOCK_SYNC_TO_DB]</marker-2>
+        <marker-3>[Event][resolveUrl][BLOCK_RESOLVE_PLAYBACK_URL]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Empty result must not emit BLOCK_SYNC_TO_DB</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Events displayed in UI with correct date grouping.</wave-follow-up>
+      <phase-follow-up>Pagination (scroll to load more) verified.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-EVENT>
+
+    <V-M-STREAM-DECODE MODULE="M-STREAM-DECODE" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/stream/StreamDecoderModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.stream.StreamDecoder*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-3>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.stream.StreamDecoderRedactionTest"</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Handshake with FakeYiApi obtains valid AES key for scripted session</scenario-1>
+        <scenario-2 kind="success" evidence-type="integration">Decrypted MediaSource created from FakeCameraStreamServer and verified compatible with ExoPlayer</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">Invalid key returns DecryptKeyInvalid</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">AES decryption failure returns DecryptAesFailed</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Decode][handshake][BLOCK_HANDSHAKE]</marker-1>
+        <marker-2>[Decode][init][BLOCK_AES_DECRYPT_INIT]</marker-2>
+        <marker-3>[Decode][source][BLOCK_CREATE_MEDIA_SOURCE]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>AES key bytes must not appear in any captured log (RedactionScanner clean)</assertion-1>
+        <assertion-2>AES key reference cleared after BLOCK_CREATE_MEDIA_SOURCE</assertion-2>
+      </required-trace-assertions>
+      <semantic-evidence-allowed>
+        <semantic-1 rubric="decryption-produces-decodable-frames">Only when a real encrypted sample is available and exact byte equality is impractical; evaluator gets contract + rubric + decoded frame, never raw key.</semantic-1>
+      </semantic-evidence-allowed>
+      <wave-follow-up>StreamDecoder used correctly by LiveStream against FakeCameraStreamServer.</wave-follow-up>
+      <phase-follow-up>Decryption verified with a real encrypted stream sample if one is captured.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
+      <stop-conditions>
+        <stop-1>Handshake endpoint shape (/v1/camera/live/key) changed or returns unexpected fields -> halt and replan, do not guess key derivation.</stop-1>
+        <stop-2>AES mode (ECB vs CBC vs CTR) cannot be confirmed from a captured sample -> halt and request a real sample.</stop-2>
+        <stop-3>ExoPlayer MediaSource API incompatibility persists after 2 attempts -> halt and escalate.</stop-3>
+      </stop-conditions>
+    </V-M-STREAM-DECODE>
+
+    <V-M-STREAM-LIVE MODULE="M-STREAM-LIVE" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/stream/LiveStreamModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.stream.LiveStream*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Stream connects via FakeCameraStreamServer, decrypts, reports playing state</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Network interruption triggers reconnect attempt (max 3) then error</scenario-2>
+        <scenario-3 kind="success" evidence-type="trace">Quality switch triggers reconnection with new quality params</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">Server rejects stream (subscription) returns StreamRejected</scenario-4>
+        <scenario-5 kind="failure" evidence-type="deterministic">Decode failure reports StreamDecodeError with actionable message</scenario-5>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Stream][startStream][BLOCK_CONNECT_STREAM]</marker-1>
+        <marker-2>[Stream][decode][BLOCK_DECODE_FRAME]</marker-2>
+        <marker-3>[Stream][reconnect][BLOCK_HANDLE_RECONNECT]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Reconnect attempts capped at 3 before reporting error state</assertion-1>
+        <assertion-2>StreamRejected path must not emit BLOCK_DECODE_FRAME</assertion-2>
+      </required-trace-assertions>
+      <wave-follow-up>Live view UI displays video correctly with controls (StreamHandleFake).</wave-follow-up>
+      <phase-follow-up>Full regression: camera list -> live view -> switch camera -> disconnect.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
+      <stop-conditions>
+        <stop-1>Stream URL format from M-CAMERA-LIST does not match FakeCameraStreamServer contract -> halt and replan URL resolver.</stop-1>
+        <stop-2>Reconnect loop exceeds 3 attempts in tests -> halt and fix backoff logic.</stop-2>
+      </stop-conditions>
+    </V-M-STREAM-LIVE>
+
+    <V-M-EVENT-PLAYBACK MODULE="M-EVENT-PLAYBACK" PRIORITY="high">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/event/EventPlaybackModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.event.EventPlayback*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Event clip plays from start, duration matches fixture</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Seek to position works, playback continues from seek point</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">Invalid playback URL returns PlaybackUrlFailed</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">Decode failure returns PlaybackDecodeError</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Playback][start][BLOCK_RESOLVE_URL]</marker-1>
+        <marker-2>[Playback][start][BLOCK_INIT_PLAYER]</marker-2>
+        <marker-3>[Playback][start][BLOCK_PLAY_EVENT]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Failure path must not emit BLOCK_PLAY_EVENT</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Playback screen UI displays controls correctly.</wave-follow-up>
+      <phase-follow-up>Playback from push notification deep link works.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-EVENT-PLAYBACK>
+
+    <V-M-PUSH MODULE="M-PUSH" PRIORITY="medium">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/push/PushServiceModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.push.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">FCM token registered with FakeYiApi successfully</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Push payload parsed, notification shown locally</scenario-2>
+        <scenario-3 kind="success" evidence-type="integration">Deep link from push navigates to playback screen with eventId preserved</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">Permission denied returns PushPermissionDenied</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Push][register][BLOCK_REGISTER_TOKEN]</marker-1>
+        <marker-2>[Push][handle][BLOCK_HANDLE_PAYLOAD]</marker-2>
+        <marker-3>[Push][notify][BLOCK_SHOW_NOTIFICATION]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>eventId from payload preserved through deep link to playback screen</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Push -> notification -> deep link -> playback full flow.</wave-follow-up>
+      <phase-follow-up>Background push delivery on connected device.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-PUSH>
+
+    <V-M-MEDIA MODULE="M-MEDIA" PRIORITY="medium">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/media/MediaServiceModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.media.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Photo download completes, saved to local cache</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Clip download with progress reporting (BLOCK_PROGRESS_UPDATE emitted N times)</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">Thumbnail cached and retrieved correctly</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">Clear media cache removes all downloaded files</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Media][download][BLOCK_START_DOWNLOAD]</marker-1>
+        <marker-2>[Media][progress][BLOCK_PROGRESS_UPDATE]</marker-2>
+        <marker-3>[Media][save][BLOCK_SAVE_TO_STORAGE]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Failed download must not emit BLOCK_SAVE_TO_STORAGE</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Media integrated with event playback (thumbnails cached).</wave-follow-up>
+      <phase-follow-up>Storage quota management — cache clears oldest files when full.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="success-only" markers="observable" followup="present" rating="ready" note="Add at least one failure scenario (download error) before phase gate." />
+    </V-M-MEDIA>
+
+    <V-M-UI-SHELL MODULE="M-UI-SHELL" PRIORITY="high">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/shell/AppShellScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.shell.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Shell renders with bottom nav (Live View, Events, Settings tabs)</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Tap tab switches content screen (BLOCK_NAVIGATE_SCREEN per tab)</scenario-2>
+        <scenario-3 kind="success" evidence-type="integration">Login state: show LoginScreen when not authenticated, shell when logged in</scenario-3>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Shell][render][BLOCK_RENDER_SHELL]</marker-1>
+        <marker-2>[Shell][navigate][BLOCK_NAVIGATE_SCREEN]</marker-2>
+      </required-log-markers>
+      <wave-follow-up>All screen transitions work correctly.</wave-follow-up>
+      <phase-follow-up>Compose UI test: full navigation flow (login -> live view -> events -> settings -> logout).</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" note="UI tests require emulator; slower than unit — not for tight worker loops." />
+    </V-M-UI-SHELL>
+
+    <V-M-UI-LIVEVIEW MODULE="M-UI-LIVEVIEW" PRIORITY="high">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/liveview/LiveViewScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.liveview.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Video surface renders when StreamHandleFake reports playing</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">PTZ joystick sends commands to CameraCommandModule (BLOCK_SEND_PTZ_CMD)</scenario-2>
+        <scenario-3 kind="success" evidence-type="trace">Quality selector visible and toggles quality (BLOCK_QUALITY_SWITCH)</scenario-3>
+        <scenario-4 kind="success" evidence-type="trace">Disconnect button stops stream</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
+        <marker-2>[LiveView][ptz][BLOCK_SEND_PTZ_CMD]</marker-2>
+        <marker-3>[LiveView][quality][BLOCK_QUALITY_SWITCH]</marker-3>
+      </required-log-markers>
+      <wave-follow-up>Live view integrated with StreamHandleFake.</wave-follow-up>
+      <phase-follow-up>Multi-camera switch works; quality change mid-stream works.</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+    </V-M-UI-LIVEVIEW>
+
+    <V-M-UI-EVENTS MODULE="M-UI-EVENTS" PRIORITY="high">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/events/EventsScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.events.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Event timeline renders with thumbnails and timestamps</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Tap event navigates to playback screen (BLOCK_OPEN_PLAYBACK)</scenario-2>
+        <scenario-3 kind="success" evidence-type="trace">Date filter selects date range and refreshes list</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">Empty state shows when no events available</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Events][load][BLOCK_LOAD_TIMELINE]</marker-1>
+        <marker-2>[Events][render][BLOCK_RENDER_EVENT_LIST]</marker-2>
+        <marker-3>[Events][open][BLOCK_OPEN_PLAYBACK]</marker-3>
+      </required-log-markers>
+      <wave-follow-up>Events screen with data from FakeYiApi.</wave-follow-up>
+      <phase-follow-up>Pagination (scroll to load more) verified.</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+    </V-M-UI-EVENTS>
+
+    <V-M-UI-EVENTPLAYBACK MODULE="M-UI-EVENTPLAYBACK" PRIORITY="high">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/eventplayback/EventPlaybackScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.eventplayback.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Player renders with controls overlay</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Play/pause toggle works</scenario-2>
+        <scenario-3 kind="success" evidence-type="trace">Seek bar responds to user input (BLOCK_HANDLE_SEEK)</scenario-3>
+        <scenario-4 kind="success" evidence-type="trace">Close button returns to events screen (BLOCK_CLOSE_PLAYER)</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[PlaybackUI][init][BLOCK_INIT_PLAYER_VIEW]</marker-1>
+        <marker-2>[PlaybackUI][seek][BLOCK_HANDLE_SEEK]</marker-2>
+        <marker-3>[PlaybackUI][close][BLOCK_CLOSE_PLAYER]</marker-3>
+      </required-log-markers>
+      <wave-follow-up>Playback screen with a fixture clip.</wave-follow-up>
+      <phase-follow-up>Deep link from push notification navigates directly to playback.</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+    </V-M-UI-EVENTPLAYBACK>
+
+    <V-M-UI-SETTINGS MODULE="M-UI-SETTINGS" PRIORITY="medium">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/settings/SettingsScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.settings.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Settings screen shows account info and logout button</scenario-1>
+        <scenario-2 kind="success" evidence-type="integration">Logout navigates to LoginScreen and clears session (BLOCK_HANDLE_LOGOUT)</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">Camera management shows device list with rename option</scenario-3>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Settings][render][BLOCK_RENDER_SETTINGS]</marker-1>
+        <marker-2>[Settings][logout][BLOCK_HANDLE_LOGOUT]</marker-2>
+        <marker-3>[Settings][save][BLOCK_SAVE_PREFERENCES]</marker-3>
+      </required-log-markers>
+      <wave-follow-up>Settings integrated with auth and camera list.</wave-follow-up>
+      <phase-follow-up>Full settings flow: rename camera -> verify change -> logout -> verify token cleared.</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+    </V-M-UI-SETTINGS>
+
+    <V-M-UI-LOGIN MODULE="M-UI-LOGIN" PRIORITY="high">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/login/LoginScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.login.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Login form renders, email and password fields accept input</scenario-1>
+        <scenario-2 kind="success" evidence-type="integration">Valid credentials navigate to shell (BLOCK_NAVIGATE_SHELL)</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">Invalid credentials show error message</scenario-3>
+        <scenario-4 kind="success" evidence-type="trace">Loading state visible during login request</scenario-4>
+        <scenario-5 kind="failure" evidence-type="trace">Empty email/password blocks submit (BLOCK_VALIDATE_FORM rejects, no BLOCK_SUBMIT_LOGIN)</scenario-5>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Login][submit][BLOCK_VALIDATE_FORM]</marker-1>
+        <marker-2>[Login][submit][BLOCK_SUBMIT_LOGIN]</marker-2>
+        <marker-3>[Login][nav][BLOCK_NAVIGATE_SHELL]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Invalid input must not emit BLOCK_SUBMIT_LOGIN</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Login integrated with auth module.</wave-follow-up>
+      <phase-follow-up>Login -> camera list -> shell flow end-to-end.</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="both" markers="observable" followup="present" rating="ready" />
+    </V-M-UI-LOGIN>
+
+    <V-M-ONBOARDING MODULE="M-ONBOARDING" PRIORITY="low">
+      <test-files>
+        <file>app/src/androidTest/java/com/yicamalt/ui/onboarding/OnboardingScreenTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:compileDebugKotlin</check-1>
+        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.onboarding.*"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Onboarding pager renders with all slides</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Permissions requested on relevant slide (BLOCK_REQUEST_PERMISSIONS)</scenario-2>
+        <scenario-3 kind="success" evidence-type="trace">Complete button navigates to login (BLOCK_COMPLETE_ONBOARDING)</scenario-3>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Onboarding][render][BLOCK_RENDER_ONBOARDING]</marker-1>
+        <marker-2>[Onboarding][perms][BLOCK_REQUEST_PERMISSIONS]</marker-2>
+        <marker-3>[Onboarding][complete][BLOCK_COMPLETE_ONBOARDING]</marker-3>
+      </required-log-markers>
+      <wave-follow-up>Onboarding shown only on first app launch.</wave-follow-up>
+      <phase-follow-up>Full onboarding -> login -> shell flow.</phase-follow-up>
+      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+    </V-M-ONBOARDING>
+
+    <V-M-CAMERA-DISCOVERY MODULE="M-CAMERA-DISCOVERY" PRIORITY="low">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/discovery/CameraDiscoveryModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.discovery.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Discovery scan returns local Yi cameras (mDNS mock responder)</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Stop discovery stops scan and cleans up resources</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">Timeout returns empty list (not error state — cameras simply not found)</scenario-3>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Discovery][scan][BLOCK_START_SCAN]</marker-1>
+        <marker-2>[Discovery][parse][BLOCK_PARSE_MDNS_RESPONSE]</marker-2>
+        <marker-3>[Discovery][resolve][BLOCK_RESOLVE_CAMERA_INFO]</marker-3>
+      </required-log-markers>
+      <wave-follow-up>Discovery used by camera setup flow.</wave-follow-up>
+      <phase-follow-up>Discovery on real device on local network.</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
+      <stop-conditions>
+        <stop-1>mDNS service type (_yi-camera._tcp) not confirmed from a captured sample -> halt and request a real discovery capture.</stop-1>
+      </stop-conditions>
+    </V-M-CAMERA-DISCOVERY>
+
+    <V-M-CAMERA-SETUP MODULE="M-CAMERA-SETUP" PRIORITY="low">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/setup/CameraSetupModuleTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.setup.*"</check-1>
+        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="integration">Ez-setup initiated, Wi-Fi credentials sent, pairing verified (FakeYiApi)</scenario-1>
+        <scenario-2 kind="failure" evidence-type="deterministic">Pairing timeout returns error, can retry</scenario-2>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Setup][init][BLOCK_INIT_EZ_SETUP]</marker-1>
+        <marker-2>[Setup][creds][BLOCK_SEND_CREDENTIALS]</marker-2>
+        <marker-3>[Setup][verify][BLOCK_VERIFY_PAIRING]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Wi-Fi password must not appear in any captured log (RedactionScanner clean)</assertion-1>
+      </required-trace-assertions>
+      <wave-follow-up>Setup flow integrated with shell navigation.</wave-follow-up>
+      <phase-follow-up>Setup flow end-to-end (requires real camera or simulated API).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
+      <stop-conditions>
+        <stop-1>Pairing protocol shape cannot be confirmed from a capture -> halt; do not guess credential encoding.</stop-1>
+      </stop-conditions>
+    </V-M-CAMERA-SETUP>
+  </ModuleVerification>
+
+  <AutonomyReadiness>
+    <!-- Per-module gate rating. "ready" = safe for long autonomous run.
+         "conditional" = safe only with stop-conditions active and a captured sample available. -->
+    <module id="M-CONFIG" rating="ready" />
+    <module id="M-HTTP" rating="ready" />
+    <module id="M-LOCAL-DB" rating="ready" />
+    <module id="M-AUTH" rating="ready" />
+    <module id="M-CAMERA-LIST" rating="ready" />
+    <module id="M-CAMERA-CMD" rating="ready" />
+    <module id="M-EVENT" rating="ready" />
+    <module id="M-STREAM-DECODE" rating="conditional" reason="reverse-engineered AES handshake; needs captured sample + stop-conditions active" />
+    <module id="M-STREAM-LIVE" rating="conditional" reason="depends on M-STREAM-DECODE contract stability" />
+    <module id="M-EVENT-PLAYBACK" rating="ready" />
+    <module id="M-PUSH" rating="ready" />
+    <module id="M-MEDIA" rating="ready" note="add one failure scenario before phase gate" />
+    <module id="M-UI-SHELL" rating="ready" requires="emulator" />
+    <module id="M-UI-LIVEVIEW" rating="ready" requires="emulator" />
+    <module id="M-UI-EVENTS" rating="ready" requires="emulator" />
+    <module id="M-UI-EVENTPLAYBACK" rating="ready" requires="emulator" />
+    <module id="M-UI-SETTINGS" rating="ready" requires="emulator" />
+    <module id="M-UI-LOGIN" rating="ready" requires="emulator" />
+    <module id="M-ONBOARDING" rating="ready" requires="emulator" />
+    <module id="M-CAMERA-DISCOVERY" rating="conditional" reason="mDNS service type needs capture confirmation" />
+    <module id="M-CAMERA-SETUP" rating="conditional" reason="pairing protocol shape needs capture confirmation" />
+    <global-gate>Autonomous multi-agent execution is allowed once: (1) TestInfrastructure harnesses exist and compile, (2) all "ready" modules pass module-local checks, (3) every "conditional" module has its stop-conditions implemented and a captured sample on disk referenced in docs. Until then, run $grace-execute (sequential) only.</global-gate>
+  </AutonomyReadiness>
+
+  <StopConditions>
+    <!-- Project-wide replan triggers, in addition to per-module stop-conditions. -->
+    <global-stop-1>Any reverse-engineered Yi Cloud endpoint shape changes or returns unexpected fields -> halt the affected module and replan against a fresh capture.</global-stop-1>
+    <global-stop-2>A RedactionScanner failure (secret in logs) -> halt immediately; redaction is a hard gate, not a warning.</global-stop-2>
+    <global-stop-3>A required-log-marker does not appear in a passing test trace -> treat as verification defect; add the marker or fix the test before proceeding.</global-stop-3>
+    <global-stop-4>Native/build failure persists after 2 attempts -> halt and escalate; do not loop on build environment issues.</global-stop-4>
+  </StopConditions>
+
+  <PhaseGates>
+    <Gate-Phase-1 PHASE="Phase-1">
+      <goal>Foundation modules + TestInfrastructure harnesses ready, auth pipeline works, app compiles and launches.</goal>
+      <commands>
+        <command-1>./gradlew :app:testDebugUnitTest</command-1>
+        <command-2>./gradlew :app:compileDebugKotlin</command-2>
+        <command-3>./gradlew :app:assembleDebug</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>All TestInfrastructure harnesses (TraceRecorder, RedactionScanner, FakeYiApi, FakeAuthStore, InMemoryRoom) compile and have smoke tests</evidence-1>
+        <evidence-2>All Phase-1 module unit tests pass</evidence-2>
+        <evidence-3>Login -> shell navigation works on emulator</evidence-3>
+        <evidence-4>Auth tokens stored encrypted; RedactionScanner clean on auth tests</evidence-4>
+        <evidence-5>TraceRecorder confirms every required-log-marker for M-CONFIG, M-HTTP, M-LOCAL-DB, M-AUTH appears at least once</evidence-5>
+      </required-evidence>
+    </Gate-Phase-1>
+
+    <Gate-Phase-2 PHASE="Phase-2">
+      <goal>Camera management functional: list, commands, settings UI.</goal>
+      <commands>
+        <command-1>./gradlew :app:testDebugUnitTest</command-1>
+        <command-2>./gradlew :app:assembleDebug</command-2>
+        <command-3>./gradlew :app:connectedDebugAndroidTest</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>Camera list fetched from FakeYiApi and displayed</evidence-1>
+        <evidence-2>Camera commands (PTZ mock) acknowledged; angle normalization asserted</evidence-2>
+        <evidence-3>Settings screen: logout clears session (RedactionScanner confirms token removed from logs)</evidence-3>
+        <evidence-4>All Phase-2 unit tests pass</evidence-4>
+        <evidence-5>Trace-coverage check passes for all Phase-2 modules</evidence-5>
+      </required-evidence>
+    </Gate-Phase-2>
+
+    <Gate-Phase-3 PHASE="Phase-3">
+      <goal>Streaming and playback working — the critical path. Live view + event playback functional against fakes.</goal>
+      <commands>
+        <command-1>./gradlew :app:testDebugUnitTest</command-1>
+        <command-2>./gradlew :app:assembleDebug</command-2>
+        <command-3>./gradlew :app:connectedDebugAndroidTest</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>Live view connects to FakeCameraStreamServer and displays video</evidence-1>
+        <evidence-2>M-STREAM-DECODE handshake against FakeYiApi obtains AES key; RedactionScanner confirms key never logged</evidence-2>
+        <evidence-3>Event timeline loads and displays thumbnails</evidence-3>
+        <evidence-4>Event clip playback works with fixture clip</evidence-4>
+        <evidence-5>M-STREAM-DECODE invalid-key and AES-failure scenarios return correct error codes</evidence-5>
+        <evidence-6>Reconnect cap (max 3) verified via TraceRecorder</evidence-6>
+        <evidence-7>All Phase-3 unit tests pass; trace-coverage check passes</evidence-7>
+      </required-evidence>
+    </Gate-Phase-3>
+
+    <Gate-Phase-4 PHASE="Phase-4">
+      <goal>All features polished, push notifications working, UX complete, ready for release build.</goal>
+      <commands>
+        <command-1>./gradlew :app:testDebugUnitTest</command-1>
+        <command-2>./gradlew :app:assembleDebug</command-2>
+        <command-3>./gradlew :app:connectedDebugAndroidTest</command-3>
+        <command-4>./gradlew :app:lint</command-4>
+      </commands>
+      <required-evidence>
+        <evidence-1>Push notification arrives and deep links to playback (eventId preserved)</evidence-1>
+        <evidence-2>All screens render correctly on emulator</evidence-2>
+        <evidence-3>Full user journey: onboarding -> login -> live view -> events -> playback -> settings -> logout</evidence-3>
+        <evidence-4>All tests (unit + instrumented) pass</evidence-4>
+        <evidence-5>RedactionScanner clean across the full suite</evidence-5>
+        <evidence-6>Trace-coverage check passes for every V-M-* entry</evidence-6>
+        <evidence-7>Build produces signed APK/AAB</evidence-7>
+      </required-evidence>
+    </Gate-Phase-4>
+  </PhaseGates>
+
+  <FailurePackets>
+    <!-- Aligned with docs/operational-packets.xml FailurePacket fields. -->
+    <packet-template>
+      <expected-fields>scenario, contract-ref, expected-evidence, observed-evidence, first-divergent-block, suggested-next-action</expected-fields>
+    </packet-template>
+    <concrete-example>
+      <FailurePacket>
+        <scenario>Live stream fails to reach playing state against FakeCameraStreamServer.</scenario>
+        <contract-ref>V-M-STREAM-LIVE / scenario-1 / VF-002</contract-ref>
+        <expected-evidence>
+          <marker-1>[Stream][startStream][BLOCK_CONNECT_STREAM]</marker-1>
+          <marker-2>[Decode][handshake][BLOCK_HANDSHAKE]</marker-2>
+          <assertion-1>StreamState == playing within 2s</assertion-1>
+        </expected-evidence>
+        <observed-evidence>
+          <log-1>[Stream][startStream][BLOCK_CONNECT_STREAM] emitted</log-1>
+          <trace-1>BLOCK_CONNECT_STREAM -> threw DECRYPT_KEY_INVALID (no BLOCK_HANDSHAKE)</trace-1>
+        </observed-evidence>
+        <first-divergent-block>BLOCK_HANDSHAKE</first-divergent-block>
+        <suggested-next-action>Read M-STREAM-DECODE contract; inspect FakeYiApi /v1/camera/live/key response shape; do not proceed past stop-condition stop-1 without a fresh capture.</suggested-next-action>
+      </FailurePacket>
+    </concrete-example>
+  </FailurePackets>
+</VerificationPlan>

@@ -1,0 +1,792 @@
+<DevelopmentPlan VERSION="0.2.0">
+  <ArchitectureNotes>
+    <objective>Спроектировать модульную Android-архитектуру (Clean Architecture: data / domain / presentation) для альтернативного клиента Yi-камер. Каждый модуль должен иметь чёткий contract, measurable verification, и observable log markers.</objective>
+    <non-goal>Не создавать server-side компонент; не делать iOS/桌面 версию; не поддерживать камеры не-Yi.</non-goal>
+    <risk-1>Yi Cloud API может измениться без предупреждения — весь API-интерфейс инкапсулирован в M-HTTP с version-fallback layer.</risk-1>
+    <risk-2>Видеопоток зашифрован AES-128 — ключи получаются через облачный handshake. M-STREAM-DECODE — самый рискованный модуль.</risk-2>
+    <risk-3>Local RTSP discovery не работает из-за firewall NAT — требуется fallback к cloud relay.</risk-3>
+  </ArchitectureNotes>
+
+  <Modules>
+    <!-- Layer 0: Foundation / Infrastructure -->
+
+    <M-CONFIG NAME="Config" TYPE="UTILITY" LAYER="0" ORDER="1" STATUS="planned">
+      <contract>
+        <purpose>Central application configuration: feature flags, API base URLs, build variants, and runtime settings.</purpose>
+        <inputs>
+          <param name="applicationContext" type="Application" />
+        </inputs>
+        <outputs>
+          <param name="ConfigModule" type="ConfigModule instance" />
+        </outputs>
+        <errors>
+          <error code="CONFIG_MISSING_KEY" />
+        </errors>
+      </contract>
+      <interface>
+        <export-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
+        <export-getFeatureFlags PURPOSE="Return runtime feature flag map" />
+        <export-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
+      </interface>
+      <depends>none</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/config/ConfigModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/config/ConfigModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Config]</log-prefix>
+        <critical-block>BLOCK_INIT_CONFIG</critical-block>
+      </observability>
+      <verification-ref>V-M-CONFIG</verification-ref>
+      <notes>
+        <note-1>Config values loaded from BuildConfig + default overrides. No network calls.</note-1>
+      </notes>
+    </M-CONFIG>
+
+    <M-HTTP NAME="HttpClient" TYPE="UTILITY" LAYER="0" ORDER="2" STATUS="planned">
+      <contract>
+        <purpose>Shared HTTP client (OkHttp + Retrofit2) with TLS config, interceptors (auth header, logging), error mapping, and retry policy.</purpose>
+        <inputs>
+          <param name="configModule" type="ConfigModule" />
+          <param name="authProvider" type="AuthProvider" />
+        </inputs>
+        <outputs>
+          <param name="Retrofit instance" type="Retrofit" />
+        </outputs>
+        <errors>
+          <error code="HTTP_TLS_FAILED" />
+          <error code="HTTP_UNAUTHORIZED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-createRetrofit PURPOSE="Build Retrofit with interceptors" />
+        <export-getHttpClient PURPOSE="Return raw OkHttp client" />
+        <export-setAuthToken PURPOSE="Update auth header via interceptor" />
+      </interface>
+      <depends>M-CONFIG</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/network/HttpClientModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/network/HttpClientModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Network]</log-prefix>
+        <critical-block>BLOCK_INIT_HTTP_CLIENT</critical-block>
+      </observability>
+      <verification-ref>V-M-HTTP</verification-ref>
+      <notes>
+        <note-1>Auth header injected by AccessTokenInterceptor reading from M-AUTH token store.</note-1>
+        <note-2>Response logs redact Authorization header and body on 4xx/5xx.</note-2>
+      </notes>
+    </M-HTTP>
+
+    <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" LAYER="0" ORDER="3" STATUS="planned">
+      <contract>
+        <purpose>Room-based local persistence for event cache, config state, and offline playback manifest. Acts as a cache layer — source of truth is cloud, but DB ensures UI responsiveness.</purpose>
+        <inputs>
+          <param name="applicationContext" type="Application" />
+        </inputs>
+        <outputs>
+          <param name="YiDatabase instance" type="Room database" />
+        </outputs>
+        <errors>
+          <error code="DB_CORRUPTION" />
+          <error code="DB_LOCKED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-eventDao PURPOSE="Access event table operations" />
+        <export-deviceDao PURPOSE="Access device registry operations" />
+        <export-syncDao PURPOSE="Access sync status table" />
+      </interface>
+      <depends>M-CONFIG</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/database/YiDatabase.kt</source>
+        <tests>app/src/test/java/com/yicamalt/database/LocalDatabaseTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Database]</log-prefix>
+        <critical-block>BLOCK_INIT_DATABASE</critical-block>
+      </observability>
+      <verification-ref>V-M-LOCAL-DB</verification-ref>
+    </M-LOCAL-DB>
+
+    <!-- Layer 1: Core Domain -->
+
+    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" LAYER="1" ORDER="1" STATUS="planned">
+      <contract>
+        <purpose>Handle Yi Cloud authentication: login with email/password or phone, token refresh, session management, and secure storage of tokens in Android Keystore.</purpose>
+        <inputs>
+          <param name="email" type="String" />
+          <param name="password" type="String" />
+          <param name="loginMethod" type="AuthMethod (EMAIL / PHONE)" />
+        </inputs>
+        <outputs>
+          <param name="AuthResult" type="AuthResult (Success | Error)" />
+        </outputs>
+        <errors>
+          <error code="AUTH_INVALID_CREDENTIALS" />
+          <error code="AUTH_TOKEN_EXPIRED" />
+          <error code="AUTH_NETWORK_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-login PURPOSE="Authenticate with Yi Cloud and store tokens" />
+        <export-refreshToken PURPOSE="Refresh access token using refresh token" />
+        <export-logout PURPOSE="Invalidate tokens and clear session" />
+        <export-getAccessToken PURPOSE="Return current valid access token" />
+        <export-isLoggedIn PURPOSE="Check if user has valid session" />
+        <export-getAuthMethod PURPOSE="Return the auth method used for current session" />
+      </interface>
+      <depends>M-HTTP, M-LOCAL-DB</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/auth/AuthModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Auth]</log-prefix>
+        <critical-block>BLOCK_VALIDATE_CREDENTIALS, BLOCK_STORE_TOKEN, BLOCK_REFRESH_TOKEN</critical-block>
+      </observability>
+      <verification-ref>V-M-AUTH</verification-ref>
+      <notes>
+        <note-1>Tokens stored in EncryptedSharedPreferences backed by Android Keystore.</note-1>
+        <note-2>Token refresh happens automatically before API calls via Retrofit interceptor.</note-2>
+        <note-3>Reverse-engineered auth endpoint: POST /v1/account/login (based on Yi Home APK traffic).</note-3>
+      </notes>
+    </M-AUTH>
+
+    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" LAYER="1" ORDER="2" STATUS="planned">
+      <contract>
+        <purpose>Fetch and cache the list of user-attached Yi cameras from cloud API. Provides live list with device status (online/offline), model info, firmware version, and stream URL resolution.</purpose>
+        <inputs>
+          <param name="accessToken" type="String" />
+        </inputs>
+        <outputs>
+          <param name="List&lt;CameraInfo&gt;" type="Camera entity list" />
+        </outputs>
+        <errors>
+          <error code="CAMERA_FETCH_FAILED" />
+          <error code="CAMERA_UNAUTHORIZED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-getCameraList PURPOSE="Fetch camera list from cloud" />
+        <export-getCameraById PURPOSE="Get single camera info by deviceId" />
+        <export-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
+        <export-updateCameraStatus PURPOSE="Update online/offline status (pushed from FCM)" />
+        <export-cacheCameraList PURPOSE="Persist camera list to local DB for offline access" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/camera/CameraRegistryModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Camera]</log-prefix>
+        <critical-block>BLOCK_FETCH_CAMERA_LIST, BLOCK_RESOLVE_STREAM_URL</critical-block>
+      </observability>
+      <verification-ref>V-M-CAMERA-LIST</verification-ref>
+      <notes>
+        <note-1>Cloud endpoint: GET /v1/user/camera/list (reverse-engineered).</note-1>
+        <note-2>Live stream URL format depends on camera model — need per-model resolver.</note-2>
+      </notes>
+    </M-CAMERA-LIST>
+
+    <M-CAMERA-CMD NAME="CameraCommand" TYPE="CORE_LOGIC" LAYER="1" ORDER="3" STATUS="planned">
+      <contract>
+        <purpose>Send camera control commands: PTZ (pan/tilt), IR night vision toggle, sound speaker, capture photo, switch recording mode, firmware update check. Commands sent via cloud relay.</purpose>
+        <inputs>
+          <param name="deviceId" type="String" />
+          <param name="command" type="CameraCommand" />
+          <param name="params" type="Map&lt;String, Any&gt;" />
+        </inputs>
+        <outputs>
+          <param name="CommandResult" type="CommandResult (Success | Error)" />
+        </outputs>
+        <errors>
+          <error code="CMD_UNSUPPORTED_MODEL" />
+          <error code="CMD_CAMERA_OFFLINE" />
+          <error code="CMD_TIMEOUT" />
+        </errors>
+      </contract>
+      <interface>
+        <export-sendPTZCommand PURPOSE="Send PTZ rotation command" />
+        <export-toggleIR PURPOSE="Toggle IR night vision" />
+        <export-toggleSound PURPOSE="Toggle speaker / two-way audio" />
+        <export-capturePhoto PURPOSE="Capture single photo from camera" />
+        <export-setRecordingMode PURPOSE="Set SD/cloud recording mode" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-CAMERA-LIST</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/camera/CameraCommandModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/camera/CameraCommandModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[CameraCmd]</log-prefix>
+        <critical-block>BLOCK_VALIDATE_COMMAND, BLOCK_SEND_COMMAND, BLOCK_WAIT_ACK</critical-block>
+      </observability>
+      <verification-ref>V-M-CAMERA-CMD</verification-ref>
+      <notes>
+        <note-1>Commands sent via POST /v1/camera/control (reverse-engineered JSON protocol).</note-1>
+        <note-2>PTZ coordinates: normalize joystick input to camera pan/tilt angles.</note-2>
+      </notes>
+    </M-CAMERA-CMD>
+
+    <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" LAYER="1" ORDER="4" STATUS="planned">
+      <contract>
+        <purpose>Fetch, cache, and manage motion/event timeline from Yi Cloud. Provides paginated event list with thumbnails, timestamps, and playback URLs. Events may come from cloud recording or SD-card.</purpose>
+        <inputs>
+          <param name="deviceId" type="String" />
+          <param name="startTime" type="Long (epoch ms)" />
+          <param name="endTime" type="Long (epoch ms)" />
+          <param name="page" type="Int" />
+        </inputs>
+        <outputs>
+          <param name="EventList" type="Paginated event list with thumbnails" />
+        </outputs>
+        <errors>
+          <error code="EVENT_FETCH_FAILED" />
+          <error code="EVENT_NO_RECORDING" />
+        </errors>
+      </contract>
+      <interface>
+        <export-getEventTimeline PURPOSE="Fetch paginated event list" />
+        <export-getEventById PURPOSE="Get single event with full details" />
+        <export-getPlaybackUrl PURPOSE="Resolve playback URL for an event" />
+        <export-syncEventsToDb PURPOSE="Cache events to local Room database" />
+        <export-getLocalEventCount PURPOSE="Count cached events for offline availability" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/event/EventServiceModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Event]</log-prefix>
+        <critical-block>BLOCK_FETCH_EVENTS, BLOCK_SYNC_TO_DB, BLOCK_RESOLVE_PLAYBACK_URL</critical-block>
+      </observability>
+      <verification-ref>V-M-EVENT</verification-ref>
+      <notes>
+        <note-1>Cloud endpoint: GET /v1/camera/event/list (paginated with cursor).</note-1>
+        <note-2>Event thumbnails are JPEG blobs returned inline; full video needs separate URL resolution.</note-2>
+      </notes>
+    </M-EVENT>
+
+    <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" LAYER="1" ORDER="5" STATUS="planned">
+      <contract>
+        <purpose>Establish and manage live video stream from a Yi camera. Supports cloud relay stream and (optionally) local RTSP stream. Handles stream lifecycle (connect, buffer, play, disconnect), reconnection on network change, and quality adaptation.</purpose>
+      <inputs>
+          <param name="cameraId" type="String" />
+          <param name="streamType" type="StreamType (CLOUD / LOCAL_RTSP)" />
+          <param name="quality" type="StreamQuality (SD / HD)" />
+        </inputs>
+        <outputs>
+          <param name="StreamHandle" type="StreamHandle (surface + state)" />
+        </outputs>
+        <errors>
+          <error code="STREAM_CONNECTION_FAILED" />
+          <error code="STREAM_DECODE_ERROR" />
+          <error code="STREAM_REJECTED (access denied / subscription)" />
+        </errors>
+      </contract>
+      <interface>
+        <export-startStream PURPOSE="Initialize and connect to camera stream" />
+        <export-stopStream PURPOSE="Gracefully disconnect stream" />
+        <export-switchQuality PURPOSE="Switch SD/HD quality (requires reconnect)" />
+        <export-getStreamState PURPOSE="Return StreamState (connecting | playing | error | stopped)" />
+        <export-getLatencyMs PURPOSE="Return current measured latency in ms" />
+        <export-getFps PURPOSE="Return current FPS" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-CAMERA-LIST, M-STREAM-DECODE</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/stream/LiveStreamModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/stream/LiveStreamModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Stream]</log-prefix>
+        <critical-block>BLOCK_CONNECT_STREAM, BLOCK_DECODE_FRAME, BLOCK_HANDLE_RECONNECT</critical-block>
+      </observability>
+      <verification-ref>V-M-STREAM-LIVE</verification-ref>
+      <notes>
+        <note-1>Cloud stream URL: /v1/camera/live/stream — returns encrypted media URL with session key.</note-1>
+        <note-2>Local RTSP: rtsp://&lt;camera_ip&gt;/live — only works on same LAN, uses standard RTSP.</note-2>
+        <note-3>Stream uses ExoPlayer with custom DataSource for encrypted HLS/HTTP stream.</note-3>
+      </notes>
+    </M-STREAM-LIVE>
+
+    <M-STREAM-DECODE NAME="StreamDecoder" TYPE="CORE_LOGIC" LAYER="1" ORDER="6" STATUS="planned">
+      <contract>
+        <purpose>Handle video stream decryption and decoding. Decrypts AES-128 encrypted Yi camera streams using keys from the cloud handshake. Wraps ExoPlayer MediaSource with decryption support.</purpose>
+        <inputs>
+          <param name="encryptedStreamUrl" type="String" />
+          <param name="aesKey" type="ByteArray" />
+          <param name="iv" type="ByteArray" />
+        </inputs>
+        <outputs>
+          <param name="DecryptedMediaSource" type="ExoPlayer MediaSource" />
+        </outputs>
+        <errors>
+          <error code="DECRYPT_KEY_INVALID" />
+          <error code="DECRYPT_AES_FAILED" />
+          <error code="DECODE_H264_FAILED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-createDecryptedSource PURPOSE="Create ExoPlayer MediaSource from encrypted URL + AES key" />
+        <export-handshakeWithCamera PURPOSE="Perform handshake to obtain AES session key" />
+        <export-validateKey PURPOSE="Verify AES key is valid before creating source" />
+      </interface>
+      <depends>M-HTTP</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/stream/StreamDecoderModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/stream/StreamDecoderModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Decode]</log-prefix>
+        <critical-block>BLOCK_HANDSHAKE, BLOCK_AES_DECRYPT_INIT, BLOCK_CREATE_MEDIA_SOURCE</critical-block>
+      </observability>
+      <verification-ref>V-M-STREAM-DECODE</verification-ref>
+      <notes>
+        <note-1>Yi streams use AES-128-ECB or AES-128-CBC. Key derived from cloud handshake response.</note-1>
+        <note-2>Handshake endpoint: POST /v1/camera/live/key (reverse-engineered — returns session key).</note-2>
+        <note-3>This is the most reverse-engineering-heavy module. API surface may change.</note-3>
+      </notes>
+    </M-STREAM-DECODE>
+
+    <M-EVENT-PLAYBACK NAME="EventPlayback" TYPE="CORE_LOGIC" LAYER="1" ORDER="7" STATUS="planned">
+      <contract>
+        <purpose>Playback of recorded event clips. Resolves playback URL (cloud CDN or local), manages download buffer, and delegates to ExoPlayer for video rendering.</purpose>
+        <inputs>
+          <param name="eventId" type="String" />
+          <param name="playbackUrl" type="String" />
+        </inputs>
+        <outputs>
+          <param name="PlaybackHandle" type="PlaybackHandle (surface + progress)" />
+        </outputs>
+        <errors>
+          <error code="PLAYBACK_URL_FAILED" />
+          <error code="PLAYBACK_DECODE_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-startPlayback PURPOSE="Start playing an event clip" />
+        <export-stopPlayback PURPOSE="Stop and release playback resources" />
+        <export-seekTo PURPOSE="Seek to position (ms) in the event clip" />
+        <export-getPlaybackDuration PURPOSE="Return total clip duration" />
+        <export-getCurrentPosition PURPOSE="Return current playback position" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/event/EventPlaybackModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/event/EventPlaybackModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Playback]</log-prefix>
+        <critical-block>BLOCK_RESOLVE_URL, BLOCK_INIT_PLAYER, BLOCK_PLAY_EVENT</critical-block>
+      </observability>
+      <verification-ref>V-M-EVENT-PLAYBACK</verification-ref>
+    </M-EVENT-PLAYBACK>
+
+    <M-PUSH NAME="PushService" TYPE="CORE_LOGIC" LAYER="1" ORDER="8" STATUS="planned">
+      <contract>
+        <purpose>Manage FCM (Firebase Cloud Messaging) push notifications: device token registration, notification handling (foreground / background / headless), deep-link to event playback, and fallback to local push channel management.</purpose>
+        <inputs>
+          <param name="deviceId" type="String" />
+        </inputs>
+        <outputs>
+          <param name="PushState" type="PushState (registered | error)" />
+        </outputs>
+        <errors>
+          <error code="PUSH_TOKEN_FAILED" />
+          <error code="PUSH_PERMISSION_DENIED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-registerDevice PURPOSE="Register device token with Yi Cloud and Firebase" />
+        <export-handlePushPayload PURPOSE="Process incoming push notification data" />
+        <export-showLocalNotification PURPOSE="Show Android notification for event alert" />
+        <export-deepLinkFromPush PURPOSE="Navigate to event playback from push deep-link" />
+        <export-unregisterDevice PURPOSE="Unregister from push service (logout)" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/push/PushServiceModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/push/PushServiceModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Push]</log-prefix>
+        <critical-block>BLOCK_REGISTER_TOKEN, BLOCK_HANDLE_PAYLOAD, BLOCK_SHOW_NOTIFICATION</critical-block>
+      </observability>
+      <verification-ref>V-M-PUSH</verification-ref>
+      <notes>
+        <note-1>Push payload contains: eventType (motion), deviceId, eventId, timestamp, thumbnailUrl.</note-1>
+        <note-2>Yi Cloud sends push via Firebase (FCM) — need to register FCM token with Yi Cloud API.</note-2>
+      </notes>
+    </M-PUSH>
+
+    <!-- Layer 2: UI / Presentation -->
+
+    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" LAYER="2" ORDER="1" STATUS="planned">
+      <contract>
+        <purpose>Top-level app shell with navigation: bottom navigation bar (Live View, Events, Settings), app bar, and navigation graph. Manages screen transitions and holds shared ViewModel state.</purpose>
+      <inputs>
+          <param name="authState" type="StateFlow&lt;AuthState&gt;" />
+        </inputs>
+        <outputs>
+          <param name="NavGraph" type="Compose navigation graph" />
+        </outputs>
+        <errors>
+          <error code="NAV_UNKNOWN_ROUTE" />
+        </errors>
+      </contract>
+      <interface>
+        <export-AppShellContent PURPOSE="Compose root layout with navigation" />
+        <export-NavigationHost PURPOSE="Navigation graph host" />
+        <export-BottomNavBar PURPOSE="Bottom navigation bar with tabs" />
+      </interface>
+      <depends>M-AUTH</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/shell/AppShellScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Shell]</log-prefix>
+        <critical-block>BLOCK_RENDER_SHELL, BLOCK_NAVIGATE_SCREEN</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-SHELL</verification-ref>
+    </M-UI-SHELL>
+
+    <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="2" STATUS="planned">
+      <contract>
+        <purpose>Live view screen: video preview surface, PTZ joystick, quality selector, camera selector (multi-camera), disconnect button. Integrates with M-STREAM-LIVE for video feed and M-CAMERA-CMD for controls.</purpose>
+      </contract>
+      <interface>
+        <export-LiveViewScreen PURPOSE="Compose screen with video + controls" />
+        <export-PtzJoystick PURPOSE="Joystick component for PTZ control" />
+        <export-QualitySelector PURPOSE="Dropdown for SD/HD quality toggle" />
+        <export-CameraSelector PURPOSE="Horizontal scroll for multi-camera switch" />
+      </interface>
+      <depends>M-UI-SHELL, M-STREAM-LIVE, M-CAMERA-CMD, M-CAMERA-LIST</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/liveview/LiveViewScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/liveview/LiveViewScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[LiveView]</log-prefix>
+        <critical-block>BLOCK_RENDER_VIDEO_SURFACE, BLOCK_SEND_PTZ_CMD, BLOCK_QUALITY_SWITCH</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
+    </M-UI-LIVEVIEW>
+
+    <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="3" STATUS="planned">
+      <contract>
+        <purpose>Events screen: timeline/grid of motion events with thumbnails, date filter, camera selector. Click on event opens EventPlaybackScreen.</purpose>
+      </contract>
+      <interface>
+        <export-EventsScreen PURPOSE="Compose screen with event timeline" />
+        <export-EventTimelineList PURPOSE="Vertical list of events grouped by date" />
+        <export-EventThumbnailItem PURPOSE="Event card with thumbnail + timestamp" />
+        <export-DateFilterBar PURPOSE="Horizontal date strip for filtering" />
+      </interface>
+      <depends>M-UI-SHELL, M-EVENT, M-EVENT-PLAYBACK</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/events/EventsScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/events/EventsScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Events]</log-prefix>
+        <critical-block>BLOCK_LOAD_TIMELINE, BLOCK_RENDER_EVENT_LIST, BLOCK_OPEN_PLAYBACK</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-EVENTS</verification-ref>
+    </M-UI-EVENTS>
+
+    <M-UI-EVENTPLAYBACK NAME="EventPlaybackScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="4" STATUS="planned">
+      <contract>
+        <purpose>Event playback screen: video player surface, seek bar, play/pause, skip back/forward, close button. Shows event metadata (date, camera name, motion type).</purpose>
+      </contract>
+      <interface>
+        <export-PlaybackScreen PURPOSE="Compose screen with player + metadata" />
+        <export-PlaybackControls PURPOSE="Player controls overlay (play, seek, close)" />
+        <export-EventMetadataInfo PURPOSE="Event info chip row (date, camera, type)" />
+      </interface>
+      <depends>M-UI-SHELL, M-EVENT-PLAYBACK</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/eventplayback/EventPlaybackScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/eventplayback/EventPlaybackScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[PlaybackUI]</log-prefix>
+        <critical-block>BLOCK_INIT_PLAYER_VIEW, BLOCK_HANDLE_SEEK, BLOCK_CLOSE_PLAYER</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-EVENTPLAYBACK</verification-ref>
+    </M-UI-EVENTPLAYBACK>
+
+    <M-UI-SETTINGS NAME="SettingsScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="5" STATUS="planned">
+      <contract>
+        <purpose>Settings screen: account info, camera management (rename, delete), app preferences (notification toggles, default quality, local RTSP toggle), about/feedback.</purpose>
+      </contract>
+      <interface>
+        <export-SettingsScreen PURPOSE="Compose settings screen" />
+        <export-AccountSection PURPOSE="Account info + logout button" />
+        <export-CameraManagementSection PURPOSE="Camera list management (rename, remove)" />
+        <export-AppPreferencesSection PURPOSE="App-level preferences" />
+      </interface>
+      <depends>M-UI-SHELL, M-AUTH, M-CAMERA-LIST, M-CAMERA-CMD</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/settings/SettingsScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/settings/SettingsScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Settings]</log-prefix>
+        <critical-block>BLOCK_RENDER_SETTINGS, BLOCK_HANDLE_LOGOUT, BLOCK_SAVE_PREFERENCES</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-SETTINGS</verification-ref>
+    </M-UI-SETTINGS>
+
+    <M-UI-LOGIN NAME="LoginScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="6" STATUS="planned">
+      <contract>
+        <purpose>Login/registration screen: email/password form, login button, loading state, error display, and navigation to main shell on success.</purpose>
+      </contract>
+      <interface>
+        <export-LoginScreen PURPOSE="Compose login form screen" />
+        <export-LoginForm PURPOSE="Login form with email + password fields" />
+        <export-LoginErrorDisplay PURPOSE="Show error message from auth result" />
+      </interface>
+      <depends>M-UI-SHELL, M-AUTH</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/login/LoginScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/login/LoginScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Login]</log-prefix>
+        <critical-block>BLOCK_VALIDATE_FORM, BLOCK_SUBMIT_LOGIN, BLOCK_NAVIGATE_SHELL</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-LOGIN</verification-ref>
+    </M-UI-LOGIN>
+
+    <M-ONBOARDING NAME="Onboarding" TYPE="UI_COMPONENT" LAYER="2" ORDER="7" STATUS="planned">
+      <contract>
+        <purpose>Initial onboarding flow: welcome screen, permission requests (notification, location for camera setup), account setup, first camera pairing instructions.</purpose>
+      </contract>
+      <interface>
+        <export-OnboardingScreen PURPOSE="Compose onboarding flow (pager)" />
+        <export-PermissionRequestCard PURPOSE="Card explaining why permissions are needed" />
+        <export-CameraPairingGuide PURPOSE="Step-by-step camera pairing instructions" />
+      </interface>
+      <depends>M-UI-SHELL, M-AUTH</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/onboarding/OnboardingScreen.kt</source>
+        <tests>app/src/androidTest/java/com/yicamalt/ui/onboarding/OnboardingScreenTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Onboarding]</log-prefix>
+        <critical-block>BLOCK_RENDER_ONBOARDING, BLOCK_REQUEST_PERMISSIONS, BLOCK_COMPLETE_ONBOARDING</critical-block>
+      </observability>
+      <verification-ref>V-M-ONBOARDING</verification-ref>
+    </M-ONBOARDING>
+
+    <!-- Layer 2: Integration -->
+    <M-CAMERA-DISCOVERY NAME="CameraDiscovery" TYPE="INTEGRATION" LAYER="2" ORDER="8" STATUS="planned">
+      <contract>
+        <purpose>Discover Yi cameras on the local network via mDNS/Bonjour and Yi proprietary discovery protocol. Resolves camera IP, port, model, and serial for local RTSP connections.</purpose>
+        <inputs>
+          <param name="networkInterface" type="String (optional, default all)" />
+        </inputs>
+        <outputs>
+          <param name="List&lt;DiscoveredCamera&gt;" type="Local camera list with IP + model" />
+        </outputs>
+        <errors>
+          <error code="DISCOVERY_TIMEOUT" />
+          <error code="DISCOVERY_PROTOCOL_UNSUPPORTED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-startDiscovery PURPOSE="Start network discovery scan" />
+        <export-stopDiscovery PURPOSE="Stop and clean up discovery" />
+        <export-getDiscoveredCameras PURPOSE="Return list of discovered local cameras" />
+      </interface>
+      <depends>M-HTTP</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/discovery/CameraDiscoveryModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/discovery/CameraDiscoveryModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Discovery]</log-prefix>
+        <critical-block>BLOCK_START_SCAN, BLOCK_PARSE_MDNS_RESPONSE, BLOCK_RESOLVE_CAMERA_INFO</critical-block>
+      </observability>
+      <verification-ref>V-M-CAMERA-DISCOVERY</verification-ref>
+      <notes>
+        <note-1>mDNS service type: _yi-camera._tcp (based on reverse-engineered Yi Home APK).</note-1>
+        <note-2>Proprietary discovery protocol: UDP broadcast to port 6090 (Yi internal protocol).</note-2>
+        <note-3>This module is optional for v1 if local discovery proves unreliable.</note-3>
+      </notes>
+    </M-CAMERA-DISCOVERY>
+
+    <M-CAMERA-SETUP NAME="CameraSetup" TYPE="INTEGRATION" LAYER="2" ORDER="9" STATUS="planned">
+      <contract>
+        <purpose>Handle camera Wi-Fi setup: ez-setup (AP mode), WPS, and cloud-assisted pairing. Guides user through QR scan or credential input for camera network provisioning.</purpose>
+      </contract>
+      <interface>
+        <export-startEzSetup PURPOSE="Initiate ez-setup (camera enters AP mode)" />
+        <export-submitWifiCredentials PURPOSE="Send SSID + password to camera" />
+        <export-checkPairingStatus PURPOSE="Poll camera pairing status" />
+        <export-cancelPairing PURPOSE="Cancel active pairing session" />
+      </interface>
+      <depends>M-HTTP, M-AUTH, M-CAMERA-LIST</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/setup/CameraSetupModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/setup/CameraSetupModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Setup]</log-prefix>
+        <critical-block>BLOCK_INIT_EZ_SETUP, BLOCK_SEND_CREDENTIALS, BLOCK_VERIFY_PAIRING</critical-block>
+      </observability>
+      <verification-ref>V-M-CAMERA-SETUP</verification-ref>
+      <notes>
+        <note-1>Setup is cloud-mediated: app tells cloud to push Wi-Fi creds to camera.</note-1>
+        <note-2>Requires location permission for Wi-Fi scan on Android 12+.</note-2>
+      </notes>
+    </M-CAMERA-SETUP>
+
+    <M-MEDIA NAME="MediaService" TYPE="CORE_LOGIC" LAYER="1" ORDER="10" STATUS="planned">
+      <contract>
+        <purpose>Manage media files: captured photos from camera, downloaded clips, thumbnail caching. Handles download progress, local storage, and media store integration for gallery visibility.</purpose>
+      </contract>
+      <interface>
+        <export-downloadPhoto PURPOSE="Download photo from camera URL" />
+        <export-downloadClip PURPOSE="Download event clip with progress" />
+        <export-getLocalThumbnail PURPOSE="Get cached thumbnail path for event" />
+        <export-cacheThumbnail PURPOSE="Store thumbnail in local cache" />
+        <export-clearMediaCache PURPOSE="Clear downloaded media to free space" />
+      </interface>
+      <depends>M-HTTP, M-EVENT</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/media/MediaServiceModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/media/MediaServiceModuleTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Media]</log-prefix>
+        <critical-block>BLOCK_START_DOWNLOAD, BLOCK_PROGRESS_UPDATE, BLOCK_SAVE_TO_STORAGE</critical-block>
+      </observability>
+      <verification-ref>V-M-MEDIA</verification-ref>
+    </M-MEDIA>
+
+  </Modules>
+
+  <DataFlow>
+    <DF-AUTH NAME="UserAuthentication" TRIGGER="User taps Login">
+      <step-1>User enters credentials on LoginScreen (M-UI-LOGIN)</step-1>
+      <step-2>M-AUTH validates credentials via M-HTTP (POST /v1/account/login)</step-2>
+      <step-3>M-AUTH stores tokens in encrypted SharedPreferences</step-3>
+      <step-4>AuthState updates to LOGGED_IN, navigation shifts to AppShell</step-4>
+      <evidence>V-M-AUTH scenario-1 (success path), log marker [Auth][login][BLOCK_STORE_TOKEN]</evidence>
+    </DF-AUTH>
+
+    <DF-CAMERA-LIST NAME="CameraListFetch" TRIGGER="App launches or camera list refreshed">
+      <step-1>M-CAMERA-LIST requests token from M-AUTH</step-1>
+      <step-2>M-CAMERA-LIST calls cloud API via M-HTTP (GET /v1/user/camera/list)</step-2>
+      <step-3>M-CAMERA-LIST parses response, caches in M-LOCAL-DB</step-3>
+      <step-4>CameraRegistryState updates, UI refreshes</step-4>
+      <evidence>V-M-CAMERA-LIST scenario-1 (success), log marker [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</evidence>
+    </DF-CAMERA-LIST>
+
+    <DF-LIVE-STREAM NAME="LiveViewConnection" TRIGGER="User taps camera thumbnail">
+      <step-1>M-UI-LIVEVIEW requests stream from M-STREAM-LIVE</step-1>
+      <step-2>M-STREAM-LIVE resolves stream URL via M-CAMERA-LIST.getLiveStreamUrl()</step-2>
+      <step-3>M-STREAM-LIVE performs handshake via M-STREAM-DECODE to get AES key</step-3>
+      <step-4>M-STREAM-DECODE creates decrypted MediaSource for ExoPlayer</step-4>
+      <step-5>ExoPlayer initializes, video renders on surface</step-5>
+      <step-6>Stream state reported back to UI (playing / error / reconnecting)</step-6>
+      <evidence>V-M-STREAM-LIVE scenario-1 (full connect), log markers [Stream][startStream][BLOCK_CONNECT_STREAM], [Decode][handshake][BLOCK_HANDSHAKE]</evidence>
+    </DF-LIVE-STREAM>
+
+    <DF-EVENT-LIST NAME="EventTimelineLoad" TRIGGER="User navigates to Events tab">
+      <step-1>M-UI-EVENTS requests events via M-EVENT</step-1>
+      <step-2>M-EVENT fetches from cloud (GET /v1/camera/event/list) via M-HTTP</step-2>
+      <step-3>M-EVENT caches to M-LOCAL-DB (syncEventsToDb)</step-3>
+      <step-4>M-EVENT returns paginated events with thumbnails</step-4>
+      <step-5>UI renders timeline</step-5>
+      <evidence>V-M-EVENT scenario-1 (paginated list), log marker [Event][getEventTimeline][BLOCK_FETCH_EVENTS]</evidence>
+    </DF-EVENT-LIST>
+
+    <DF-PLAYBACK NAME="EventClipPlayback" TRIGGER="User taps event item">
+      <step-1>M-UI-EVENTS sends eventId to M-UI-EVENTPLAYBACK</step-1>
+      <step-2>M-EVENT-PLAYBACK resolves playback URL via M-EVENT.getPlaybackUrl()</step-2>
+      <step-3>M-EVENT-PLAYBACK creates ExoPlayer MediaSource</step-3>
+      <step-4>Video plays on surface with controls</step-4>
+      <evidence>V-M-EVENT-PLAYBACK scenario-1 (playback success), log marker [Playback][startPlayback][BLOCK_INIT_PLAYER]</evidence>
+    </DF-PLAYBACK>
+
+    <DF-CMD-PTZ NAME="PTZControl" TRIGGER="User drags PTZ joystick">
+      <step-1>M-UI-LIVEVIEW converts joystick delta to PTZ angles</step-1>
+      <step-2>M-UI-LIVEVIEW calls M-CAMERA-CMD.sendPTZCommand()</step-2>
+      <step-3>M-CAMERA-CMD sends via M-HTTP (POST /v1/camera/control)</step-3>
+      <step-4>Camera acknowledges command</step-4>
+      <evidence>V-M-CAMERA-CMD scenario-1 (PTZ success), log markers [CameraCmd][sendPTZ][BLOCK_SEND_COMMAND]</evidence>
+    </DF-CMD-PTZ>
+
+    <DF-PUSH-NOTIF NAME="PushNotificationDelivery" TRIGGER="Cloud sends push for motion event">
+      <step-1>FCM delivers notification to M-PUSH (FirebaseMessagingService)</step-1>
+      <step-2>M-PUSH parses payload, shows local notification</step-2>
+      <step-3>User taps notification → deep link to event playback</step-3>
+      <step-4>M-PUSH navigates to M-UI-EVENTPLAYBACK with eventId</step-4>
+      <evidence>V-M-PUSH scenario-1 (push → playback), log marker [Push][handlePayload][BLOCK_SHOW_NOTIFICATION]</evidence>
+    </DF-PUSH-NOTIF>
+
+    <DF-CMD-CONFIG NAME="CameraConfiguration" TRIGGER="User renames camera in settings">
+      <step-1>M-UI-SETTINGS sends rename request to M-CAMERA-CMD</step-1>
+      <step-2>M-CAMERA-CMD sends command via M-HTTP</step-2>
+      <step-3>Camera acknowledges, M-CAMERA-LIST updates device name</step-3>
+      <evidence>V-M-CAMERA-CMD scenario-2 (config update), log marker [CameraCmd][sendCmd][BLOCK_SEND_COMMAND]</evidence>
+    </DF-CMD-CONFIG>
+  </DataFlow>
+
+  <ImplementationOrder>
+    <Phase-1 name="Foundation &amp; Auth" status="pending">
+      <goal>Configuration, HTTP client, local database, and user authentication pipeline working end-to-end.</goal>
+      <step-1 module="M-CONFIG" status="pending" verification="V-M-CONFIG">Initialize configuration module</step-1>
+      <step-2 module="M-HTTP" status="pending" verification="V-M-HTTP">Build HTTP client with auth interceptor</step-2>
+      <step-3 module="M-LOCAL-DB" status="pending" verification="V-M-LOCAL-DB">Set up Room database schema</step-3>
+      <step-4 module="M-AUTH" status="pending" verification="V-M-AUTH">Implement login, token storage, and refresh</step-4>
+      <step-5 module="M-UI-LOGIN" status="pending" verification="V-M-UI-LOGIN">Build login screen connected to auth</step-5>
+    </Phase-1>
+
+    <Phase-2 name="Camera Management" status="pending">
+      <goal>Camera list, camera discovery, and device management functional.</goal>
+      <step-1 module="M-CAMERA-LIST" status="pending" verification="V-M-CAMERA-LIST">Implement camera list API integration</step-1>
+      <step-2 module="M-CAMERA-CMD" status="pending" verification="V-M-CAMERA-CMD">Implement camera command protocol (PTZ, IR, sound)</step-2>
+      <step-3 module="M-CAMERA-DISCOVERY" status="pending" verification="V-M-CAMERA-DISCOVERY">Implement local network discovery (optional for v1)</step-3>
+      <step-4 module="M-CAMERA-SETUP" status="pending" verification="V-M-CAMERA-SETUP">Implement Wi-Fi pairing flow</step-4>
+      <step-5 module="M-UI-SHELL" status="pending" verification="V-M-UI-SHELL">Build navigation shell with bottom nav</step-5>
+      <step-6 module="M-UI-SETTINGS" status="pending" verification="V-M-UI-SETTINGS">Build settings screen</step-6>
+    </Phase-2>
+
+    <Phase-3 name="Streaming Core" status="pending">
+      <goal>Live stream and event playback working — the most critical and risky phase.</goal>
+      <step-1 module="M-STREAM-DECODE" status="pending" verification="V-M-STREAM-DECODE">Implement AES decryption handshake</step-1>
+      <step-2 module="M-STREAM-LIVE" status="pending" verification="V-M-STREAM-LIVE">Implement live stream lifecycle</step-2>
+      <step-3 module="M-UI-LIVEVIEW" status="pending" verification="V-M-UI-LIVEVIEW">Build live view screen with video + controls</step-3>
+      <step-4 module="M-EVENT" status="pending" verification="V-M-EVENT">Implement event timeline API</step-4>
+      <step-5 module="M-EVENT-PLAYBACK" status="pending" verification="V-M-EVENT-PLAYBACK">Implement event playback pipeline</step-5>
+      <step-6 module="M-UI-EVENTS" status="pending" verification="V-M-UI-EVENTS">Build events timeline screen</step-6>
+      <step-7 module="M-UI-EVENTPLAYBACK" status="pending" verification="V-M-UI-EVENTPLAYBACK">Build playback screen</step-7>
+    </Phase-3>
+
+    <Phase-4 name="Notifications &amp; Polish" status="pending">
+      <goal>Push notifications, media management, onboarding, and UX polish.</goal>
+      <step-1 module="M-PUSH" status="pending" verification="V-M-PUSH">Implement FCM push service</step-1>
+      <step-2 module="M-MEDIA" status="pending" verification="V-M-MEDIA">Implement media download and cache</step-2>
+      <step-3 module="M-ONBOARDING" status="pending" verification="V-M-ONBOARDING">Build onboarding flow</step-3>
+      <step-4 module="M-UI-LIVEVIEW" status="in-progress" verification="V-M-UI-LIVEVIEW">Polish live view (multi-camera, quality selector)</step-4>
+      <step-5 module="M-UI-EVENTS" status="in-progress" verification="V-M-UI-EVENTS">Polish events (date filter, pagination)</step-5>
+    </Phase-4>
+  </ImplementationOrder>
+
+  <ExecutionPolicy>
+    <default-profile>balanced</default-profile>
+    <controller-owns>docs/development-plan.xml, docs/knowledge-graph.xml, docs/verification-plan.xml</controller-owns>
+    <worker-owns>Only module source files and module-local tests inside the approved write scope.</worker-owns>
+    <max-fix-attempts-per-step>2</max-fix-attempts-per-step>
+    <replanning-trigger>Missing dependency, contradictory contract, unclear third-party surface (Yi API changes), or native build failure that persists after 2 attempts.</replanning-trigger>
+    <checkpoint-requirement>Every step must leave assumptions, commands run, evidence, and next action.</checkpoint-requirement>
+  </ExecutionPolicy>
+</DevelopmentPlan>

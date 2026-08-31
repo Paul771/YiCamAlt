@@ -1,0 +1,89 @@
+<TechnologyStack VERSION="0.2.0">
+  <Runtime>Android Android SDK</Runtime>
+  <Language>Kotlin 1.9+ / Java 11</Language>
+  <Framework>Android SDK / Jetpack Compose</Framework>
+
+  <Dependencies>
+    <dep name="androidx.core" version="1.12+" purpose="Core Android extensions, lifecycle, etc." />
+    <dep name="androidx.lifecycle" version="2.7+" purpose="ViewModel, LiveData, lifecycle-aware components" />
+    <dep name="androidx.room" version="2.6+" purpose="Local SQLite database for events/cache" />
+    <dep name="androidx.work" version="2.9+" purpose="Background tasks (sync, push handling)" />
+    <dep name="com.google.android.exoplayer" version="2.39+" purpose="Video playback: HLS, MP4, custom RTSP pipeline" />
+    <dep name="com.google.firebase:firebase-messaging" version="23+" purpose="Push notifications via FCM" />
+    <dep name="com.squareup.retrofit2" version="2.9+" purpose="HTTP client for Yi Cloud API" />
+    <dep name="com.squareup.okhttp3" version="4.12+" purpose="HTTP engine, WebSocket support, TLS config" />
+    <dep name="io.github.thelour0:arsdk-android" version="0.1.+" purpose="Native camera stream decoding (FFmpeg wrapper if needed)" />
+    <dep name="com.jakewharton.timber" version="5.0+" purpose="Android logging — Timber logger" />
+    <dep name="org.jetbrains.kotlinx:kotlinx-coroutines-android" version="1.7+" purpose="Async / reactive streams" />
+    <dep name="org.jetbrains.kotlinx:kotlinx-serialization-json" version="1.6+" purpose="JSON parsing for API responses" />
+    <dep name="androidx.compose.ui" version="1.6+" purpose="Declarative UI framework" />
+    <dep name="androidx.compose.material3" version="1.2+" purpose="Material 3 components" />
+  </Dependencies>
+
+  <VersionConstraints>
+    <constraint lib="android-minSdk" min="26" max="26" reason="Android 8.0 minimum — broadest coverage with modern Java/Kotlin support" />
+    <constraint lib="android-targetSdk" min="34" max="34" reason="Target Android 14 for Play Store compliance" />
+    <constraint lib="kotlin" min="1.9.0" max="1.9.x" reason="Stable coroutine, serialization, and Compose compatibility" />
+    <constraint lib="exoplayer" min="2.39.0" max="2.39.x" reason="Requires MediaCodec API features for custom RTSP pipeline" />
+  </VersionConstraints>
+
+  <Tooling>
+    <tool name="build-system" value="Gradle (Kotlin DSL) / AGP 8+" version="8.2+" />
+    <tool name="dependency-injection" value="Hilt (Dagger)" version="2.51+" />
+    <tool name="linter" value="ktlint / Detekt" version="1.23+" />
+    <tool name="formatter" value="ktlint" version="1.2+" />
+    <tool name="test-runner-unit" value="JUnit 5 + Kotlin Test" version="5.10+" />
+    <tool name="test-runner-android" value="Robolectric" version="4.11+" />
+    <tool name="test-runner-instrumented" value="Espresso" version="3.5+" />
+    <tool name="mocking" value="Mockk" version="1.13+" />
+    <tool name="ci" value="GitHub Actions / Gradle CI" version="latest" />
+    <tool name="apk-build" value="Gradle bundle / APK" version="AGP 8+" />
+  </Tooling>
+
+  <PreferredAgentStack>
+    <preferred-runtime-library>androidx.lifecycle / kotlinx.coroutines</preferred-runtime-library>
+    <preferred-http-client>retrofit2 + okhttp3</preferred-http-client>
+    <preferred-video-player>com.google.android.exoplayer2 (ExoPlayer)</preferred-video-player>
+    <preferred-di>hilt</preferred-di>
+    <preferred-ui>Jetpack Compose (Material 3)</preferred-ui>
+    <preferred-database>androidx.room</preferred-database>
+    <preferred-test-library>junit5 + mockk</preferred-test-library>
+    <preferred-observability-library>timber</preferred-observability-library>
+    <discouraged-surface reason="Legacy View system is harder to maintain with Compose.">Android View system / XML layouts</discouraged-surface>
+    <discouraged-surface reason="MVP / vanilla Dagger slow down autonomous agents.">Manual Dagger module wiring</discouraged-surface>
+  </PreferredAgentStack>
+
+  <Testing>
+    <module-level>
+      <command>./gradlew :app:testDebugUnitTest</command>
+      <focus>Fast deterministic unit and contract checks — pure Kotlin modules</focus>
+    </module-level>
+    <wave-level>
+      <command>./gradlew :app:testDebugUnitTest --tests "*CameraModule*"</command>
+      <focus>Checks only merged surfaces touched by a wave (e.g., auth + camera list)</focus>
+    </wave-level>
+    <phase-level>
+      <command>./gradlew :app:connectedDebugAndroidTest</command>
+      <focus>Full integration suite: Compose UI tests, camera mock, API mocks</focus>
+    </phase-level>
+    <mocking-policy>Prefer fakes (MockCameraService, FakeApi) over broad monkey-patching. Use Mockk for interface mocks.</mocking-policy>
+  </Testing>
+
+  <Observability>
+    <logger>Timber (android logging wrapper)</logger>
+    <log-format>[ModuleTag][fnName][BLOCK_NAME] message</log-format>
+    <required-fields>deviceId, sessionId, correlationId</required-fields>
+    <redaction>Never log tokens, auth headers, passwords, raw camera stream data, or user PII (email, phone) in plaintext.</redaction>
+  </Observability>
+
+  <AutonomyPolicy>
+    <default-execution-profile>balanced</default-execution-profile>
+    <max-fix-attempts-per-step>2</max-fix-attempts-per-step>
+    <replanning-trigger>Missing dependency, contradictory contract, unclear third-party surface (Yi API changes), or native build failure that persists after 2 attempts.</replanning-trigger>
+    <checkpoint-requirement>Every completed step must emit assumptions, commands, evidence, and next action.</checkpoint-requirement>
+  </AutonomyPolicy>
+
+  <DeliveryShape>
+    <shape>Single Android APK / AAB (Android App Bundle). No server component — fully client-side.</shape>
+  </DeliveryShape>
+</TechnologyStack>

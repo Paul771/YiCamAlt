@@ -1,0 +1,103 @@
+<RequirementsAnalysis VERSION="0.2.0">
+  <Project>
+    <name>YiCamAlt</name>
+    <annotation>Альтернативный Android-клиент для камер Yi Home / Yi Dome с открытой архитектурой, обходящий ограничения платной подписки. Приложение обеспечивает live-view, просмотр архива событий, управление камерой и работу с облачными/локальными хранилищами.</annotation>
+    <keywords>yi-camera, android, rtsp, streaming, alternative-client, camera, protocol-reverse-engineering, live-view</keywords>
+  </Project>
+
+  <Actors>
+    <actor-User>Владелец камеры Yi, устанавливает приложение на Android-устройство, управляет камерой через UI.</actor-User>
+    <actor-Camera>Устройство Yi (Yi Home, Yi Dome, Yi 360 и т.д.), подключённое к Wi-Fi, предоставляет видеопоток и управляющие команды через облачный API или локальный протокол.</actor-Camera>
+    <actor-Cloud>Облачный сервис Yi (yi.com / ants360.com), обрабатывающий аутентификацию, push-уведомления, облачное хранение и ретрансляцию видеопотока.</actor-Cloud>
+    <actor-LocalNetwork>Локальная LAN, по которой камера доступна напрямую (RTSP/HTTP-стриминг) при условии same-network discovery.</actor-LocalNetwork>
+  </Actors>
+
+  <UseCases>
+    <UC-001>
+      <Actor>User</Actor>
+      <Action>Регистрируется / входит в аккаунт Yi</Action>
+      <Goal>Получить доступ к привязанным камерам без платной подписки</Goal>
+      <Preconditions>Аккаунт создан на yi.com; камера привязана к аккаунту</Preconditions>
+      <AcceptanceCriteria>Приложение получает список камер; live-view доступен без запроса подписки</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-AUTH, DF-CAMERA-LIST</RelatedFlows>
+    </UC-001>
+    <UC-002>
+      <Actor>User</Actor>
+      <Action>Открывает live-view камеры</Action>
+      <Goal>Смотреть видеопоток в реальном времени с минимальной задержкой</Goal>
+      <Preconditions>Камера онлайн; сеть подключена</Preconditions>
+      <AcceptanceCriteria>Видеопоток запускается в течение 2 секунд; FPS ≥ 15; задержка ≤ 1.5 сек</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-LIVE-STREAM</RelatedFlows>
+    </UC-002>
+    <UC-003>
+      <Actor>User</Actor>
+      <Action>Просматривает архив событий (motion/cloud event)</Action>
+      <Goal>Найти и воспроизвести записанные события за выбранный период</Goal>
+      <Preconditions>Запись событий включена на камере; облачное хранилище активно или SD-карта доступна</Preconditions>
+      <AcceptanceCriteria>Таймлайн событий отображается; клик воспроизводит видео片段 без подписки</AcceptanceCriteria>
+      <Priority>high</Priority>
+      <RelatedFlows>DF-EVENT-LIST, DF-PLAYBACK</RelatedFlows>
+    </UC-003>
+    <UC-004>
+      <Actor>User</Actor>
+      <Action>Управляет камерой (поворот, ИК-подсветка, звук)</Action>
+      <Goal>Контролировать PTZ, ИК, микрофон камеры из приложения</Goal>
+      <Preconditions>Камера поддерживает PTZ; команда поддерживается моделью</Preconditions>
+      <AcceptanceCriteria>Команда выполняется в течение 1 сек; камера реагирует немедленно</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-CMD-PTZ</RelatedFlows>
+    </UC-004>
+    <UC-005>
+      <Actor>User</Actor>
+      <Action>Получает push-уведомление о движении</Action>
+      <Goal>Мгновенное оповещение при обнаружении движения</Goal>
+      <Preconditions>Firebase / GCM подключён; уведомления включены в приложении</Preconditions>
+      <AcceptanceCriteria>Push приходит в течение 5 сек после события; тап по push открывает replay</AcceptanceCriteria>
+      <Priority>medium</Priority>
+      <RelatedFlows>DF-PUSH-NOTIF</RelatedFlows>
+    </UC-005>
+    <UC-006>
+      <Actor>User</Actor>
+      <Action>Настраивает камеру (Wi-Fi, имя, расписание)</Action>
+      <Goal>Базовая настройка камеры через приложение</Goal>
+      <Preconditions>Камера в режиме pairing (AP mode или ez-setup)</Preconditions>
+      <AcceptanceCriteria>Wi-Fi настройка проходит за &lt; 30 сек; параметры сохраняются</AcceptanceCriteria>
+      <Priority>low</Priority>
+      <RelatedFlows>DF-CMD-CONFIG</RelatedFlows>
+    </UC-006>
+  </UseCases>
+
+  <NonGoals>
+    <item-1>Desktop / iOS-клиент (только Android v1).</item-1>
+    <item-2>Прямая запись на SD-карту из приложения (только cloud/SD через камеру).</item-2>
+    <item-3>Многопользовательский режим / шаринг камер (v2+).</item-3>
+    <item-4>AI-распознавание лиц / объектов (локальная обработка на камере — да, на клиенте — нет).</item-4>
+    <item-5>Поддержка камер не-Yi (Hikvision, TP-Link и т.д.).</item-5>
+  </NonGoals>
+
+  <Constraints>
+    <constraint-1>Android 8.0 (API 26) и выше — target API 34+</constraint-1>
+    <constraint-2>Токены и секреты не должны сохраняться в plaintext; использовать Android Keystore для sensitive data</constraint-2>
+    <constraint-3>Все сетевые запросы — TLS 1.2+; no cleartext HTTP except local camera RTSP</constraint-3>
+    <constraint-4>Приложение должно корректно работать в background (foreground service для push)</constraint-4>
+    <constraint-5>Задержка видеопотока ≤ 1.5 сек при 4G / Wi-Fi; FPS ≥ 15</constraint-5>
+    <constraint-6>Никаких проприетарных SDK Yi — только reverse-engineered API / открытые протоколы</constraint-6>
+  </Constraints>
+
+  <Risks>
+    <risk-1>Облачный API Yi может измениться (auth flow, token refresh, endpoint changes) — требует адаптивного слоя абстракции.</risk-1>
+    <risk-2>Дешифрование видеопотока — camera stream зашифрован AES; нужны ключи из облачного handshake.</risk-2>
+    <risk-3>Local RTSP stream may only work on same WiFi; cross-network requires cloud relay or tunnel.</risk-3>
+    <risk-4>Push-уведомления могут не доставляться на некоторых Android-сборках (Doze mode, manufacturer battery optimizers).</risk-4>
+    <risk-5>Юридический риск: reverse-engineering проприетарного API — необходимо оценить TOU и риск DMCA.</risk-5>
+  </Risks>
+
+  <OpenQuestions>
+    <question-1>Поддержка локального RTSP напрямую vs только через cloud relay — какой priority?</question-1>
+    <question-2>Нужен ли Multi-Camera view (split-screen) в v1?</question-2>
+    <question-3>Требуется ли offline-режим для SD-card playback через USB OTG?</question-3>
+    <question-4>Какой видеоплеер: ExoPlayer (Google) или custom RTSP pipeline?</question-4>
+  </OpenQuestions>
+</RequirementsAnalysis>

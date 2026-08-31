@@ -1,0 +1,337 @@
+<KnowledgeGraph>
+  <Project NAME="YiCamAlt" VERSION="0.2.0">
+    <keywords>yi-camera, android, rtsp, streaming, alternative-client, camera, protocol-reverse-engineering, live-view</keywords>
+    <annotation>Альтернативный Android-клиент для камер Yi Home / Yi Dome с открытой архитектурой, обходящий ограничения платной подписки. Приложение обеспечивает live-view, просмотр архива событий, управление камерой и работу с облачными/локальными хранилищами.</annotation>
+
+    <!-- Layer 0: Foundation -->
+
+    <M-CONFIG NAME="Config" TYPE="UTILITY" STATUS="planned">
+      <purpose>Central application configuration: feature flags, API base URLs, build variants, and runtime settings.</purpose>
+      <path>app/src/main/java/com/yicamalt/config/ConfigModule.kt</path>
+      <depends>none</depends>
+      <verification-ref>V-M-CONFIG</verification-ref>
+      <annotations>
+        <fn-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
+        <fn-getFeatureFlags PURPOSE="Return runtime feature flag map" />
+        <fn-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
+      </annotations>
+    </M-CONFIG>
+
+    <M-HTTP NAME="HttpClient" TYPE="UTILITY" STATUS="planned">
+      <purpose>Shared HTTP client (OkHttp + Retrofit2) with TLS config, auth interceptor, error mapping, and retry policy.</purpose>
+      <path>app/src/main/java/com/yicamalt/network/HttpClientModule.kt</path>
+      <depends>M-CONFIG</depends>
+      <verification-ref>V-M-HTTP</verification-ref>
+      <annotations>
+        <fn-createRetrofit PURPOSE="Build Retrofit with interceptors" />
+        <fn-getHttpClient PURPOSE="Return raw OkHttp client" />
+        <fn-setAuthToken PURPOSE="Update auth header via interceptor" />
+      </annotations>
+    </M-HTTP>
+
+    <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" STATUS="planned">
+      <purpose>Room-based local persistence for event cache, config state, and offline playback manifest.</purpose>
+      <path>app/src/main/java/com/yicamalt/database/YiDatabase.kt</path>
+      <depends>M-CONFIG</depends>
+      <verification-ref>V-M-LOCAL-DB</verification-ref>
+      <annotations>
+        <fn-eventDao PURPOSE="Access event table operations" />
+        <fn-deviceDao PURPOSE="Access device registry operations" />
+        <fn-syncDao PURPOSE="Access sync status table" />
+      </annotations>
+    </M-LOCAL-DB>
+
+    <!-- Layer 1: Core Domain -->
+
+    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Handle Yi Cloud authentication: login, token refresh, session management, secure token storage.</purpose>
+      <path>app/src/main/java/com/yicamalt/auth/AuthModule.kt</path>
+      <depends>M-HTTP, M-LOCAL-DB</depends>
+      <verification-ref>V-M-AUTH</verification-ref>
+      <annotations>
+        <fn-login PURPOSE="Authenticate with Yi Cloud and store tokens" />
+        <fn-refreshToken PURPOSE="Refresh access token using refresh token" />
+        <fn-logout PURPOSE="Invalidate tokens and clear session" />
+        <fn-getAccessToken PURPOSE="Return current valid access token" />
+        <fn-isLoggedIn PURPOSE="Check if user has valid session" />
+      </annotations>
+    </M-AUTH>
+
+    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Fetch and cache the list of user-attached Yi cameras from cloud API. Provides device status, model info, and stream URL resolution.</purpose>
+      <path>app/src/main/java/com/yicamalt/camera/CameraRegistryModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <verification-ref>V-M-CAMERA-LIST</verification-ref>
+      <annotations>
+        <fn-getCameraList PURPOSE="Fetch camera list from cloud" />
+        <fn-getCameraById PURPOSE="Get single camera info by deviceId" />
+        <fn-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
+        <fn-updateCameraStatus PURPOSE="Update online/offline status" />
+        <fn-cacheCameraList PURPOSE="Persist camera list to local DB" />
+      </annotations>
+    </M-CAMERA-LIST>
+
+    <M-CAMERA-CMD NAME="CameraCommand" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Send camera control commands: PTZ, IR, sound, capture photo, recording mode via cloud relay.</purpose>
+      <path>app/src/main/java/com/yicamalt/camera/CameraCommandModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-CAMERA-LIST</depends>
+      <verification-ref>V-M-CAMERA-CMD</verification-ref>
+      <annotations>
+        <fn-sendPTZCommand PURPOSE="Send PTZ rotation command" />
+        <fn-toggleIR PURPOSE="Toggle IR night vision" />
+        <fn-toggleSound PURPOSE="Toggle speaker / two-way audio" />
+        <fn-capturePhoto PURPOSE="Capture single photo from camera" />
+        <fn-setRecordingMode PURPOSE="Set SD/cloud recording mode" />
+      </annotations>
+    </M-CAMERA-CMD>
+
+    <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Fetch, cache, and manage motion/event timeline from Yi Cloud. Paginated event list with thumbnails and playback URLs.</purpose>
+      <path>app/src/main/java/com/yicamalt/event/EventServiceModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <verification-ref>V-M-EVENT</verification-ref>
+      <annotations>
+        <fn-getEventTimeline PURPOSE="Fetch paginated event list" />
+        <fn-getEventById PURPOSE="Get single event with full details" />
+        <fn-getPlaybackUrl PURPOSE="Resolve playback URL for an event" />
+        <fn-syncEventsToDb PURPOSE="Cache events to local Room database" />
+        <fn-getLocalEventCount PURPOSE="Count cached events for offline" />
+      </annotations>
+    </M-EVENT>
+
+    <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Establish and manage live video stream from a Yi camera. Lifecycle management, reconnection, quality adaptation.</purpose>
+      <path>app/src/main/java/com/yicamalt/stream/LiveStreamModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-CAMERA-LIST, M-STREAM-DECODE</depends>
+      <verification-ref>V-M-STREAM-LIVE</verification-ref>
+      <annotations>
+        <fn-startStream PURPOSE="Initialize and connect to camera stream" />
+        <fn-stopStream PURPOSE="Gracefully disconnect stream" />
+        <fn-switchQuality PURPOSE="Switch SD/HD quality (requires reconnect)" />
+        <fn-getStreamState PURPOSE="Return StreamState" />
+        <fn-getLatencyMs PURPOSE="Return current measured latency in ms" />
+        <fn-getFps PURPOSE="Return current FPS" />
+      </annotations>
+    </M-STREAM-LIVE>
+
+    <M-STREAM-DECODE NAME="StreamDecoder" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Handle video stream decryption (AES-128) and decoding. Wraps ExoPlayer MediaSource with decryption support.</purpose>
+      <path>app/src/main/java/com/yicamalt/stream/StreamDecoderModule.kt</path>
+      <depends>M-HTTP</depends>
+      <verification-ref>V-M-STREAM-DECODE</verification-ref>
+      <annotations>
+        <fn-createDecryptedSource PURPOSE="Create ExoPlayer MediaSource from encrypted URL + AES key" />
+        <fn-handshakeWithCamera PURPOSE="Perform handshake to obtain AES session key" />
+        <fn-validateKey PURPOSE="Verify AES key is valid before creating source" />
+      </annotations>
+    </M-STREAM-DECODE>
+
+    <M-EVENT-PLAYBACK NAME="EventPlayback" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Playback of recorded event clips. Resolves playback URL, manages download buffer, delegates to ExoPlayer.</purpose>
+      <path>app/src/main/java/com/yicamalt/event/EventPlaybackModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
+      <verification-ref>V-M-EVENT-PLAYBACK</verification-ref>
+      <annotations>
+        <fn-startPlayback PURPOSE="Start playing an event clip" />
+        <fn-stopPlayback PURPOSE="Stop and release playback resources" />
+        <fn-seekTo PURPOSE="Seek to position (ms) in the event clip" />
+        <fn-getPlaybackDuration PURPOSE="Return total clip duration" />
+        <fn-getCurrentPosition PURPOSE="Return current playback position" />
+      </annotations>
+    </M-EVENT-PLAYBACK>
+
+    <M-PUSH NAME="PushService" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Manage FCM push notifications: device registration, payload handling, local notification display, deep-link navigation.</purpose>
+      <path>app/src/main/java/com/yicamalt/push/PushServiceModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
+      <verification-ref>V-M-PUSH</verification-ref>
+      <annotations>
+        <fn-registerDevice PURPOSE="Register device token with Yi Cloud and Firebase" />
+        <fn-handlePushPayload PURPOSE="Process incoming push notification data" />
+        <fn-showLocalNotification PURPOSE="Show Android notification for event alert" />
+        <fn-deepLinkFromPush PURPOSE="Navigate to event playback from push" />
+        <fn-unregisterDevice PURPOSE="Unregister from push service" />
+      </annotations>
+    </M-PUSH>
+
+    <M-MEDIA NAME="MediaService" TYPE="CORE_LOGIC" STATUS="planned">
+      <purpose>Manage media files: photos, downloaded clips, thumbnail caching, media store integration.</purpose>
+      <path>app/src/main/java/com/yicamalt/media/MediaServiceModule.kt</path>
+      <depends>M-HTTP, M-EVENT</depends>
+      <verification-ref>V-M-MEDIA</verification-ref>
+      <annotations>
+        <fn-downloadPhoto PURPOSE="Download photo from camera URL" />
+        <fn-downloadClip PURPOSE="Download event clip with progress" />
+        <fn-getLocalThumbnail PURPOSE="Get cached thumbnail path for event" />
+        <fn-cacheThumbnail PURPOSE="Store thumbnail in local cache" />
+        <fn-clearMediaCache PURPOSE="Clear downloaded media to free space" />
+      </annotations>
+    </M-MEDIA>
+
+    <!-- Layer 2: UI / Presentation -->
+
+    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Top-level app shell with Compose navigation, bottom nav bar, screen transitions.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</path>
+      <depends>M-AUTH</depends>
+      <verification-ref>V-M-UI-SHELL</verification-ref>
+      <annotations>
+        <fn-AppShellContent PURPOSE="Compose root layout with navigation" />
+        <fn-NavigationHost PURPOSE="Navigation graph host" />
+        <fn-BottomNavBar PURPOSE="Bottom navigation bar with tabs" />
+      </annotations>
+    </M-UI-SHELL>
+
+    <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Live view screen: video surface, PTZ joystick, quality selector, camera selector, disconnect.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/liveview/LiveViewScreen.kt</path>
+      <depends>M-UI-SHELL, M-STREAM-LIVE, M-CAMERA-CMD, M-CAMERA-LIST</depends>
+      <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
+      <annotations>
+        <fn-LiveViewScreen PURPOSE="Compose screen with video + controls" />
+        <fn-PtzJoystick PURPOSE="Joystick component for PTZ control" />
+        <fn-QualitySelector PURPOSE="Dropdown for SD/HD quality toggle" />
+        <fn-CameraSelector PURPOSE="Horizontal scroll for multi-camera switch" />
+      </annotations>
+    </M-UI-LIVEVIEW>
+
+    <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Events screen: timeline/grid of motion events with thumbnails, date filter, camera selector.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/events/EventsScreen.kt</path>
+      <depends>M-UI-SHELL, M-EVENT, M-EVENT-PLAYBACK</depends>
+      <verification-ref>V-M-UI-EVENTS</verification-ref>
+      <annotations>
+        <fn-EventsScreen PURPOSE="Compose screen with event timeline" />
+        <fn-EventTimelineList PURPOSE="Vertical list of events grouped by date" />
+        <fn-EventThumbnailItem PURPOSE="Event card with thumbnail + timestamp" />
+        <fn-DateFilterBar PURPOSE="Horizontal date strip for filtering" />
+      </annotations>
+    </M-UI-EVENTS>
+
+    <M-UI-EVENTPLAYBACK NAME="EventPlaybackScreen" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Event playback screen: video player, seek bar, controls, event metadata overlay.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/eventplayback/EventPlaybackScreen.kt</path>
+      <depends>M-UI-SHELL, M-EVENT-PLAYBACK</depends>
+      <verification-ref>V-M-UI-EVENTPLAYBACK</verification-ref>
+      <annotations>
+        <fn-PlaybackScreen PURPOSE="Compose screen with player + metadata" />
+        <fn-PlaybackControls PURPOSE="Player controls overlay" />
+        <fn-EventMetadataInfo PURPOSE="Event info chip row" />
+      </annotations>
+    </M-UI-EVENTPLAYBACK>
+
+    <M-UI-SETTINGS NAME="SettingsScreen" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Settings screen: account info, camera management, app preferences, about/feedback.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/settings/SettingsScreen.kt</path>
+      <depends>M-UI-SHELL, M-AUTH, M-CAMERA-LIST, M-CAMERA-CMD</depends>
+      <verification-ref>V-M-UI-SETTINGS</verification-ref>
+      <annotations>
+        <fn-SettingsScreen PURPOSE="Compose settings screen" />
+        <fn-AccountSection PURPOSE="Account info + logout button" />
+        <fn-CameraManagementSection PURPOSE="Camera list management" />
+        <fn-AppPreferencesSection PURPOSE="App-level preferences" />
+      </annotations>
+    </M-UI-SETTINGS>
+
+    <M-UI-LOGIN NAME="LoginScreen" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Login/registration screen: email/password form, loading state, error display.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/login/LoginScreen.kt</path>
+      <depends>M-UI-SHELL, M-AUTH</depends>
+      <verification-ref>V-M-UI-LOGIN</verification-ref>
+      <annotations>
+        <fn-LoginScreen PURPOSE="Compose login form screen" />
+        <fn-LoginForm PURPOSE="Login form with email + password fields" />
+        <fn-LoginErrorDisplay PURPOSE="Show error message from auth result" />
+      </annotations>
+    </M-UI-LOGIN>
+
+    <M-ONBOARDING NAME="Onboarding" TYPE="UI_COMPONENT" STATUS="planned">
+      <purpose>Initial onboarding: welcome, permissions, account setup, camera pairing instructions.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/onboarding/OnboardingScreen.kt</path>
+      <depends>M-UI-SHELL, M-AUTH</depends>
+      <verification-ref>V-M-ONBOARDING</verification-ref>
+      <annotations>
+        <fn-OnboardingScreen PURPOSE="Compose onboarding flow (pager)" />
+        <fn-PermissionRequestCard PURPOSE="Card explaining permissions" />
+        <fn-CameraPairingGuide PURPOSE="Step-by-step pairing instructions" />
+      </annotations>
+    </M-ONBOARDING>
+
+    <!-- Layer 2: Integration -->
+
+    <M-CAMERA-DISCOVERY NAME="CameraDiscovery" TYPE="INTEGRATION" STATUS="planned">
+      <purpose>Discover Yi cameras on local network via mDNS/Bonjour and proprietary protocol.</purpose>
+      <path>app/src/main/java/com/yicamalt/discovery/CameraDiscoveryModule.kt</path>
+      <depends>M-HTTP</depends>
+      <verification-ref>V-M-CAMERA-DISCOVERY</verification-ref>
+      <annotations>
+        <fn-startDiscovery PURPOSE="Start network discovery scan" />
+        <fn-stopDiscovery PURPOSE="Stop and clean up discovery" />
+        <fn-getDiscoveredCameras PURPOSE="Return list of discovered local cameras" />
+      </annotations>
+    </M-CAMERA-DISCOVERY>
+
+    <M-CAMERA-SETUP NAME="CameraSetup" TYPE="INTEGRATION" STATUS="planned">
+      <purpose>Handle camera Wi-Fi setup: ez-setup (AP mode), WPS, cloud-assisted pairing.</purpose>
+      <path>app/src/main/java/com/yicamalt/setup/CameraSetupModule.kt</path>
+      <depends>M-HTTP, M-AUTH, M-CAMERA-LIST</depends>
+      <verification-ref>V-M-CAMERA-SETUP</verification-ref>
+      <annotations>
+        <fn-startEzSetup PURPOSE="Initiate ez-setup (camera enters AP mode)" />
+        <fn-submitWifiCredentials PURPOSE="Send SSID + password to camera" />
+        <fn-checkPairingStatus PURPOSE="Poll camera pairing status" />
+        <fn-cancelPairing PURPOSE="Cancel active pairing session" />
+      </annotations>
+    </M-CAMERA-SETUP>
+
+    <!-- CrossLinks: module dependencies -->
+    <CrossLink from="M-HTTP" to="M-CONFIG" relation="uses for base URL config" />
+    <CrossLink from="M-LOCAL-DB" to="M-CONFIG" relation="uses for DB config" />
+    <CrossLink from="M-AUTH" to="M-HTTP" relation="uses for API calls" />
+    <CrossLink from="M-AUTH" to="M-LOCAL-DB" relation="stores auth state" />
+    <CrossLink from="M-CAMERA-LIST" to="M-HTTP" relation="uses for API calls" />
+    <CrossLink from="M-CAMERA-LIST" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-CAMERA-LIST" to="M-LOCAL-DB" relation="caches camera data" />
+    <CrossLink from="M-CAMERA-CMD" to="M-HTTP" relation="uses for command API" />
+    <CrossLink from="M-CAMERA-CMD" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-CAMERA-CMD" to="M-CAMERA-LIST" relation="uses camera info" />
+    <CrossLink from="M-EVENT" to="M-HTTP" relation="uses for API calls" />
+    <CrossLink from="M-EVENT" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-EVENT" to="M-LOCAL-DB" relation="caches event data" />
+    <CrossLink from="M-STREAM-LIVE" to="M-HTTP" relation="uses for stream URL" />
+    <CrossLink from="M-STREAM-LIVE" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-STREAM-LIVE" to="M-CAMERA-LIST" relation="uses stream URL resolution" />
+    <CrossLink from="M-STREAM-LIVE" to="M-STREAM-DECODE" relation="uses for decryption" />
+    <CrossLink from="M-STREAM-DECODE" to="M-HTTP" relation="uses for handshake API" />
+    <CrossLink from="M-EVENT-PLAYBACK" to="M-HTTP" relation="uses for playback URL" />
+    <CrossLink from="M-EVENT-PLAYBACK" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-EVENT-PLAYBACK" to="M-EVENT" relation="uses for playback resolution" />
+    <CrossLink from="M-PUSH" to="M-HTTP" relation="uses for FCM token registration" />
+    <CrossLink from="M-PUSH" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-PUSH" to="M-EVENT" relation="uses for deep link resolution" />
+    <CrossLink from="M-MEDIA" to="M-HTTP" relation="uses for download" />
+    <CrossLink from="M-MEDIA" to="M-EVENT" relation="uses for thumbnail URLs" />
+    <CrossLink from="M-UI-SHELL" to="M-AUTH" relation="reads auth state" />
+    <CrossLink from="M-UI-LIVEVIEW" to="M-UI-SHELL" relation="embedded in shell navigation" />
+    <CrossLink from="M-UI-LIVEVIEW" to="M-STREAM-LIVE" relation="controls stream lifecycle" />
+    <CrossLink from="M-UI-LIVEVIEW" to="M-CAMERA-CMD" relation="sends PTZ commands" />
+    <CrossLink from="M-UI-LIVEVIEW" to="M-CAMERA-LIST" relation="reads camera info" />
+    <CrossLink from="M-UI-EVENTS" to="M-UI-SHELL" relation="embedded in shell navigation" />
+    <CrossLink from="M-UI-EVENTS" to="M-EVENT" relation="reads event data" />
+    <CrossLink from="M-UI-EVENTS" to="M-EVENT-PLAYBACK" relation="launches playback" />
+    <CrossLink from="M-UI-EVENTPLAYBACK" to="M-UI-SHELL" relation="embedded in shell navigation" />
+    <CrossLink from="M-UI-EVENTPLAYBACK" to="M-EVENT-PLAYBACK" relation="controls playback" />
+    <CrossLink from="M-UI-SETTINGS" to="M-UI-SHELL" relation="embedded in shell navigation" />
+    <CrossLink from="M-UI-SETTINGS" to="M-AUTH" relation="reads auth state" />
+    <CrossLink from="M-UI-SETTINGS" to="M-CAMERA-LIST" relation="reads camera list" />
+    <CrossLink from="M-UI-SETTINGS" to="M-CAMERA-CMD" relation="sends config commands" />
+    <CrossLink from="M-UI-LOGIN" to="M-UI-SHELL" relation="embedded in shell navigation" />
+    <CrossLink from="M-UI-LOGIN" to="M-AUTH" relation="triggers login" />
+    <CrossLink from="M-ONBOARDING" to="M-UI-SHELL" relation="embedded in shell navigation" />
+    <CrossLink from="M-ONBOARDING" to="M-AUTH" relation="checks auth state" />
+    <CrossLink from="M-CAMERA-DISCOVERY" to="M-HTTP" relation="uses for network scan" />
+    <CrossLink from="M-CAMERA-SETUP" to="M-HTTP" relation="uses for setup API" />
+    <CrossLink from="M-CAMERA-SETUP" to="M-AUTH" relation="uses for auth token" />
+    <CrossLink from="M-CAMERA-SETUP" to="M-CAMERA-LIST" relation="updates camera registry" />
+  </Project>
+</KnowledgeGraph>
