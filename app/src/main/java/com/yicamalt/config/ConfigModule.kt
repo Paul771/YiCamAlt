@@ -34,7 +34,7 @@ object FeatureFlag {
 }
 
 @Singleton
-class ConfigModule @Inject constructor() {
+open class ConfigModule @Inject constructor() {
 
     // START_BLOCK_INIT_CONFIG
     private val apiBaseUrl: String = BuildConfig.YI_API_BASE_URL
@@ -56,7 +56,7 @@ class ConfigModule @Inject constructor() {
     }
 
     /** Return base URL for the Yi Cloud API. Throws if blank. */
-    fun getApiBaseUrl(): String {
+    open fun getApiBaseUrl(): String {
         // START_BLOCK_VALIDATE_KEY
         if (apiBaseUrl.isBlank()) throw ConfigError.MissingKey
         // END_BLOCK_VALIDATE_KEY
