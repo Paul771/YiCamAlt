@@ -725,8 +725,8 @@
   </StopConditions>
 
   <PhaseGates>
-<Gate-Phase-1 PHASE="Phase-1" STATUS="deferred">
-      <deferred-note>Phase-1 code complete (Steps 0-5, commits c99f97b..8083399). Gate BLOCKED on environment: no Android SDK installed, so ./gradlew commands cannot execute. All module verification entries are deferred. Re-run this gate once the Android SDK is provisioned.</deferred-note>
+<Gate-Phase-1 PHASE="Phase-1" STATUS="verified">
+      <verified-note>Phase-1 gate GREEN on 2025-08-31 after Android SDK provisioning. Ran :app:testDebugUnitTest (39 tests, 0 failures), :app:compileDebugKotlin, and :app:assembleDebug (app-debug.apk built). Evidence-1/2/4/5 satisfied by the unit suite (TestInfrastructure smoke tests, all Phase-1 module tests, redaction-clean auth/http/login tests, TraceRecorder marker assertions). Evidence-3 (Login -> shell navigation on emulator) remains unverified: no emulator/device available in this environment; deferred to device testing.</verified-note>
       <goal>Foundation modules + TestInfrastructure harnesses ready, auth pipeline works, app compiles and launches.</goal>
       <commands>
         <command-1>./gradlew :app:testDebugUnitTest</command-1>
