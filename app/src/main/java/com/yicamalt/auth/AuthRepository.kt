@@ -45,18 +45,18 @@ class AuthRepository @Inject constructor(
         // START_BLOCK_VALIDATE_CREDENTIALS
         AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] method=${method.name} user=${email.redact()}")
         val response = api.login(LoginRequest(email, password))
-        if (response.code != 200 || response.data == null) {
+        val data = response.data
+        if (data?.accessToken.isNullOrBlank()) {
             AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] rejected code=${response.code}")
             throw AuthError.InvalidCredentials
         }
         // END_BLOCK_VALIDATE_CREDENTIALS
 
-        val data = response.data!!
         val session = AuthSession(
-            accessToken = data.accessToken,
-            refreshToken = data.refreshToken,
-            expiresAt = clock.nowMillis() + data.expiresIn * 1000L,
-            userId = data.userId,
+            accessToken = data!!.accessToken!!,
+            refreshToken = data.refreshToken ?: "",
+            expiresAt = clock.nowMillis() + (data.expiresIn ?: 0L) * 1000L,
+            userId = data.userId ?: "",
             authMethod = method,
         )
         // START_BLOCK_STORE_TOKEN
@@ -78,15 +78,15 @@ class AuthRepository @Inject constructor(
         // START_BLOCK_REFRESH_TOKEN
         AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refreshing user=${current.userId}")
         val response = try { api.refresh(RefreshRequest(current.refreshToken)) } catch (t: Throwable) { null }
-        if (response == null || response.code != 200 || response.data == null) {
+        val data = response?.data
+        if (data?.accessToken.isNullOrBlank()) {
             AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refresh failed")
             return null
         }
-        val data = response.data!!
         val refreshed = current.copy(
-            accessToken = data.accessToken,
-            refreshToken = data.refreshToken,
-            expiresAt = clock.nowMillis() + data.expiresIn * 1000L,
+            accessToken = data?.accessToken ?: return null,
+            refreshToken = data?.refreshToken ?: current.refreshToken,
+            expiresAt = clock.nowMillis() + (data?.expiresIn ?: 0L) * 1000L,
         )
         store.putSession(refreshed)
         sessionRef = refreshed

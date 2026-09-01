@@ -75,9 +75,9 @@ class AuthRepositoryTest {
     private val repo get() = AuthRepository(api, store, clock)
 
     private fun loginBody(access: String, refresh: String, expiresIn: Long = 3600, user: String = "u-1") =
-        """{"code":200,"data":{"access_token":"$access","refresh_token":"$refresh","expires_in":$expiresIn,"user_id":"$user"}}"""
+        """{"code":"200","data":{"access_token":"$access","refresh_token":"$refresh","expires_in":$expiresIn,"user_id":"$user"}}"""
 
-    private fun invalidBody() = """{"code":401,"message":"invalid credentials"}"""
+    private fun invalidBody() = """{"code":"401","message":"invalid credentials"}"""
 
     @Test
     fun `scenario_1 valid login returns session and stores token`() {

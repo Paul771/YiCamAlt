@@ -33,17 +33,17 @@ data class RefreshRequest(
 
 @Serializable
 data class LoginResponse(
-    @SerialName("code") val code: Int,
+    @SerialName("code") val code: String = "",
     @SerialName("message") val message: String? = null,
     @SerialName("data") val data: TokenData? = null,
 )
 
 @Serializable
 data class TokenData(
-    @SerialName("access_token") val accessToken: String,
-    @SerialName("refresh_token") val refreshToken: String,
-    @SerialName("expires_in") val expiresIn: Long,
-    @SerialName("user_id") val userId: String,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    @SerialName("expires_in") val expiresIn: Long? = null,
+    @SerialName("user_id") val userId: String? = null,
 )
 
 interface YiCloudAuthApi {
