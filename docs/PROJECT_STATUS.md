@@ -21,7 +21,7 @@
 
 | Фаза | Статус | Примечание |
 |------|--------|-----------|
-| **Phase-1 (Auth / Login)** | ✅ `verified` | 39 unit-тестов / 0 падений; `assembleDebug` → app-debug.apk (17.9MB) |
+| **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; `assembleDebug` → app-debug.apk (17.9MB) |
 | Phase-2 (Camera Management) | ⏳ не начата | M-CAMERA-DISCOVERY, M-CAMERA-MANAGE и др. |
 | Phase-3 (Streaming) | ⏳ не начата | M-STREAM-DECODE, M-STREAM-LIVE (conditional) |
 | Phase-4 (Setup/Discovery) | ⏳ не начата | M-CAMERA-DISCOVERY, M-CAMERA-SETUP (conditional) |
@@ -290,7 +290,7 @@ https://gw-us.xiaoyi.com
 
 ## 12. Тесты
 
-- `:app:testDebugUnitTest` — **39 тестов / 0 падений** (Phase-1 gate GREEN)
+- `:app:testDebugUnitTest` — **40 тестов / 0 падений** (Phase-1 gate GREEN)
 - `:app:compileDebugKotlin` — green
 - `:app:assembleDebug` → **app-debug.apk (17.9MB)**
 

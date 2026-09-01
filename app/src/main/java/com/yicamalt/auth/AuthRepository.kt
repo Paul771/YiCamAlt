@@ -44,7 +44,14 @@ class AuthRepository @Inject constructor(
     override suspend fun login(email: String, password: String, method: AuthMethod): AuthSession {
         // START_BLOCK_VALIDATE_CREDENTIALS
         AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] method=${method.name} user=${email.redact()}")
-        val response = api.login(LoginRequest(email, password))
+        val response = api.login(
+            seq = "1",
+            account = email,
+            password = password,
+            devName = android.os.Build.BRAND ?: "",
+            devType = android.os.Build.MODEL ?: "",
+            devOsVersion = "Android " + (android.os.Build.VERSION.RELEASE ?: ""),
+        )
         val data = response.data
         if (data?.accessToken.isNullOrBlank()) {
             AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] rejected code=${response.code}")

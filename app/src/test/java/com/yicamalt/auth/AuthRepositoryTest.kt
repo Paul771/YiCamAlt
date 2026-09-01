@@ -80,6 +80,22 @@ class AuthRepositoryTest {
     private fun invalidBody() = """{"code":"401","message":"invalid credentials"}"""
 
     @Test
+    fun `login sends GET with account seq and device params`() {
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1")))
+        runBlocking { repo.login("user@example.com", "pw") }
+        val req = server.takeRequest()
+        assertEquals("GET", req.method)
+        val q = req.requestUrl!!
+        assertTrue(q.encodedPath.endsWith("/v4/users/login"), "got " + q.encodedPath)
+        assertEquals("1", q.queryParameter("seq"))
+        assertEquals("user@example.com", q.queryParameter("account"))
+        assertNotNull(q.queryParameter("password"))
+        assertNotNull(q.queryParameter("dev_name"))
+        assertNotNull(q.queryParameter("dev_type"))
+        assertNotNull(q.queryParameter("dev_os_version"))
+    }
+
+    @Test
     fun `scenario_1 valid login returns session and stores token`() {
         server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1")))
         val session = runBlocking { repo.login("user@example.com", "pw") }
