@@ -44,7 +44,7 @@ class AuthRepository @Inject constructor(
     override suspend fun login(email: String, password: String, method: AuthMethod): AuthSession {
         // START_BLOCK_VALIDATE_CREDENTIALS
         AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] method=${method.name} user=${email.redact()}")
-        val response = api.login(LoginRequest(email, password, method.name.lowercase()))
+        val response = api.login(LoginRequest(email, password))
         if (response.code != 200 || response.data == null) {
             AuthLog.d("[Auth][login][BLOCK_VALIDATE_CREDENTIALS] rejected code=${response.code}")
             throw AuthError.InvalidCredentials

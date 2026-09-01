@@ -1,7 +1,7 @@
 // FILE: YiCloudAuthApi.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Retrofit interface + DTOs for the Yi Cloud account/login and account/refresh endpoints.
+//   PURPOSE: Retrofit interface + DTOs for the Yi Cloud login endpoints (reverse-engineered).
 //   SCOPE: login(request) and refresh(request); responses carry code + token data.
 //   DEPENDS: M-HTTP (Retrofit)
 //   LINKS: M-AUTH
@@ -16,7 +16,7 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 // START_MODULE_MAP
-//   YiCloudAuthApi - Retrofit service for account/login + account/refresh.
+//   YiCloudAuthApi - Retrofit service for /v4/users/login + /v4/users/auth_token.
 //   LoginRequest/LoginResponse/RefreshRequest - serialized DTOs.
 // END_MODULE_MAP
 
@@ -24,7 +24,6 @@ import retrofit2.http.POST
 data class LoginRequest(
     @SerialName("email") val email: String,
     @SerialName("password") val password: String,
-    @SerialName("auth_method") val authMethod: String,
 )
 
 @Serializable
@@ -48,9 +47,9 @@ data class TokenData(
 )
 
 interface YiCloudAuthApi {
-    @POST("account/login")
+    @POST("v4/users/login")
     suspend fun login(@Body request: LoginRequest): LoginResponse
 
-    @POST("account/refresh")
+    @POST("v4/users/auth_token")
     suspend fun refresh(@Body request: RefreshRequest): LoginResponse
 }
