@@ -133,7 +133,9 @@ class HttpClientModule @Inject constructor(
     private val responseBodyLogger = Interceptor { chain ->
         val response = chain.proceed(chain.request())
         val url = response.request.url.encodedPath
-        if (url.contains("/login") || url.contains("/auth_token")) {
+        if (url.contains("/login") || url.contains("/auth_token") ||
+            url.contains("/devices") || url.contains("/device")
+        ) {
             val bodyString = response.peekBody(4096L).string()
             val masked = bodyString
                 .replace(Regex("(\"[^\"]*(?:token|password|secret|authorization)[^\"]*\"\\s*:\\s*\")([^\"]*)(\")", RegexOption.IGNORE_CASE), "$1██$3")

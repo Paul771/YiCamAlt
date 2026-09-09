@@ -22,8 +22,10 @@ import retrofit2.http.GET
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Created for Phase-2 M-CAMERA-LIST. Path /v8/cloud/deviceList from
-//     dex reverse engineering (PROJECT_STATUS 8.5); body shape provisional pending live capture.
+//   LAST_CHANGE: v0.2.0 - Path corrected to /v5/devices/list (live probe 2026-09-09:
+//     GET gw-eu.xiaoyi.com/v5/devices/list => 200 {"code":"20201"} with an invalid bearer;
+//     /v8/cloud/deviceList returned 404). Success envelope still provisional.
+//   LAST_CHANGE: v0.1.0 - Created for Phase-2 M-CAMERA-LIST.
 // END_CHANGE_SUMMARY
 
 @Serializable
@@ -34,6 +36,6 @@ data class DeviceListEnvelope(
 )
 
 interface YiCloudDeviceApi {
-    @GET("v8/cloud/deviceList")
+    @GET("v5/devices/list")
     suspend fun deviceList(): DeviceListEnvelope
 }

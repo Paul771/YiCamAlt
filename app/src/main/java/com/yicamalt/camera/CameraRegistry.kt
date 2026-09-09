@@ -59,11 +59,16 @@ class CameraRegistry @Inject constructor(
         } catch (e: IOException) {
             throw CameraError.FetchFailed
         }
+        if (envelope.code in AUTH_ERROR_CODES) throw CameraError.Unauthorized
         val cameras = CameraListParser.extract(envelope.data)
         Timber.d("[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=${cameras.size} code=${envelope.code}")
         cacheCameraList(cameras)
         cameras
         // END_BLOCK_FETCH_CAMERA_LIST
+    }
+
+    private companion object {
+        val AUTH_ERROR_CODES = setOf("20201", "20203", "20205", "20253", "40110")
     }
 
     /** Look up a single camera from the cache. */

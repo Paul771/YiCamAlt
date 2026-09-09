@@ -139,6 +139,24 @@ class CameraRegistryModuleTest {
     }
 
     @Test
+    fun `scenario_4b app-level auth code 20201 maps to CameraUnauthorized`() {
+        // Real probe shape: GET /v5/devices/list with a rejected token => 200 {"code":"20201"}.
+        server.enqueue(MockResponse().setBody("""{"code":"20201"}"""))
+        val err = assertThrows(CameraError.Unauthorized::class.java) {
+            runBlocking { registry.getCameraList() }
+        }
+        assertTrue(err.message!!.contains("CAMERA_UNAUTHORIZED"))
+    }
+
+    @Test
+    fun `scenario_4c session-exception code 20203 maps to CameraUnauthorized`() {
+        server.enqueue(MockResponse().setBody("""{"code":"20203","message":"Session Exception"}"""))
+        assertThrows(CameraError.Unauthorized::class.java) {
+            runBlocking { registry.getCameraList() }
+        }
+    }
+
+    @Test
     fun `scenario_5 5xx maps to FetchFailed`() {
         server.enqueue(MockResponse().setResponseCode(503).setBody("oops"))
         val err = assertThrows(CameraError.FetchFailed::class.java) {
