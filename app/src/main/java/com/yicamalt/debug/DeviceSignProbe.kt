@@ -59,14 +59,14 @@ class DeviceSignProbe @Inject constructor(
         // paths that may carry the device list
         data class Variant(val label: String, val path: String, val extra: String, val bearer: Boolean)
         val variants = listOf(
-            Variant("list", "/v5/devices/list", "", false),
-            Variant("vas-all", "/vas/v8/all/cloud/deviceList", "", false),
             Variant("v2-list", "/v2/devices/list", "", false),
+            Variant("v2-list+bearer", "/v2/devices/list", "", true),
+            Variant("v2-list+token", "/v2/devices/list", "&token=$token", false),
+            Variant("v2-list+tok+br", "/v2/devices/list", "&token=$token", true),
             Variant("dev-info", "/v5/devices/deviceinfo", "", false),
-            Variant("relations", "/v5/devices/relations", "", false),
-            Variant("owners", "/v5/devices/owners", "", false),
-            Variant("v2-devices", "/v2/devices", "", false),
-            Variant("vas-cloud", "/vas/v8/cloud/deviceList", "", false),
+            Variant("dev-info+bearer", "/v5/devices/deviceinfo", "", true),
+            Variant("dev-info+token", "/v5/devices/deviceinfo", "&token=$token", false),
+            Variant("list+tok+br", "/v5/devices/list", "&token=$token", true),
         )
         for (v in variants) {
             try {
