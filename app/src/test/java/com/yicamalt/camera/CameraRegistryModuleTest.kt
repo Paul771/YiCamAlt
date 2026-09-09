@@ -44,6 +44,19 @@ private class FakeCameraDao : CameraDao() {
     }
 }
 
+private class FakeSession(
+    private val token: String = "t-1",
+    private val secret: String = "s-1",
+    private val uid: String = "u-1",
+) : com.yicamalt.auth.SessionSource {
+    override fun currentSession(): com.yicamalt.auth.AuthSession? =
+        com.yicamalt.auth.AuthSession(token, secret, Long.MAX_VALUE, uid, com.yicamalt.auth.AuthMethod.PASSWORD)
+}
+
+private class NoSession : com.yicamalt.auth.SessionSource {
+    override fun currentSession(): com.yicamalt.auth.AuthSession? = null
+}
+
 class CameraRegistryModuleTest {
 
     private val server = MockWebServer()
@@ -62,7 +75,7 @@ class CameraRegistryModuleTest {
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(YiCloudDeviceApi::class.java)
-        registry = CameraRegistry(api, dao)
+        registry = CameraRegistry(api, dao, FakeSession())
     }
 
     @AfterEach
@@ -90,6 +103,36 @@ class CameraRegistryModuleTest {
         assertNotNull(dao.getById("cam-1"))
         recorder.assertMarkerAppeared("BLOCK_FETCH_CAMERA_LIST")
         recorder.assertMarkerAppeared("BLOCK_DB_WRITE")
+    }
+
+    @Test
+    fun `scenario_1c signed request carries seq userid and hmac params`() {
+        server.enqueue(MockResponse().setBody(deviceListBody()))
+        runBlocking { registry.getCameraList() }
+        val q = server.takeRequest().requestUrl!!
+        assertTrue(q.encodedPath.endsWith("/v5/devices/list"))
+        assertEquals("1", q.queryParameter("seq"))
+        assertEquals("u-1", q.queryParameter("userid"))
+        val mac = javax.crypto.Mac.getInstance("HmacSHA1")
+        mac.init(javax.crypto.spec.SecretKeySpec("t-1&s-1".toByteArray(Charsets.UTF_8), "HmacSHA1"))
+        val expected = java.util.Base64.getEncoder()
+            .encodeToString(mac.doFinal("seq=1&userid=u-1".toByteArray(Charsets.UTF_8)))
+        assertEquals(expected, q.queryParameter("hmac"))
+    }
+
+    @Test
+    fun `scenario_1d no session maps to Unauthorized`() {
+        registry = CameraRegistry(
+            Retrofit.Builder().baseUrl(server.url("/v1/").toString())
+                .addConverterFactory(kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                    .asConverterFactory("application/json".toMediaType()))
+                .build().create(YiCloudDeviceApi::class.java),
+            dao, NoSession(),
+        )
+        val err = assertThrows(CameraError.Unauthorized::class.java) {
+            runBlocking { registry.getCameraList() }
+        }
+        assertTrue(err.message!!.contains("CAMERA_UNAUTHORIZED"))
     }
 
     @Test

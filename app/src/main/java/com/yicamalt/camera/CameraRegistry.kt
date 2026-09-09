@@ -11,12 +11,15 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.camera
 
+import com.yicamalt.auth.SessionSource
 import com.yicamalt.database.CameraDao
 import com.yicamalt.database.CameraEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.IOException
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,8 +29,10 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Created for Phase-2 M-CAMERA-LIST. Device-list field mapping is
-//     provisional (CameraListParser candidate keys); stop if a live capture contradicts it.
+//   LAST_CHANGE: v0.2.0 - Signed request. Confirmed on-device scheme B: GET /v5/devices/list
+//     with hmac = Base64(HMAC-SHA1(key="<token>&<token_secret>", msg="seq=1&userid=<uid>"))
+//     => code 20200 (20000 also accepted as success). 20201/20202 => Unauthorized.
+//   LAST_CHANGE: v0.1.0 - Created for Phase-2 M-CAMERA-LIST.
 // END_CHANGE_SUMMARY
 
 sealed class CameraError(message: String) : Error(message) {
@@ -46,13 +51,19 @@ interface CameraListPort {
 class CameraRegistry @Inject constructor(
     private val api: YiCloudDeviceApi,
     private val cameraDao: CameraDao,
+    private val session: SessionSource,
 ) : CameraListPort {
+
     /** Fetch the device list from the cloud and refresh the Room cache. */
     override suspend fun getCameraList(): List<CameraInfo> = withContext(Dispatchers.IO) {
         // START_BLOCK_FETCH_CAMERA_LIST
         Timber.d("[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] fetching device list")
+        val s = session.currentSession() ?: throw CameraError.Unauthorized
+        val key = s.accessToken + "&" + s.refreshToken
+        val msg = "seq=1&userid=" + s.userId
+        val hmac = hmacSha1Base64(key, msg)
         val envelope = try {
-            api.deviceList()
+            api.deviceList(seq = "1", userId = s.userId, hmac = hmac)
         } catch (e: retrofit2.HttpException) {
             if (e.code() == 401) throw CameraError.Unauthorized
             throw CameraError.FetchFailed
@@ -60,6 +71,7 @@ class CameraRegistry @Inject constructor(
             throw CameraError.FetchFailed
         }
         if (envelope.code in AUTH_ERROR_CODES) throw CameraError.Unauthorized
+        if (envelope.code !in SUCCESS_CODES) throw CameraError.FetchFailed
         val cameras = CameraListParser.extract(envelope.data)
         Timber.d("[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=${cameras.size} code=${envelope.code}")
         cacheCameraList(cameras)
@@ -68,7 +80,15 @@ class CameraRegistry @Inject constructor(
     }
 
     private companion object {
-        val AUTH_ERROR_CODES = setOf("20201", "20203", "20205", "20253", "40110")
+        val AUTH_ERROR_CODES = setOf("20201", "20202", "20203", "20205", "20253", "40110")
+        val SUCCESS_CODES = setOf("20000", "20200")
+    }
+
+    /** Base64(HMAC-SHA1(key, msg)) — the Yi device API signing scheme (confirmed on-device). */
+    internal fun hmacSha1Base64(key: String, msg: String): String {
+        val mac = Mac.getInstance("HmacSHA1")
+        mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA1"))
+        return java.util.Base64.getEncoder().encodeToString(mac.doFinal(msg.toByteArray(Charsets.UTF_8)))
     }
 
     /** Look up a single camera from the cache. */

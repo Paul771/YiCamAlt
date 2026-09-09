@@ -38,6 +38,10 @@ abstract class AuthModule {
     @Binds
     @Singleton
     abstract fun bindLoginPort(impl: AuthRepository): LoginPort
+
+    @Binds
+    @Singleton
+    abstract fun bindSessionSource(impl: AuthRepository): SessionSource
 }
 
 @Module

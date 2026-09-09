@@ -15,17 +15,18 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import retrofit2.http.GET
+import retrofit2.http.Query
 
 // START_MODULE_MAP
-//   YiCloudDeviceApi - Retrofit service for /v8/cloud/deviceList.
+//   YiCloudDeviceApi - Retrofit service for GET /v5/devices/list (hmac-signed).
 //   DeviceListEnvelope - code/message/data wrapper; data kept as raw JsonElement.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Path corrected to /v5/devices/list (live probe 2026-09-09:
-//     GET gw-eu.xiaoyi.com/v5/devices/list => 200 {"code":"20201"} with an invalid bearer;
-//     /v8/cloud/deviceList returned 404). Success envelope still provisional.
-//   LAST_CHANGE: v0.1.0 - Created for Phase-2 M-CAMERA-LIST.
+//   LAST_CHANGE: v0.3.0 - Signed shape confirmed on-device: hmac param = Base64(HMAC-SHA1(
+//     key="<token>&<token_secret>", msg="seq=1&userid=<uid>")) => code 20200. Success codes
+//     20000/20200; 20201/20202 => Unauthorized. Bearer header is NOT used for this API.
+//   LAST_CHANGE: v0.2.0 - Path corrected to /v5/devices/list.
 // END_CHANGE_SUMMARY
 
 @Serializable
@@ -37,5 +38,9 @@ data class DeviceListEnvelope(
 
 interface YiCloudDeviceApi {
     @GET("v5/devices/list")
-    suspend fun deviceList(): DeviceListEnvelope
+    suspend fun deviceList(
+        @Query("seq") seq: String = "1",
+        @Query("userid") userId: String,
+        @Query("hmac") hmac: String,
+    ): DeviceListEnvelope
 }

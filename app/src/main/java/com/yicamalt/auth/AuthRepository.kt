@@ -54,9 +54,14 @@ internal const val AUTH_HMAC_KEY = "KXLiUdAsO81ycDyEJAeETC\$KklXdz3AC"
  */
 internal const val DEFAULT_EXPIRES_SECONDS = 24L * 60 * 60
 
-/** Thin login contract consumed by the login view-model so it can be tested without the full repository. */
+/** Thin contract consumed by M-UI login/view so tests need no Retrofit/api. */
 interface LoginPort {
     suspend fun login(email: String, password: String, method: AuthMethod = AuthMethod.PASSWORD): AuthSession
+}
+
+/** Read-only session source for M-CAMERA-LIST request signing (token+secret from login). */
+interface SessionSource {
+    fun currentSession(): AuthSession?
 }
 
 @Singleton
@@ -64,7 +69,7 @@ class AuthRepository @Inject constructor(
     private val api: YiCloudAuthApi,
     private val store: AuthStore,
     private val clock: Clock = SystemClock,
-) : AuthProvider, LoginPort {
+) : AuthProvider, LoginPort, SessionSource {
 
     @Volatile private var sessionRef: AuthSession? = store.getSession()
     private val refreshInFlight = AtomicReference<Any?>(null)
@@ -145,6 +150,9 @@ class AuthRepository @Inject constructor(
 
     /** Current session without triggering refresh. */
     fun getSession(): AuthSession? = sessionRef
+
+    /** SessionSource impl for M-CAMERA-LIST request signing. */
+    override fun currentSession(): AuthSession? = sessionRef
 
     /** Log out: clear store + in-memory session. */
     fun logout() {
