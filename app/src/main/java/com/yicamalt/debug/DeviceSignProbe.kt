@@ -53,39 +53,36 @@ class DeviceSignProbe @Inject constructor(
             m.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA1"))
             return java.util.Base64.getEncoder().encodeToString(m.doFinal(msg.toByteArray(Charsets.UTF_8)))
         }
-        val p = "seq=1&userid=$uid"
-        val pTok = "seq=1&userid=$uid&token=$token"
-        val ts = "$token&$secret"
-        // (label, params-no-hmac, hmacValue or null, putTokenInParams)
-        data class Combo(val label: String, val params: String, val hmac: String?)
-        val combos = mutableListOf<Combo>()
-        combos += Combo("ctrl-token-param", pTok, null)
-        combos += Combo("A key=p msg=ts", p, mac(p, ts))
-        combos += Combo("B key=ts msg=p", p, mac(ts, p))
-        combos += Combo("C key=secret msg=p", p, mac(secret, p))
-        combos += Combo("D key=p msg=secret", p, mac(p, secret))
-        combos += Combo("E key=secret msg=ts", p, mac(secret, ts))
-        combos += Combo("F key=ts msg=secret", p, mac(ts, secret))
-        combos += Combo("A2 key=pTok msg=ts", pTok, mac(pTok, ts))
-        combos += Combo("B2 key=ts msg=pTok", pTok, mac(ts, pTok))
-        combos += Combo("C2 key=secret msg=pTok", pTok, mac(secret, pTok))
-        combos += Combo("D2 key=pTok msg=secret", pTok, mac(pTok, secret))
-        combos += Combo("E2 key=secret msg=ts", pTok, mac(secret, ts))
-        combos += Combo("F2 key=ts msg=secret", pTok, mac(ts, secret))
         val host = base()
-        for (c in combos) {
+        val canonical = "seq=1&userid=$uid"
+        val hmac = enc(mac("$token&$secret", canonical))
+        // paths that may carry the device list
+        data class Variant(val label: String, val path: String, val extra: String, val bearer: Boolean)
+        val variants = listOf(
+            Variant("list-bare", "/v5/devices/list", "", false),
+            Variant("list+bearer", "/v5/devices/list", "", true),
+            Variant("list+token", "/v5/devices/list", "&token=$token", false),
+            Variant("vas-bare", "/vas/v8/all/cloud/deviceList", "", false),
+            Variant("vas+bearer", "/vas/v8/all/cloud/deviceList", "", true),
+            Variant("vas+token", "/vas/v8/all/cloud/deviceList", "&token=$token", false),
+            Variant("vas-cloud-bare", "/vas/v8/cloud/deviceList", "", false),
+        )
+        for (v in variants) {
             try {
-                val suffix = if (c.hmac == null) "?${c.params}" else "?${c.params}&hmac=${enc(c.hmac)}"
-                val rb = Request.Builder().url("$host/v5/devices/list$suffix")
+                val rb = Request.Builder().url("$host${v.path}?$canonical&hmac=$hmac${v.extra}")
+                if (v.bearer) rb.header("Authorization", "Bearer $token")
                 rb.header("Accept", "application/json")
                 client.newCall(rb.build()).execute().use { resp ->
                     val body = resp.body?.string() ?: ""
                     val code = Regex("\"code\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1) ?: "http${resp.code}"
-                    out += "${c.label} => $code"
-                    Timber.d("[Probe][run][BLOCK_PROBE] ${c.label} => $code")
+                    val masked = body
+                        .replace(Regex("\"([^\"]*(?:token|secret)[^\"]*)\"\\s*:\\s*\"[^\"]*\"", RegexOption.IGNORE_CASE), "\"$1\":\"██\"")
+                        .take(220)
+                    out += "${v.label} => $code len=${body.length} body=$masked"
+                    Timber.d("[Probe][run][BLOCK_PROBE] ${v.label} => $code len=${body.length}")
                 }
             } catch (t: Throwable) {
-                out += "${c.label} => EXC ${t.message?.take(40)}"
+                out += "${v.label} => EXC ${t.message?.take(40)}"
             }
         }
         out
