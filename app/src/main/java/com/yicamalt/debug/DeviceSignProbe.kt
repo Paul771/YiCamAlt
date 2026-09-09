@@ -47,30 +47,36 @@ class DeviceSignProbe @Inject constructor(
         val uid = session.userId
         Timber.d("[Probe][run][BLOCK_PROBE] uid=$uid len=${token.length}/${secret.length}")
         val out = mutableListOf<String>()
-        // canonical params in insertion order
-        fun canonical() = "seq=1&userid=$uid"
-        fun hmacOrderA(): String { // key=canonical, msg=token&secret
-            return mac(canonical(), "$token&$secret")
+        fun enc(v: String): String = java.net.URLEncoder.encode(v, "UTF-8")
+        fun mac(key: String, msg: String): String {
+            val m = Mac.getInstance("HmacSHA1")
+            m.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA1"))
+            return java.util.Base64.getEncoder().encodeToString(m.doFinal(msg.toByteArray(Charsets.UTF_8)))
         }
-        fun hmacOrderB(): String { // key=token&secret, msg=canonical
-            return mac("$token&$secret", canonical())
-        }
+        val p = "seq=1&userid=$uid"
+        val pTok = "seq=1&userid=$uid&token=$token"
+        val ts = "$token&$secret"
+        // (label, params-no-hmac, hmacValue or null, putTokenInParams)
+        data class Combo(val label: String, val params: String, val hmac: String?)
+        val combos = mutableListOf<Combo>()
+        combos += Combo("ctrl-token-param", pTok, null)
+        combos += Combo("A key=p msg=ts", p, mac(p, ts))
+        combos += Combo("B key=ts msg=p", p, mac(ts, p))
+        combos += Combo("C key=secret msg=p", p, mac(secret, p))
+        combos += Combo("D key=p msg=secret", p, mac(p, secret))
+        combos += Combo("E key=secret msg=ts", p, mac(secret, ts))
+        combos += Combo("F key=ts msg=secret", p, mac(ts, secret))
+        combos += Combo("A2 key=pTok msg=ts", pTok, mac(pTok, ts))
+        combos += Combo("B2 key=ts msg=pTok", pTok, mac(ts, pTok))
+        combos += Combo("C2 key=secret msg=pTok", pTok, mac(secret, pTok))
+        combos += Combo("D2 key=pTok msg=secret", pTok, mac(pTok, secret))
+        combos += Combo("E2 key=secret msg=ts", pTok, mac(secret, ts))
+        combos += Combo("F2 key=ts msg=secret", pTok, mac(ts, secret))
         val host = base()
-        // candidate request builders -> (needsBearerHeader, suffix)
-        data class Combo(val label: String, val bearer: Boolean, val suffix: String)
-        val combos = listOf(
-            Combo("plain-noauth", false, "?seq=1&userid=$uid"),
-            Combo("bearer-only", true, "?seq=1&userid=$uid"),
-            Combo("token-query", true, "?seq=1&userid=$uid&token=$token"),
-            Combo("hmacA-query", false, "?seq=1&userid=$uid&hmac=${hmacOrderA()}"),
-            Combo("hmacB-query", false, "?seq=1&userid=$uid&hmac=${hmacOrderB()}"),
-            Combo("hmacA-bearer", true, "?seq=1&userid=$uid&hmac=${hmacOrderA()}"),
-            Combo("hmacB-bearer", true, "?seq=1&userid=$uid&hmac=${hmacOrderB()}"),
-        )
         for (c in combos) {
             try {
-                val rb = Request.Builder().url("$host/v5/devices/list${c.suffix}")
-                if (c.bearer) rb.header("Authorization", "Bearer $token")
+                val suffix = if (c.hmac == null) "?${c.params}" else "?${c.params}&hmac=${enc(c.hmac)}"
+                val rb = Request.Builder().url("$host/v5/devices/list$suffix")
                 rb.header("Accept", "application/json")
                 client.newCall(rb.build()).execute().use { resp ->
                     val body = resp.body?.string() ?: ""
@@ -83,11 +89,5 @@ class DeviceSignProbe @Inject constructor(
             }
         }
         out
-    }
-
-    private fun mac(key: String, msg: String): String {
-        val m = Mac.getInstance("HmacSHA1")
-        m.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA1"))
-        return java.util.Base64.getEncoder().encodeToString(m.doFinal(msg.toByteArray(Charsets.UTF_8)))
     }
 }
