@@ -244,7 +244,7 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-AUTH>
 
-    <V-M-CAMERA-LIST MODULE="M-CAMERA-LIST" PRIORITY="high">
+    <V-M-CAMERA-LIST MODULE="M-CAMERA-LIST" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</file>
       </test-files>

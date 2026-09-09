@@ -68,18 +68,19 @@
       <change-summary step="4" phase="1" commit="local" verification="verified">v0.4.2 VERIFIED ON DEVICE (2026-09-09): real login works end-to-end — GET /v4/users/login with account + HMAC-SHA256 password -> code 20000 -> token/token_secret/userid -> EncryptedSharedPreferences -> HomeScreen «Вход выполнен», user 167315. Fix chain: account param (not login), HMAC password digest, token_secret as refresh key, DEFAULT_EXPIRES_SECONDS when expires_in absent, authInterceptor bypass for auth_token calls, post-login HomeScreen navigation.</change-summary>
     </M-AUTH>
 
-    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" STATUS="planned">
+    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" STATUS="implemented-provisional">
       <purpose>Fetch and cache the list of user-attached Yi cameras from cloud API. Provides device status, model info, and stream URL resolution.</purpose>
-      <path>app/src/main/java/com/yicamalt/camera/CameraRegistryModule.kt</path>
+      <path>app/src/main/java/com/yicamalt/camera/CameraRegistry.kt</path>
       <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
       <verification-ref>V-M-CAMERA-LIST</verification-ref>
       <annotations>
-        <fn-getCameraList PURPOSE="Fetch camera list from cloud" />
-        <fn-getCameraById PURPOSE="Get single camera info by deviceId" />
+        <fn-getCameraList PURPOSE="Fetch camera list from cloud (/v8/cloud/deviceList) and refresh Room cache" />
+        <fn-getCameraById PURPOSE="Get single camera info by deviceId from cache" />
         <fn-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
         <fn-updateCameraStatus PURPOSE="Update online/offline status" />
         <fn-cacheCameraList PURPOSE="Persist camera list to local DB" />
       </annotations>
+      <change-summary step="1" phase="2" commit="f759486" verification="passed">M-CAMERA-LIST implemented: CameraRegistry (getCameraList/cache/getById/updateStatus/getLiveStreamUrl), YiCloudDeviceApi GET v8/cloud/deviceList (reverse-engineered path), CameraInfo + shape-tolerant CameraListParser (JsonNull-guarded; provisional field keys). 9 module tests green. Live response shape still unconfirmed — provisional pending capture.</change-summary>
     </M-CAMERA-LIST>
 
     <M-CAMERA-CMD NAME="CameraCommand" TYPE="CORE_LOGIC" STATUS="planned">
