@@ -316,8 +316,7 @@ https://gw-us.xiaoyi.com
 Реальные креды пользователя отклоняются на `gw-us` (как и фейковые) кодом уровня учётных данных. Официальное приложение имеет выбор региона (`LoginAreaSelectActivity`, `ServerInfo$ServerLocation`) — аккаунт пользователя может быть зарегистрирован на `gw-eu` или `gw-sg`. Доказательство: строка `rejected code=...` в `auth_log.txt` при попытке логина реальными кредами; затем попробовать в настройках `https://gw-eu.xiaoyi.com` и `https://gw-sg.xiaoyi.com` (с перезапуском приложения).
 
 ---
-
-## 11. Как пользователю задать endpoint в YiCamAlt
+11. Как пользователю задать endpoint в YiCamAlt
 
 1. Открыть приложение → экран логина
 2. Нажать **gear-иконку** (шестерёнка, `Icons.Filled.Settings`)
@@ -345,3 +344,7 @@ app/src/main/java/com/yicamalt/config/SettingsStore.kt
 app/src/main/java/com/yicamalt/ui/settings/SettingsScreen.kt
 app/src/main/java/com/yicamalt/ui/settings/SettingsViewModel.kt
 ```
+
+
+### 2026-09-09: устройство возвращает камеры не через Bearer — облачный API подписывает запросы hmac
+- /v5/devices/list с валидным Bearer => code 20201 (Bearer игнорируется). Реверс-инжиниринг dex: логин-ответ token/token_secret приложение хранит в префсах под ключами 'TOKEN'/'TOKEN_SECRET'; строка подписи = <TOKEN>&<TOKEN_SECRET>; параметры запроса seq='1' + userid; метод подписи 'hmac' (Lwa/d.m0/map+base, поле Lwa/d.b). Точный алгоритм m0 и формат передачи (query/header) ещё локализуются в dex.
