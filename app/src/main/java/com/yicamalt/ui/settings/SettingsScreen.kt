@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -49,6 +50,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val baseUrl by viewModel.baseUrl.collectAsState()
+    val probeResults by viewModel.probeResults.collectAsState()
+    val probeRunning by viewModel.probeRunning.collectAsState()
     var text by remember { mutableStateOf(baseUrl) }
 
     Scaffold(
@@ -87,6 +90,15 @@ fun SettingsScreen(
                 onClick = { viewModel.saveBaseUrl(text) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Сохранить") }
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = { viewModel.runSignProbe() },
+                enabled = !probeRunning,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (probeRunning) "Проверка…" else "Отладить подпись API") }
+            probeResults?.forEach {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
