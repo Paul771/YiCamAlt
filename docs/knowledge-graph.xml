@@ -183,15 +183,15 @@
 
     <!-- Layer 2: UI / Presentation -->
 
-    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" STATUS="implemented-partial">
-      <purpose>Top-level post-login home (Phase-1.5 stub): session confirmation, user id, logout. Full bottom-nav shell arrives in Phase-2.</purpose>
-      <path>app/src/main/java/com/yicamalt/ui/shell/HomeScreen.kt</path>
-      <depends>M-AUTH</depends>
+    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" STATUS="implemented">
+      <purpose>Top-level post-login shell: bottom-nav host (Cameras / Settings tabs) with session-aware logout in the top bar.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</path>
+      <depends>M-AUTH, M-CAMERA-LIST, M-UI-SETTINGS</depends>
       <verification-ref>V-M-UI-SHELL</verification-ref>
       <annotations>
-        <fn-HomeScreen PURPOSE="Post-login landing: session info + logout (BLOCK_RENDER_SHELL)" />
+        <fn-AppShellScreen PURPOSE="Bottom-nav host: Cameras + Settings tabs (BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN)" />
       </annotations>
-      <change-summary step="5" phase="1" commit="local" verification="deferred">v0.4.2: device logs showed LoginUiState.Success with NO destination (MainActivity mounted LoginScreen unconditionally; onLoggedIn was a no-op). Created HomeScreen stub (BLOCK_RENDER_SHELL) and wired MainActivity navigation Login -> Home -> Settings with BLOCK_HANDLE_LOGOUT; session restore on app start via auth.getSession().</change-summary>
+      <change-summary step="5" phase="2" commit="3cbee19" verification="deferred-emulator">M-UI-SHELL implemented: AppShellScreen replaces the HomeScreen stub — NavigationBar tabs Cameras (CameraListScreen + CameraListViewModel via CameraListPort) and Settings (existing SettingsScreen). MainActivity hosts the shell post-login. Compose instrumented tests require an emulator (not available in build env); ViewModel unit tests green.</change-summary>
     </M-UI-SHELL>
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" STATUS="planned">

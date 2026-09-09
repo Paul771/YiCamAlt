@@ -752,14 +752,15 @@
       <phase-note>Option B: all Phase-1 code + tests written and committed (c99f97b..8083399). Verification deferred — no Android SDK in build environment; ./gradlew gates cannot run yet. Gate-Phase-1 remains blocked until SDK is provisioned.</phase-note>
     </Phase-1>
 
-    <Phase-2 name="Camera Management" status="pending">
+    <Phase-2 name="Camera Management" status="in-progress">
       <goal>Camera list, camera discovery, and device management functional.</goal>
       <step-1 module="M-CAMERA-LIST" status="done" verification="V-M-CAMERA-LIST">Implement camera list API integration</step-1>
       <step-2 module="M-CAMERA-CMD" status="done" verification="V-M-CAMERA-CMD">Implement camera command protocol (PTZ, IR, sound)</step-2>
-      <step-3 module="M-CAMERA-DISCOVERY" status="pending" verification="V-M-CAMERA-DISCOVERY">Implement local network discovery (optional for v1)</step-3>
-      <step-4 module="M-CAMERA-SETUP" status="pending" verification="V-M-CAMERA-SETUP">Implement Wi-Fi pairing flow</step-4>
-      <step-5 module="M-UI-SHELL" status="pending" verification="V-M-UI-SHELL">Build navigation shell with bottom nav</step-5>
-      <step-6 module="M-UI-SETTINGS" status="pending" verification="V-M-UI-SETTINGS">Build settings screen</step-6>
+      <step-3 module="M-CAMERA-DISCOVERY" status="deferred" verification="V-M-CAMERA-DISCOVERY">Implement local network discovery (deferred: needs mDNS service-type capture; optional for v1)</step-3>
+      <step-4 module="M-CAMERA-SETUP" status="deferred" verification="V-M-CAMERA-SETUP">Implement Wi-Fi pairing flow (deferred: pairing protocol capture required)</step-4>
+      <step-5 module="M-UI-SHELL" status="done" verification="V-M-UI-SHELL">Build navigation shell with bottom nav</step-5>
+      <step-6 module="M-UI-SETTINGS" status="done" verification="V-M-UI-SETTINGS">Build settings screen</step-6>
+      <phase-note>2026-09-09: M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit tests green). Steps 3-4 deferred by user decision pending a real protocol capture (conditional autonomy per verification-plan). Camera endpoints (/v8/cloud/deviceList, /v8/device/control) and device field mapping are provisional pending live capture. Full live-view/events tab UX ships in Phase-3.</phase-note>
     </Phase-2>
 
     <Phase-3 name="Streaming Core" status="pending">
