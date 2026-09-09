@@ -755,7 +755,7 @@
     <Phase-2 name="Camera Management" status="pending">
       <goal>Camera list, camera discovery, and device management functional.</goal>
       <step-1 module="M-CAMERA-LIST" status="done" verification="V-M-CAMERA-LIST">Implement camera list API integration</step-1>
-      <step-2 module="M-CAMERA-CMD" status="pending" verification="V-M-CAMERA-CMD">Implement camera command protocol (PTZ, IR, sound)</step-2>
+      <step-2 module="M-CAMERA-CMD" status="done" verification="V-M-CAMERA-CMD">Implement camera command protocol (PTZ, IR, sound)</step-2>
       <step-3 module="M-CAMERA-DISCOVERY" status="pending" verification="V-M-CAMERA-DISCOVERY">Implement local network discovery (optional for v1)</step-3>
       <step-4 module="M-CAMERA-SETUP" status="pending" verification="V-M-CAMERA-SETUP">Implement Wi-Fi pairing flow</step-4>
       <step-5 module="M-UI-SHELL" status="pending" verification="V-M-UI-SHELL">Build navigation shell with bottom nav</step-5>
