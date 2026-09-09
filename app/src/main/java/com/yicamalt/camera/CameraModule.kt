@@ -29,4 +29,14 @@ object CameraModule {
     @Singleton
     fun provideYiCloudDeviceApi(retrofit: Retrofit): YiCloudDeviceApi =
         retrofit.create(YiCloudDeviceApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideYiCloudCommandApi(retrofit: Retrofit): YiCloudCommandApi =
+        retrofit.create(YiCloudCommandApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideCommandTransport(api: YiCloudCommandApi): CommandTransport =
+        CommandTransportRetrofit(api)
 }
