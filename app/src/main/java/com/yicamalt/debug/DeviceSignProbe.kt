@@ -59,13 +59,14 @@ class DeviceSignProbe @Inject constructor(
         // paths that may carry the device list
         data class Variant(val label: String, val path: String, val extra: String, val bearer: Boolean)
         val variants = listOf(
-            Variant("list-bare", "/v5/devices/list", "", false),
-            Variant("list+bearer", "/v5/devices/list", "", true),
-            Variant("list+token", "/v5/devices/list", "&token=$token", false),
-            Variant("vas-bare", "/vas/v8/all/cloud/deviceList", "", false),
-            Variant("vas+bearer", "/vas/v8/all/cloud/deviceList", "", true),
-            Variant("vas+token", "/vas/v8/all/cloud/deviceList", "&token=$token", false),
-            Variant("vas-cloud-bare", "/vas/v8/cloud/deviceList", "", false),
+            Variant("list", "/v5/devices/list", "", false),
+            Variant("vas-all", "/vas/v8/all/cloud/deviceList", "", false),
+            Variant("v2-list", "/v2/devices/list", "", false),
+            Variant("dev-info", "/v5/devices/deviceinfo", "", false),
+            Variant("relations", "/v5/devices/relations", "", false),
+            Variant("owners", "/v5/devices/owners", "", false),
+            Variant("v2-devices", "/v2/devices", "", false),
+            Variant("vas-cloud", "/vas/v8/cloud/deviceList", "", false),
         )
         for (v in variants) {
             try {
@@ -77,7 +78,7 @@ class DeviceSignProbe @Inject constructor(
                     val code = Regex("\"code\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1) ?: "http${resp.code}"
                     val masked = body
                         .replace(Regex("\"([^\"]*(?:token|secret)[^\"]*)\"\\s*:\\s*\"[^\"]*\"", RegexOption.IGNORE_CASE), "\"$1\":\"██\"")
-                        .take(220)
+                        .take(240)
                     out += "${v.label} => $code len=${body.length} body=$masked"
                     Timber.d("[Probe][run][BLOCK_PROBE] ${v.label} => $code len=${body.length}")
                 }
