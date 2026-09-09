@@ -21,8 +21,8 @@
 
 | Фаза | Статус | Примечание |
 |------|--------|-----------|
-| **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; `assembleDebug` → app-debug.apk (17.9MB) |
-| Phase-2 (Camera Management) | ⏳ не начата | M-CAMERA-DISCOVERY, M-CAMERA-MANAGE и др. |
+| **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; реальный логин подтверждён (user 167315) |
+| **Phase-2 (Camera Management)** | 🟡 `in-progress` | M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit-тестов); discovery/setup deferred |
 | Phase-3 (Streaming) | ⏳ не начата | M-STREAM-DECODE, M-STREAM-LIVE (conditional) |
 | Phase-4 (Setup/Discovery) | ⏳ не начата | M-CAMERA-DISCOVERY, M-CAMERA-SETUP (conditional) |
 
