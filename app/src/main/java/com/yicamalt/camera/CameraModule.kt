@@ -10,6 +10,7 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.camera
 
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,8 +19,17 @@ import retrofit2.Retrofit
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   CameraModule - provides YiCloudDeviceApi from the shared Retrofit instance.
+//   CameraModule - provides YiCloudDeviceApi/CommandApi/CommandTransport from shared Retrofit.
+//   CameraBindsModule - binds CameraRegistry as CameraListPort.
 // END_MODULE_MAP
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class CameraBindsModule {
+    @Binds
+    @Singleton
+    abstract fun bindCameraListPort(impl: CameraRegistry): CameraListPort
+}
 
 @Module
 @InstallIn(SingletonComponent::class)

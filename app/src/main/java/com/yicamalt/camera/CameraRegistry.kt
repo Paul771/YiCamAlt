@@ -37,13 +37,18 @@ sealed class CameraError(message: String) : Error(message) {
     object NoStreamUrl : CameraError("CAMERA_NO_STREAM_URL: stream url not resolved for this device")
 }
 
+/** Thin contract consumed by the M-UI camera list so the view-model needs no network/DAO. */
+interface CameraListPort {
+    suspend fun getCameraList(): List<CameraInfo>
+}
+
 @Singleton
 class CameraRegistry @Inject constructor(
     private val api: YiCloudDeviceApi,
     private val cameraDao: CameraDao,
-) {
+) : CameraListPort {
     /** Fetch the device list from the cloud and refresh the Room cache. */
-    suspend fun getCameraList(): List<CameraInfo> = withContext(Dispatchers.IO) {
+    override suspend fun getCameraList(): List<CameraInfo> = withContext(Dispatchers.IO) {
         // START_BLOCK_FETCH_CAMERA_LIST
         Timber.d("[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] fetching device list")
         val envelope = try {

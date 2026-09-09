@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
             var loggedIn by remember { mutableStateOf(auth.getSession() != null) }
             when {
                 showSettings -> com.yicamalt.ui.settings.SettingsScreen(onBack = { showSettings = false })
-                loggedIn -> com.yicamalt.ui.shell.HomeScreen(
+                loggedIn -> com.yicamalt.ui.shell.AppShellScreen(
                     userId = auth.getSession()?.userId ?: "",
                     onLogout = {
                         // START_BLOCK_HANDLE_LOGOUT
