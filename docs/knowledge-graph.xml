@@ -49,7 +49,7 @@
 
     <!-- Layer 1: Core Domain -->
 
-    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" STATUS="implemented-deferred">
+    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" STATUS="verified">
       <purpose>Handle Yi Cloud authentication: login, token refresh, session management, secure token storage.</purpose>
       <path>app/src/main/java/com/yicamalt/auth/AuthModule.kt</path>
       <depends>M-HTTP, M-LOCAL-DB</depends>
@@ -63,7 +63,9 @@
         <fn-refresh PURPOSE="Refresh access token using refresh token; returns null on failure" />
         <contract-LoginPort PURPOSE="Thin login contract consumed by M-UI-LOGIN; implemented by AuthRepository" />
       </annotations>
-      <change-summary step="4" phase="1" commit="3e901ae" verification="deferred">AuthRepository implemented: login/refresh/logout/getSession, implements AuthProvider + LoginPort. EncryptedAuthStore (EncryptedSharedPreferences). YiCloudAuthApi (Retrofit). Hilt bindings. Test written (MockWebServer), deferred (no Android SDK).</change-summary>
+      <change-summary step="4" phase="1" commit="afaf797" verification="deferred">AuthRepository implemented: login/refresh/logout/getSession, implements AuthProvider + LoginPort. EncryptedAuthStore (EncryptedSharedPreferences). YiCloudAuthApi (Retrofit). Hilt bindings. Login endpoint corrected to real Yi Cloud surface: GET /v4/users/login (query params seq/account/password/dev_name/dev_type/dev_os_version) + POST /v4/users/auth_token for refresh; response code deserialized as String; missing access_token -> InvalidCredentials. Test written (MockWebServer), deferred (no Android SDK).</change-summary>
+      <change-summary step="4" phase="1" commit="local" verification="deferred">v0.3.1 audit fix: reverted unfounded 'login' query-param rename back to 'account' — live probes of gw-us/eu/sg.xiaoyi.com/v4/users/login decoded the error ladder (unrecognized account param -> 20250; account without password -> 20260; account+password -> 20253; GET no-params -> 20203; POST no-body -> -10003). Failure log now carries the server message.</change-summary>
+      <change-summary step="4" phase="1" commit="local" verification="verified">v0.4.2 VERIFIED ON DEVICE (2026-09-09): real login works end-to-end — GET /v4/users/login with account + HMAC-SHA256 password -> code 20000 -> token/token_secret/userid -> EncryptedSharedPreferences -> HomeScreen «Вход выполнен», user 167315. Fix chain: account param (not login), HMAC password digest, token_secret as refresh key, DEFAULT_EXPIRES_SECONDS when expires_in absent, authInterceptor bypass for auth_token calls, post-login HomeScreen navigation.</change-summary>
     </M-AUTH>
 
     <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" STATUS="planned">
@@ -179,16 +181,15 @@
 
     <!-- Layer 2: UI / Presentation -->
 
-    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" STATUS="planned">
-      <purpose>Top-level app shell with Compose navigation, bottom nav bar, screen transitions.</purpose>
-      <path>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</path>
+    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" STATUS="implemented-partial">
+      <purpose>Top-level post-login home (Phase-1.5 stub): session confirmation, user id, logout. Full bottom-nav shell arrives in Phase-2.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/shell/HomeScreen.kt</path>
       <depends>M-AUTH</depends>
       <verification-ref>V-M-UI-SHELL</verification-ref>
       <annotations>
-        <fn-AppShellContent PURPOSE="Compose root layout with navigation" />
-        <fn-NavigationHost PURPOSE="Navigation graph host" />
-        <fn-BottomNavBar PURPOSE="Bottom navigation bar with tabs" />
+        <fn-HomeScreen PURPOSE="Post-login landing: session info + logout (BLOCK_RENDER_SHELL)" />
       </annotations>
+      <change-summary step="5" phase="1" commit="local" verification="deferred">v0.4.2: device logs showed LoginUiState.Success with NO destination (MainActivity mounted LoginScreen unconditionally; onLoggedIn was a no-op). Created HomeScreen stub (BLOCK_RENDER_SHELL) and wired MainActivity navigation Login -> Home -> Settings with BLOCK_HANDLE_LOGOUT; session restore on app start via auth.getSession().</change-summary>
     </M-UI-SHELL>
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" STATUS="planned">

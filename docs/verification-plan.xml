@@ -24,7 +24,7 @@
          All module tests depend on these. Build them in Phase-1 before any other module. -->
     <harness-1 name="TraceRecorder" purpose="Captures Timber output into an ordered list of [Module][fn][BLOCK] markers + structured fields. Provides assertMarkerAppeared, assertMarkerAbsent, assertSequence, assertMaxRetries, assertRedactionClean." path="app/src/test/java/com/yicamalt/test/TraceRecorder.kt" />
     <harness-2 name="RedactionScanner" purpose="Scans a captured TraceRecorder buffer for forbidden substrings (token patterns, 'password', AES key bytes, email/phone regex, Authorization header). One match fails the gate." path="app/src/test/java/com/yicamalt/test/RedactionScanner.kt" />
-    <harness-3 name="FakeYiApi" purpose="In-memory Yi Cloud API mock with scripted responses per endpoint (/v1/account/login, /v1/user/camera/list, /v1/camera/event/list, /v1/camera/control, /v1/camera/live/key). Supports delay, 401, 5xx, and network-failure injection." path="app/src/test/java/com/yicamalt/test/FakeYiApi.kt" />
+    <harness-3 name="FakeYiApi" purpose="In-memory Yi Cloud API mock with scripted responses per endpoint (v4/users/login, v4/users/auth_token, /v1/user/camera/list, /v1/camera/event/list, /v1/camera/control, /v1/camera/live/key). Supports delay, 401, 5xx, and network-failure injection." path="app/src/test/java/com/yicamalt/test/FakeYiApi.kt" />
     <harness-4 name="FakeCameraStreamServer" purpose="Local socket server emitting a scripted AES-128-encrypted test H.264 stream with known key/iv. Enables deterministic M-STREAM-DECODE verification without a real camera." path="app/src/test/java/com/yicamalt/test/FakeCameraStreamServer.kt" />
     <harness-5 name="FakeAuthStore" purpose="In-memory EncryptedSharedPreferences fake backed by a map; lets tests assert token storage without Android Keystore roundtrip." path="app/src/test/java/com/yicamalt/test/FakeAuthStore.kt" />
     <harness-6 name="InMemoryRoom" purpose="Room database built with in-memory SupportSQLiteDatabase for M-LOCAL-DB and cache tests." path="app/src/test/java/com/yicamalt/test/InMemoryRoom.kt" />
@@ -44,7 +44,17 @@
         <forbidden-1>Password substring in any captured log</forbidden-1>
         <forbidden-2>Access token substring in any captured log</forbidden-2>
       </forbidden-signals>
-      <autonomy-risk>Medium — depends on reverse-engineered /v1/account/login surface.</autonomy-risk>
+      <autonomy-risk>Medium — depends on reverse-engineered GET /v4/users/login surface.</autonomy-risk>
+      <live-api-evidence note="probed 2026-09-04, gw-us/eu/sg.xiaoyi.com">
+        <code-ladder>
+          unrecognized account param (login/email/user/username/user_name/name/phone/mobile) -> 20250;
+          account without password (or pwd param) -> 20260;
+          account+password (GET query or POST JSON) -> 20253 credential-level rejection;
+          GET no-params -> 20203; POST no-body -> -10003.
+        </code-ladder>
+        <device-evidence-path>auth_log.txt line: [Auth][login][BLOCK_VALIDATE_CREDENTIALS] rejected code=... message=...</device-evidence-path>
+        <known-defect>HttpClientModule.rebuild() does not propagate to YiCloudAuthApi @Singleton; base URL change requires app restart until fixed.</known-defect>
+      </live-api-evidence>
     </VF-001>
 
     <VF-002 NAME="LiveViewConnection" USE_CASES="UC-002" DATA_FLOW="DF-LIVE-STREAM" PRIORITY="high" PRIMARY-EVIDENCE="integration + trace">

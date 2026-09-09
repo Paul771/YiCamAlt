@@ -38,6 +38,12 @@ import javax.inject.Singleton
 //   HttpError - HTTP error hierarchy (TlsFailed, Unauthorized).
 // END_MODULE_MAP
 
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.3.2 - Log sink now masks password= and account= query values with ██:
+//     the login URL carried the password in plaintext and leaked it into auth_log.txt
+//     (user's real password was exposed). Matches RedactionScanner allow-list convention.
+// END_CHANGE_SUMMARY
+
 sealed class HttpError(message: String) : Error(message) {
     object TlsFailed : HttpError("HTTP_TLS_FAILED: TLS handshake requirements not met")
     object Unauthorized : HttpError("HTTP_UNAUTHORIZED: refresh failed or token rejected")
@@ -74,19 +80,28 @@ class HttpClientModule @Inject constructor(
     private val currentToken = AtomicReference<String?>()
 
     private val authInterceptor = Interceptor { chain ->
-        val token = currentToken.get() ?: authProvider.get().getAccessTokenBlocking()
+        val request = chain.request()
+        // Refresh calls must bypass the token interceptor: getAccessTokenBlocking()
+        // can itself trigger a refresh, which would recurse into the same client
+        // and deadlock the OkHttp dispatcher (observed as an infinite login spinner).
+        val isRefreshCall = request.url.encodedPath.contains("auth_token")
+        val token = if (isRefreshCall) null else currentToken.get() ?: authProvider.get().getAccessTokenBlocking()
         val req = if (token != null) {
-            chain.request().newBuilder().header("Authorization", "Bearer $token").build()
-        } else chain.request()
+            request.newBuilder().header("Authorization", "Bearer $token").build()
+        } else request
         chain.proceed(req)
     }
 
     private val redactedLogger = HttpLoggingInterceptor { msg ->
         // START_BLOCK_REDACTED_LOG
         // Authorization/Cookie headers are redacted via redactHeader() above.
-        // Production sinks to Timber; tests inject a capturing sink for RedactionScanner.
+        // Login query params (password digest, account email) must never reach logs;
+        // ██ (U+2588) matches the RedactionScanner allow-list convention.
+        val safe = msg
+            .replace(Regex("(password=)[^&\\s]+"), "$1██")
+            .replace(Regex("(account=)[^&\\s]+"), "$1██")
         val sink = logSink
-        if (sink != null) sink.invoke(msg) else timber.log.Timber.d(msg)
+        if (sink != null) sink.invoke(safe) else timber.log.Timber.d(safe)
         // END_BLOCK_REDACTED_LOG
     }.apply {
         level = HttpLoggingInterceptor.Level.HEADERS
@@ -110,12 +125,30 @@ class HttpClientModule @Inject constructor(
         // END_BLOCK_REFRESH_RETRY
     }
 
+    /**
+     * Captures login/auth response bodies for reverse-engineering evidence.
+     * Token-shaped VALUES are masked (██); field NAMES stay readable so the envelope
+     * shape can be diagnosed from device logs. Timber is a no-op tree in release builds.
+     */
+    private val responseBodyLogger = Interceptor { chain ->
+        val response = chain.proceed(chain.request())
+        val url = response.request.url.encodedPath
+        if (url.contains("/login") || url.contains("/auth_token")) {
+            val bodyString = response.peekBody(4096L).string()
+            val masked = bodyString
+                .replace(Regex("(\"[^\"]*(?:token|password|secret|authorization)[^\"]*\"\\s*:\\s*\")([^\"]*)(\")", RegexOption.IGNORE_CASE), "$1██$3")
+            TimberLog.d("[Network][body][BLOCK_REDACTED_LOG] path=$url status=${response.code} body=${masked.take(600)}")
+        }
+        response
+    }
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(20, TimeUnit.SECONDS)
         .addInterceptor(authInterceptor)
         .addInterceptor(redactedLogger)
+        .addInterceptor(responseBodyLogger)
         .authenticator(authenticator)
         .build()
     // END_BLOCK_INIT_HTTP_CLIENT

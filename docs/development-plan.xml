@@ -118,7 +118,7 @@
         <inputs>
           <param name="email" type="String" />
           <param name="password" type="String" />
-          <param name="loginMethod" type="AuthMethod (EMAIL / PHONE)" />
+          <param name="loginMethod" type="AuthMethod (PASSWORD / CLOUD_OAUTH)" />
         </inputs>
         <outputs>
           <param name="AuthResult" type="AuthResult (Success | Error)" />
@@ -150,7 +150,7 @@
       <notes>
         <note-1>Tokens stored in EncryptedSharedPreferences backed by Android Keystore.</note-1>
         <note-2>Token refresh happens automatically before API calls via Retrofit interceptor.</note-2>
-        <note-3>Reverse-engineered auth endpoint: POST /v1/account/login (based on Yi Home APK traffic).</note-3>
+        <note-3>Reverse-engineered auth endpoint: GET /v4/users/login (query params: seq, account, password, dev_name, dev_type, dev_os_version). Refresh: POST /v4/users/auth_token. Response code is a String; missing access_token -> InvalidCredentials.</note-3>
       </notes>
     </M-AUTH>
 
@@ -675,7 +675,7 @@
   <DataFlow>
     <DF-AUTH NAME="UserAuthentication" TRIGGER="User taps Login">
       <step-1>User enters credentials on LoginScreen (M-UI-LOGIN)</step-1>
-      <step-2>M-AUTH validates credentials via M-HTTP (POST /v1/account/login)</step-2>
+      <step-2>M-AUTH validates credentials via M-HTTP (GET /v4/users/login)</step-2>
       <step-3>M-AUTH stores tokens in encrypted SharedPreferences</step-3>
       <step-4>AuthState updates to LOGGED_IN, navigation shifts to AppShell</step-4>
       <evidence>V-M-AUTH scenario-1 (success path), log marker [Auth][login][BLOCK_STORE_TOKEN]</evidence>

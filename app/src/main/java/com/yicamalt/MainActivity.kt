@@ -1,8 +1,8 @@
 // FILE: MainActivity.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Single-activity host for the Compose navigation graph.
-//   SCOPE: setContent + Hilt-enabled Compose host. No business logic.
+//   SCOPE: setContent + Hilt-enabled Compose host; Login -> Home -> Settings flow.
 //   DEPENDS: M-UI-SHELL, M-AUTH
 //   LINKS: M-UI-SHELL, M-AUTH
 //   ROLE: RUNTIME
@@ -17,22 +17,36 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.yicamalt.auth.AuthRepository
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import timber.log.Timber
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var auth: AuthRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // START_BLOCK_RENDER_HOST
         setContent {
-            // Shell graph is wired in M-UI-SHELL (Phase-2). For Phase-1 the host
-            // mounts the LoginScreen directly so the auth pipeline is testable.
             var showSettings by remember { mutableStateOf(false) }
-            if (showSettings) {
-                com.yicamalt.ui.settings.SettingsScreen(onBack = { showSettings = false })
-            } else {
-                com.yicamalt.ui.login.LoginScreen(
-                    onLoggedIn = { /* nav -> shell in Phase-2 */ },
+            var loggedIn by remember { mutableStateOf(auth.getSession() != null) }
+            when {
+                showSettings -> com.yicamalt.ui.settings.SettingsScreen(onBack = { showSettings = false })
+                loggedIn -> com.yicamalt.ui.shell.HomeScreen(
+                    userId = auth.getSession()?.userId ?: "",
+                    onLogout = {
+                        // START_BLOCK_HANDLE_LOGOUT
+                        Timber.d("[Shell][logout][BLOCK_HANDLE_LOGOUT] clearing session")
+                        auth.logout()
+                        loggedIn = false
+                        // END_BLOCK_HANDLE_LOGOUT
+                    },
+                )
+                else -> com.yicamalt.ui.login.LoginScreen(
+                    onLoggedIn = { loggedIn = true },
                     onOpenSettings = { showSettings = true },
                 )
             }

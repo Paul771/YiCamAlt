@@ -265,13 +265,55 @@ https://gw-us.xiaoyi.com
 
 ## 10. Следующие шаги
 
-1. **✅ НАЙДЕН логин-эндпоинт:** `POST https://gw-us.xiaoyi.com/v4/users/login` (email + password).
-2. **Обновить `YiCloudAuthApi` в YiCamAlt** — заменить `POST /v1/account/login` на `POST /v4/users/login`.
-3. **Проверить формат ответа** — `{"code":"20203"}` (неверные учётные данные). Нужно понять, что возвращается при успехе (token).
+1. **✅ НАЙДЕН логин-эндпоинт:** `GET https://gw-us.xiaoyi.com/v4/users/login` (query params: `seq`, `account`, `password`, `dev_name`, `dev_type`, `dev_os_version`).
+2. **✅ ОБНОВЛЁН `YiCloudAuthApi`** — заменён `POST /v1/account/login` на `GET /v4/users/login` + `POST /v4/users/auth_token` (refresh). Коммиты `7b6e456`, `58b77f2`, `afaf797`.
+3. **✅ Формат ответа** — `code` десериализуется как `String`; отсутствие `data.access_token` → `InvalidCredentials` (код `40110`).
 4. **Проверить OAuth2 flow** на `api-oauth-us.xiaoyi.com` (client_id, redirect_uri, grant_type) для third-party логина.
 5. **Сообщить пользователю реальный endpoint** для ввода в настройки YiCamAlt (gear → «API сервер (Yi Cloud)» → `https://gw-us.xiaoyi.com`).
 6. **Уточнить у пользователя**, против чего тестируется: реальный Yi Cloud API или локальный mock-сервер.
 7. Если логин работает → **Phase-2 (Camera Management)**.
+
+---
+
+## 14. Аудит аутентификации (2026-09-04): лестница кодов /v4/users/login
+
+Живое зондирование реальных серверов (gw-us / gw-eu / gw-sg) расшифровало валидационную лестницу:
+
+| Шейп запроса | Код сервера | Интерпретация |
+|---|---|---|
+| Нераспознанное имя аккаунт-параметра (`login`, `email`, `user`, `username`, `user_name`, `name`, `phone`, `mobile`) | `20250` | аккаунт-параметр не распознан |
+| `account` есть, пароля нет (или имя `pwd`) | `20260` | пароль отсутствует |
+| `account` + `password` (GET query или POST JSON) | `20253` | шейп принят; отклонение на уровне учётных данных |
+| GET без параметров | `20203` | ничего не передано (GET) |
+| POST без тела | `-10003` | тело обязательно (POST) |
+
+Дополнительные параметры (`os_type`, `app_version`, `lang`, `tz`, `client_id`, реалистичные `dev_*`) код `20253` не меняют.
+Имена `dev_name`/`dev_type`/`dev_os_version`, `access_token`, `refresh_token` подтверждены строками classes2.dex оригинального APK (`/tmp/yiapk/dex`).
+
+### Исправлено (v0.3.1)
+- **Регресс:** беспочвенная замена `account` → `login` (сервер отвечал `20250` → маппилось в «Неверный email или пароль») откачена; тест `AuthRepositoryTest` ассертит `account`.
+- **Диагностика:** лог отказа теперь содержит `code` + `message` сервера; `auth_log.txt` пишется и во внешнюю директорию `/sdcard/Android/data/com.yicamalt/files/` (доступна по USB MTP без root).
+
+### Исправлено (v0.3.2) — ПЕРВОПРИЧИНА НАЙДЕНА
+- **Сервер ожидает HMAC-хэш пароля, а не открытый текст.** Код `20261` = «аккаунт найден, пароль неверен» (на plaintext ВСЕГДА 20261); `20253` = «аккаунт не найден». Аккаунт пользователя подтверждён на `gw-us` (его email + фейковый пароль → `20261`).
+- **Официальное приложение хэширует пароль** (декомпилировано из dex: строитель запроса логина `Lva/h` → хэшер `Lmc/d2.a`):
+  ```
+  password_param = Base64(NO_WRAP, HMAC-SHA256(key="KXLiUdAsO81ycDyEJAeETC$KklXdz3AC", msg=password UTF-8))
+  ```
+- `AuthRepository.hmacPassword()` реализует формат; пин-тест добавлен (`AuthRepositoryTest`: 9 тестов).
+- **Дыра редакции закрыта:** HttpLoggingInterceptor логировал URL с паролем открытым текстом — пароль пользователя утёк в `auth_log.txt` и чат. Лог-сток теперь маскирует `password=` и `account=` значениями `██`. ⚠️ Пользователю: сменить пароль Yi-аккаунта и удалить старый `auth_log.txt` с устройства.
+
+### Статус (v0.4.2): АУТЕНТИФИКАЦИЯ VERIFIED НА РЕАЛЬНОМ УСТРОЙСТВЕ
+- Подтверждено пользователем 2026-09-09: логин успешен, HomeScreen показывает «Вход выполнен», ID пользователя 167315.
+- Итоговая цепочка: GET /v4/users/login + account/password(HMAC-SHA256→Base64) → code 20000 → token/token_secret/userid → сессия в EncryptedSharedPreferences → HomeScreen.
+- Лог 2026-09-09: 4/4 логина успешны, refresh-дедлок устранён, редакция логов подтверждена (`Authorization: ██`).
+- Полный shell с bottom-nav и списком камер — Phase-2 (следующий шаг).
+
+### Известный незакрытый дефект (следующая волна)
+- `HttpClientModule.rebuild()` пересоздаёт Retrofit, но `YiCloudAuthApi` — `@Singleton`, созданный из старого Retrofit: смена base URL в настройках действует **только после перезапуска приложения**. Временный обход: перезапустить приложение после смены сервера.
+
+### Гипотеза по реальному аккаунту пользователя
+Реальные креды пользователя отклоняются на `gw-us` (как и фейковые) кодом уровня учётных данных. Официальное приложение имеет выбор региона (`LoginAreaSelectActivity`, `ServerInfo$ServerLocation`) — аккаунт пользователя может быть зарегистрирован на `gw-eu` или `gw-sg`. Доказательство: строка `rejected code=...` в `auth_log.txt` при попытке логина реальными кредами; затем попробовать в настройках `https://gw-eu.xiaoyi.com` и `https://gw-sg.xiaoyi.com` (с перезапуском приложения).
 
 ---
 

@@ -82,17 +82,73 @@ class AuthRepositoryTest {
     @Test
     fun `login sends GET with account seq and device params`() {
         server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1")))
-        runBlocking { repo.login("user@example.com", "pw") }
+        runBlocking { repo.login("[EMAIL]", "pw") }
         val req = server.takeRequest()
         assertEquals("GET", req.method)
         val q = req.requestUrl!!
         assertTrue(q.encodedPath.endsWith("/v4/users/login"), "got " + q.encodedPath)
         assertEquals("1", q.queryParameter("seq"))
-        assertEquals("user@example.com", q.queryParameter("account"))
+        assertEquals("[EMAIL]", q.queryParameter("account"))
         assertNotNull(q.queryParameter("password"))
         assertNotNull(q.queryParameter("dev_name"))
         assertNotNull(q.queryParameter("dev_type"))
         assertNotNull(q.queryParameter("dev_os_version"))
+    }
+
+    @Test
+    fun `login password is HMAC-SHA256 of the raw password, Base64 no-wrap`() {
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1")))
+        runBlocking { repo.login("[EMAIL]", "pw") }
+        val q = server.takeRequest().requestUrl!!
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec("KXLiUdAsO81ycDyEJAeETC\$KklXdz3AC".toByteArray(Charsets.UTF_8), "HmacSHA256"))
+        val expected = java.util.Base64.getEncoder()
+            .encodeToString(mac.doFinal("pw".toByteArray(Charsets.UTF_8)))
+        assertEquals(expected, q.queryParameter("password"))
+    }
+
+    @Test
+    fun `scenario_6 real 20000 envelope with token and token_secret is accepted`() {
+        // Observed live response shape (gw-eu, 2026-09-08): code 20000, token/token_secret, no expires_in.
+        val realBody =
+            """{"code":"20000","data":{"userid":167315,"account":"[EMAIL]","name":"Pavel Van","mobile":"","userMobileRegion":"","email":"[EMAIL]","img":"","token":"acc-real-1","token_secret":"sec-real-1","birthday":"","first_name":"Pavel","last_name":"Van","user_mobile":"","flag":false,"openId":"abc","register_time":"1496125022000"}}"""
+        server.enqueue(MockResponse().setBody(realBody))
+        val session = runBlocking { repo.login("[EMAIL]", "pw") }
+        assertEquals("acc-real-1", session.accessToken, "data.token must be used as access token")
+        assertEquals("sec-real-1", session.refreshToken, "data.token_secret must be used as refresh token")
+        assertEquals("167315", session.userId, "data.userid must be used as user id")
+        assertTrue(session.expiresAt > clock.nowMillis(), "missing expires_in must NOT produce an already-expired session")
+        assertNotNull(store.getSession())
+        recorder.assertMarkerAppeared("BLOCK_STORE_TOKEN")
+        recorder.assertSequence("BLOCK_VALIDATE_CREDENTIALS", "BLOCK_STORE_TOKEN")
+    }
+
+    @Test
+    fun `second login after success does not recurse into refresh deadlock`() {
+        // Uses the PRODUCTION http client (with authInterceptor) — the deadlock only
+        // reproduces when the refresh path goes through the interceptor chain.
+        val config = com.yicamalt.config.ConfigModule(com.yicamalt.config.InMemorySettingsStore())
+        config.setApiBaseUrl(server.url("/v1/").toString())
+        lateinit var repo2: AuthRepository
+        val httpClient = com.yicamalt.network.HttpClientModule(
+            config,
+            javax.inject.Provider { repo2 },
+        )
+        val api2 = httpClient.createRetrofit().create(YiCloudAuthApi::class.java)
+        repo2 = AuthRepository(api2, TestAuthStore(), clock)
+
+        // Keep the http log sink quiet: route http logs into a disposable buffer.
+        httpClient.logSink = { /* drop */ }
+
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", expiresIn = 1)))
+        server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2", expiresIn = 3600)))
+        server.enqueue(MockResponse().setBody(loginBody("acc-3", "ref-3", expiresIn = 3600)))
+        runBlocking { repo2.login("[EMAIL]", "pw") }
+        // Expire the session, then perform a full login again; must complete (no dispatcher deadlock).
+        clock.advance(2_000L)
+        val s2 = runBlocking { repo2.login("[EMAIL]", "pw") }
+        assertEquals("acc-3", s2.accessToken, "second login must use the 3rd queued response")
+        assertEquals(3, server.requestCount, "login + one refresh + login, no recursion")
     }
 
     @Test
