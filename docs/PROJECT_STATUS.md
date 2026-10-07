@@ -1,24 +1,66 @@
 # YiCamAlt — Текущее состояние проекта
 
-> Дата: 2026-09-01
+> Дата: 2026-09-28
 > Формат: Markdown-снимок состояния для быстрой ориентации.
 > Канонические GRACE-артефакты: `docs/*.xml` (requirements, technology, development-plan, verification-plan, knowledge-graph, operational-packets).
 
 ---
 
-## 0. Текущий фокус (2026-09-29)
+## 0. Текущий фокус (2026-10-06)
 
 План и статус передаются на другую машину **только через Git**. Точка входа для агента на новом компьютере: `HANDOFF.md` (bootstrap, список загрузок, проверки окружения) + этот файл.
 
 | Параметр | Значение |
 |---|---|
 | Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/` |
-| Последний коммит | `5339106` — APK-бандл Yi Home (LFS) + `INSTRUCTIONS.md` |
 | Ближайшая задача | захват реального запроса списка камер: эмулятор + mitmproxy 11.0.2 + системный CA |
 | Инструкция | `INSTRUCTIONS.md` — эмулятор, mitmproxy, CA, установка APK, диагностика |
-| Блокер | эндпоинт домашнего списка камер не найден перебором; нужны реальные flow-ы с устройства |
+| Блокер 1 (протокол) | эндпоинт домашнего списка камер не найден перебором; нужны реальные flow-ы с устройства |
+| Блокер 2 (железо) | **VT-x выключен в BIOS** — x86_64 эмулятор не стартует, захват трафика на эмуляторе невозможен до включения аппаратной виртуализации |
 
-Состояние инструментов на машине разработки: mitmproxy 11.0.2 на Python 3.11 (на 3.14 ломается TLS), Android SDK в `C:\Windows\Temp\AndroidSdk`, AVD `yicap` пересоздаётся, `adb` вызывается полным путём, Gradle — через `java -cp gradle/wrapper/gradle-wrapper.jar` (AppLocker блокирует `.cmd`/`.bat`).
+### 0.1 Профиль машины (Windows 10 Pro 19045, x64, без прав администратора)
+
+| Компонент | Путь / версия | Статус |
+|---|---|---|
+| Git | 2.56.0.windows.1 | OK |
+| JDK 17 | `C:\Program Files\Microsoft\jdk-17.0.18.8-hotspot\` | OK (в PATH по умолчанию отдаёт 1.8 — звать полным путём) |
+| Android SDK | `C:\Users\Pavel\AppData\Local\Android\Sdk` | OK |
+| ├ platform-tools / adb | `<SDK>\platform-tools\adb.exe` (37.0.0) | OK, полным путём |
+| ├ platforms;android-34 | `<SDK>\platforms\android-34` | OK |
+| ├ build-tools | 34.0.0 | OK |
+| ├ emulator | 37.1.11 | установлен, **не запускается без VT-x** |
+| └ system-images;android-34;google_apis;x86_64 | `<SDK>\system-images\android-34\google_apis\x86_64` | OK на диске |
+| AVD | `yicap` | создан, запуск заблокирован VT-x |
+| Python 3.11 | 3.11.15 (`py -V:Astral/CPython3.11.15`) | OK; системный 3.14 не использовать — ломает TLS |
+| mitmproxy 11.0.2 | `%USERPROFILE%\venvs\mitm\Scripts\mitmdump.exe` | OK в отдельном venv (Python под uv, `pip install` в него запрещён) |
+| Gradle | wrapper 8.5 в репозитории | OK, запуск только через `tools\gradle.ps1` |
+
+Проверено: `:app:testDebugUnitTest` — **91/91 green**, сборка проходит.
+Порт 8080 свободен.
+
+### 0.2 Виртуализация — блокер эмулятора
+
+CPU (AMD Ryzen 5 5600) поддерживает VMX и SLAT, но:
+
+- `Win32_Processor.VirtualizationFirmwareEnabled = False` — VT-x **выключен в BIOS**
+- `Win32_ComputerSystem.HypervisorPresent = False` — гипервизор не запущен
+
+Значит системный образ `x86_64` не заведётся. Действие — **аппаратное, требует пользователя**: включить
+Intel VT-x / AMD SVM в UEFI, перезагрузиться. Альтернатива — физическое устройство с USB-отладкой
+по `INSTRUCTIONS.md`. Программно обойти нельзя: `-accel off` даёт неработоспособную скорость.
+
+### 0.3 Правила запуска Gradle с этой машины
+
+`gradlew.bat` под AppLocker не запускается. Канон — `tools/gradle.ps1`:
+
+```powershell
+.\tools\gradle.ps1 :app:testDebugUnitTest
+```
+
+Скрипт существует по конкретной причине: Gradle-демон наследует stdout харнесса, из-за чего
+вызов блокируется на десятки минут **после** `BUILD SUCCESSFUL`. Он вызывает
+`java -cp gradle/wrapper/gradle-wrapper.jar` напрямую, перенаправляет вывод в файлы и имеет
+жёсткий таймаут. Не запускать Gradle иначе из агентного harness.
 
 Секреты: логин и пароль Yi-аккаунта вводятся пользователем вручную и не попадают в Git, логи и чат.
 
@@ -41,10 +83,58 @@
 |------|--------|-----------|
 | **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; реальный логин подтверждён (user 167315) |
 | **Phase-2 (Camera Management)** | 🟡 `in-progress` | M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit-тестов); discovery/setup deferred |
-| Phase-3 (Streaming) | ⏳ не начата | M-STREAM-DECODE, M-STREAM-LIVE (conditional) |
-| Phase-4 (Setup/Discovery) | ⏳ не начата | M-CAMERA-DISCOVERY, M-CAMERA-SETUP (conditional) |
+| **Phase-3 (Streaming Core)** | 🟡 `in-progress` | **M-EVENT done** (23 unit-теста; suite 91/91 green). Остальное ждёт захвата стрим-протокола |
+| Phase-4 (Notifications & Polish) | ⏳ не начата | M-PUSH, M-MEDIA, M-ONBOARDING, M-UI-* polish |
 
 **Evidence-3** (навигация Login → shell на эмуляторе) — **отложена** (нет эмулятора/устройства в окружении).
+
+---
+
+## 2b. Phase-3 / M-EVENT — реализовано 2026-09-28
+
+**Что сделано:** `event/` — `EventServiceModule.kt` (сервис), `EventInfo.kt` (модель + tolerant-парсер),
+`YiCloudEventApi.kt` (Retrofit + `EventPaths` + `EventSigner`), `EventModule.kt` (Hilt).
+
+**Экспорты:** `getEventTimeline`, `getEventById`, `getPlaybackUrl`, `syncEventsToDb`,
+`getLocalEventCount` + **добавлены** `getLocalTimeline` и порт `EventTimelinePort`.
+Ошибки: `EVENT_FETCH_FAILED`, `EVENT_NO_RECORDING` + **добавлены** `EVENT_UNAUTHORIZED`, `EVENT_NOT_FOUND`.
+
+**Отклонения от контракта (осознанные):**
+- `getLocalTimeline`/`EventTimelinePort` — без них `syncEventsToDb`/`getLocalEventCount`
+  были write-only: кэш без чтения не может обслуживать офлайн-таймлайн, заявленный в purpose.
+- `Unauthorized`/`NotFound` — запрос подписывается hmac, значит есть ветка «нет сессии»,
+  и одиночный поиск события требует случая промаха.
+
+**Провальные допущения (не подтверждены живым захватом):**
+- `EventPaths` = `v1/camera/event/list` и `v1/camera/event/playback` — **guess**. Плановое
+  note-1 фиксирует `/v1/...`, но реверс-инжиниринг показал, что реальные пути Yi Cloud
+  версионированы **без** префикса `/v1` (`/v4`, `/v5`, `/vas/v8`). Путь, вероятно, неверен.
+- `EventSigner` (Base64(HMAC-SHA1)) **дублирует** схему, подтверждённую для `/v5/devices/list`
+  в M-CAMERA-LIST. Для event-API не подтверждена. Обе копии должны схлопнуться в M-HTTP
+  после захвата.
+- Формат ответа проигрышного URL: проверен только путь парсинга, не сам эндпоинт.
+
+Всё это изолировано в константах `EventPaths`/`EventSigner` — живой захват потребует правки
+констант, а не рефакторинга.
+
+**Побочная находка (дефект redaction):** `EventDao.insertEvent` логировал `event_id` и `device_id`
+в `BLOCK_DB_WRITE`. Пойман `V-M-EVENT` scenario_6. Реальные серийники Yi — это 10+ цифр,
+что триггерит правило RedactionScanner о длинных цифровых последовательностях. Лог-строка
+сделана неидентифицирующей. **`CameraDao.insertCamera` логирует `device_id` — тот же класс
+дефекта, ещё не исправлен** (вне периметра M-EVENT).
+
+**Инвариант:** пустой ответ не трогает кэш (нет `BLOCK_SYNC_TO_DB`, нет `BLOCK_DB_WRITE`,
+нет эвакуации ранее закэшированных событий) — проверено scenario_4/4b/4c.
+
+### Рабочий вызов Gradle — ВАЖНО
+```powershell
+.\tools\gradle.ps1 :app:testDebugUnitTest
+```
+**Не запускайте `gradlew` напрямую из агентного/CI-харнесса.** Свежий Gradle-демон наследует
+stdout/stdin клиента: `gradlew` завершается и печатает `BUILD SUCCESSFUL`, но pipe не получает
+EOF, пока демон жив — вызов выглядит зависшим на десятки минут при уже завершившейся сборке.
+`tools/gradle.ps1` перенаправляет вывод в файл, поэтому демон держит файловый handle, а не pipe.
+Проверено: свежий демон + перенаправление = 8.9 с.
 
 ---
 
@@ -349,9 +439,9 @@ https://gw-us.xiaoyi.com
 
 ## 12. Тесты
 
-- `:app:testDebugUnitTest` — **40 тестов / 0 падений** (Phase-1 gate GREEN)
+- `:app:testDebugUnitTest` — **91 тест / 0 падений** (2026-09-28; базовая линия была 68, +23 M-EVENT)
 - `:app:compileDebugKotlin` — green
-- `:app:assembleDebug` → **app-debug.apk (17.9MB)**
+- `:app:assembleDebug` → **app-debug.apk (17.2MB)**
 
 ---
 
