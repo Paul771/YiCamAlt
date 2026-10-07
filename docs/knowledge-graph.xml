@@ -98,9 +98,15 @@
       <change-summary step="2" phase="2" commit="7f9e067" verification="passed">M-CAMERA-CMD implemented: CameraCommandService with model/online validation + PTZ normalization + CommandTransport seam (provisional POST v8/device/control, code 20000 ack — path unconfirmed). 9 module tests green. Real control endpoint pending live capture.</change-summary>
     </M-CAMERA-CMD>
 
-    <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" STATUS="planned">
+    <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" STATUS="implemented">
       <purpose>Fetch, cache, and manage motion/event timeline from Yi Cloud. Paginated event list with thumbnails and playback URLs.</purpose>
       <path>app/src/main/java/com/yicamalt/event/EventServiceModule.kt</path>
+      <support-paths>
+        <support-path>app/src/main/java/com/yicamalt/event/EventInfo.kt</support-path>
+        <support-path>app/src/main/java/com/yicamalt/event/YiCloudEventApi.kt</support-path>
+        <support-path>app/src/main/java/com/yicamalt/event/EventModule.kt</support-path>
+        <support-path>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</support-path>
+      </support-paths>
       <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
       <verification-ref>V-M-EVENT</verification-ref>
       <annotations>
@@ -109,7 +115,9 @@
         <fn-getPlaybackUrl PURPOSE="Resolve playback URL for an event" />
         <fn-syncEventsToDb PURPOSE="Cache events to local Room database" />
         <fn-getLocalEventCount PURPOSE="Count cached events for offline" />
+        <fn-getLocalTimeline PURPOSE="Read the cached timeline for a device/window without network (added)" />
       </annotations>
+      <change-summary>2026-09-28 implemented. Endpoints are PROVISIONAL (EventPaths constants): development-plan note-1 records GET /v1/camera/event/list, but the reverse-engineering in PROJECT_STATUS.md showed real Yi Cloud paths are versioned without a /v1 prefix, so the path is a guess pending a capture. EventSigner duplicates the HmacSHA1 scheme confirmed on-device for /v5/devices/list; both copies should collapse into M-HTTP once a real capture confirms signing for the event API. EventDao gained getById + getByDeviceInWindow, and its BLOCK_DB_WRITE log line was made non-identifying because it leaked event_id (caught by V-M-EVENT scenario_6).</change-summary>
     </M-EVENT>
 
     <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" STATUS="planned">

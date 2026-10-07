@@ -231,7 +231,7 @@
       </notes>
     </M-CAMERA-CMD>
 
-    <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" LAYER="1" ORDER="4" STATUS="planned">
+    <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" LAYER="1" ORDER="4" STATUS="implemented">
       <contract>
         <purpose>Fetch, cache, and manage motion/event timeline from Yi Cloud. Provides paginated event list with thumbnails, timestamps, and playback URLs. Events may come from cloud recording or SD-card.</purpose>
         <inputs>
@@ -763,15 +763,16 @@
       <phase-note>2026-09-09: M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit tests green). Steps 3-4 deferred by user decision pending a real protocol capture (conditional autonomy per verification-plan). Camera endpoints (/v8/cloud/deviceList, /v8/device/control) and device field mapping are provisional pending live capture. Full live-view/events tab UX ships in Phase-3.</phase-note>
     </Phase-2>
 
-    <Phase-3 name="Streaming Core" status="pending">
+    <Phase-3 name="Streaming Core" status="in-progress">
       <goal>Live stream and event playback working — the most critical and risky phase.</goal>
       <step-1 module="M-STREAM-DECODE" status="pending" verification="V-M-STREAM-DECODE">Implement AES decryption handshake</step-1>
       <step-2 module="M-STREAM-LIVE" status="pending" verification="V-M-STREAM-LIVE">Implement live stream lifecycle</step-2>
       <step-3 module="M-UI-LIVEVIEW" status="pending" verification="V-M-UI-LIVEVIEW">Build live view screen with video + controls</step-3>
-      <step-4 module="M-EVENT" status="pending" verification="V-M-EVENT">Implement event timeline API</step-4>
+      <step-4 module="M-EVENT" status="done" verification="V-M-EVENT">Implement event timeline API</step-4>
       <step-5 module="M-EVENT-PLAYBACK" status="pending" verification="V-M-EVENT-PLAYBACK">Implement event playback pipeline</step-5>
       <step-6 module="M-UI-EVENTS" status="pending" verification="V-M-UI-EVENTS">Build events timeline screen</step-6>
       <step-7 module="M-UI-EVENTPLAYBACK" status="pending" verification="V-M-UI-EVENTPLAYBACK">Build playback screen</step-7>
+      <phase-note>2026-09-28: M-EVENT done (23 unit tests; suite 91/91 green; assembleDebug OK). Endpoint paths and request signing are PROVISIONAL — they are isolated in EventPaths/EventSigner so a live capture only needs constants edited, not restructuring. Exports getLocalTimeline and EventTimelinePort were added beyond the planned contract because syncEventsToDb/getLocalEventCount were otherwise write-only. Errors Unauthorized and NotFound were added alongside the planned EVENT_FETCH_FAILED/EVENT_NO_RECORDING. Remaining steps stay blocked on the stream protocol capture.</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">

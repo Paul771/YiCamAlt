@@ -297,7 +297,7 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-CAMERA-CMD>
 
-    <V-M-EVENT MODULE="M-MEDIA-CMD" PRIORITY="high">
+    <V-M-EVENT MODULE="M-EVENT" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</file>
       </test-files>
@@ -310,6 +310,25 @@
         <scenario-2 kind="success" evidence-type="integration">Events synced to InMemoryRoom correctly</scenario-2>
         <scenario-3 kind="success" evidence-type="deterministic">Playback URL resolved for event</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">No recording events returns empty list (not error)</scenario-4>
+        <scenario-1b kind="success" evidence-type="deterministic">Second page requested; hasMore accounts for the page offset against a grand total</scenario-1b>
+        <scenario-1c kind="success" evidence-type="deterministic">hasMore inferred from a full page when the envelope reports neither flag nor total</scenario-1c>
+        <scenario-1d kind="success" evidence-type="deterministic">Request carries seq/userid/hmac/device_id/window/page/page_size</scenario-1d>
+        <scenario-1e kind="success" evidence-type="deterministic">Alternative envelope keys (id/alarm_type/start_time/cover) and epoch-seconds widening</scenario-1e>
+        <scenario-2b kind="success" evidence-type="deterministic">Local timeline read honours the requested window</scenario-2b>
+        <scenario-2c kind="success" evidence-type="deterministic">Re-fetching a page does not duplicate cache rows</scenario-2c>
+        <scenario-3b kind="success" evidence-type="deterministic">Unresolved playback URL is fetched remotely, persisted, then served from cache</scenario-3b>
+        <scenario-4b kind="success" evidence-type="deterministic">Null data is an empty page, not an error</scenario-4b>
+        <scenario-4c kind="success" evidence-type="deterministic">An empty later page does not evict cached events</scenario-4c>
+        <scenario-4d kind="failure" evidence-type="deterministic">Event without a recording maps to EVENT_NO_RECORDING</scenario-4d>
+        <scenario-5 kind="failure" evidence-type="deterministic">401 maps to EVENT_UNAUTHORIZED</scenario-5>
+        <scenario-5b kind="failure" evidence-type="deterministic">App-level auth code maps to EVENT_UNAUTHORIZED</scenario-5b>
+        <scenario-5c kind="failure" evidence-type="deterministic">5xx maps to EVENT_FETCH_FAILED</scenario-5c>
+        <scenario-5d kind="failure" evidence-type="deterministic">Unknown success code maps to EVENT_FETCH_FAILED</scenario-5d>
+        <scenario-5e kind="failure" evidence-type="deterministic">Missing session maps to EVENT_UNAUTHORIZED before any request</scenario-5e>
+        <scenario-5f kind="failure" evidence-type="deterministic">Unknown event id maps to EVENT_NOT_FOUND</scenario-5f>
+        <scenario-5g kind="success" evidence-type="deterministic">Page numbers below one are coerced to 1</scenario-5g>
+        <scenario-6 kind="success" evidence-type="trace">No event id, device id, or token reaches the log buffer</scenario-6>
+        <scenario-7 kind="success" evidence-type="trace">Fetch emits BLOCK_FETCH_EVENTS then BLOCK_DB_WRITE then BLOCK_SYNC_TO_DB</scenario-7>
       </scenarios>
       <required-log-markers>
         <marker-1>[Event][getEventTimeline][BLOCK_FETCH_EVENTS]</marker-1>
@@ -318,9 +337,21 @@
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Empty result must not emit BLOCK_SYNC_TO_DB</assertion-1>
+        <assertion-2>Empty result must not emit BLOCK_DB_WRITE (an empty page may not touch the cache)</assertion-2>
+        <assertion-3>Empty later page must not evict previously cached events</assertion-3>
       </required-trace-assertions>
+      <gate-evidence>
+        <evidence-1>2026-09-28 :app:testDebugUnitTest — 91 tests / 0 failures (68 baseline + 23 M-EVENT)</evidence-1>
+        <evidence-2>2026-09-28 :app:assembleDebug — app-debug.apk 17.2 MB</evidence-2>
+        <evidence-3>2026-09-28 scenario_6 caught EventDao leaking event_id into BLOCK_DB_WRITE; DAO log line fixed</evidence-3>
+      </gate-evidence>
       <wave-follow-up>Events displayed in UI with correct date grouping.</wave-follow-up>
       <phase-follow-up>Pagination (scroll to load more) verified.</phase-follow-up>
+      <deferred>
+        <deferred-1>EventPaths constants are a guess: real Yi Cloud paths are versioned without a /v1 prefix. Re-point after a live capture.</deferred-1>
+        <deferred-2>EventSigner duplicates the M-CAMERA-LIST HmacSHA1 scheme; unconfirmed for the event API. Collapse both into M-HTTP after a capture.</deferred-2>
+        <deferred-3>Playback URL wire format is provisional; only the parse path is proven, not the endpoint.</deferred-3>
+      </deferred>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-EVENT>
 
