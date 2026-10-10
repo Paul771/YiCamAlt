@@ -31,7 +31,22 @@
   3. Для каждой камеры известен транспорт (TNP / TUTK) и получены P2P-реквизиты (p2pid, пароль, InitString, License через `/v4/tnp/device_info`); реквизиты лежат только в памяти / EncryptedSharedPreferences, не в открытом Room
   4. Расширенный `RedactionScanner` на реалистичных фикстурах не находит в логах hmac, токены, пароли, License, InitString, DID/p2pid, nonce и серийники; диагностический лог пишется во внутреннее хранилище
   5. `.gitignore` и проверка перед коммитом не пропускают APK, .so, декомпилированный код и flow-файлы захвата
-**Plans**: TBD
+**Plans:** 13 plans
+
+Plans:
+- [ ] 01-00-PLAN.md — Wave 0: починка tools/gradle.ps1, компилируемая базовая линия, GRACE-контракты новых модулей (planned)
+- [ ] 01-01-PLAN.md — Редакция логов: RedactionScanner + фикстуры, shape-only LogRedactor, BASIC-логгер HttpClientModule (wave 1)
+- [ ] 01-02-PLAN.md — Диагностический лог только во внутреннем хранилище; серийники/uid/epoch убраны из логов (wave 1)
+- [ ] 01-03-PLAN.md — .gitignore + pre-commit хук (в т.ч. режим --range) против бинарников, захватов и секретов (wave 1)
+- [ ] 01-04-PLAN.md — Единый YiRequestSigner (wave 1)
+- [ ] 01-05-PLAN.md — Base URL на каждый запрос, один refresh на истечение сессии, заголовки приложения, проба-матрица (wave 2)
+- [ ] 01-06-PLAN.md — Синхронизация GRACE, запуск пробы на телефоне, выбор ветки дерева решений (wave 3, checkpoint)
+- [ ] 01-07-PLAN.md — Толерантный парсер списка устройств и tnp device_info, DevicePaths (wave 4)
+- [ ] 01-08-PLAN.md — YiRegion, автоопределение региона при логине, флаг ручного сервера (wave 4)
+- [ ] 01-12-PLAN.md — TransportType/P2pCredentials, расшифровка пароля, шифрованное хранилище, Room v2 (wave 4)
+- [ ] 01-09-PLAN.md — CameraRegistry: источники по пробе, shared, регион, P2P-реквизиты, кэш (wave 5)
+- [ ] 01-10-PLAN.md — UI списка камер: состояния, pull-to-refresh, кэш при старте (wave 6)
+- [ ] 01-11-PLAN.md — Синхронизация GRACE и финальная проверка на телефоне (wave 7, checkpoint)
 **UI hint**: yes
 **Notes**:
   - Первая задача — одна проба-матрица на устройстве (`/v4/devices/list`, `/v5/devices/list`, `/v5/deviceshare/*` на трёх регионах + `/v4/tnp/device_info`), логирующая только статус/код/длину/имена полей; дальше — по дереву решений из research/SUMMARY.md.
