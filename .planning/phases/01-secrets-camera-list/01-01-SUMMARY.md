@@ -68,6 +68,8 @@ Shape-only allowlist JSON masking and hmac/userid/uid query masking via a new `L
 3. **Colliding `<key>` names** (several identifier-like keys in one object) are disambiguated as `<key2>`, `<key3>` instead of silently overwriting.
 4. **Gradle race:** the first Task 1 run failed in `hiltJavaCompileDebugUnitTest` on a half-written generated `Hilt_YiCamAltApp.java` (parallel executor sharing the build dir); re-run passed with no code change. One later run used `--rerun-tasks` to regenerate test XMLs that a concurrent run had wiped.
 
+5. **[Rule 2 - Security review MEDIUM] Query keys drift.** The hand-written `QUERY_KEYS` list missed device_id, deviceid, user_id and access_token. `maskQuery` now masks any `key=value` whose key passes `isSecretKey()`, and `QUERY_KEYS` is built from `SECRET_KEY_EXACT + SECRET_KEY_FRAGMENTS`, so the two lists cannot drift apart. Tests were added for event/tnp/event-list URLs (event_id, seq and limit stay readable) and for QUERY_KEYS/classifier consistency. Commit c96f202; scoped run `BUILD SUCCESSFUL in 11s`, LogRedactorTest tests=14 failures=0.
+
 ## Deferred leaks
 
 None found: with scanner v0.2.0 the full unit suite (including CameraRegistry, CameraCommand, YiDatabase, Auth, Event, Login tests) is green.
