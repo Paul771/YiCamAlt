@@ -19,3 +19,24 @@ app/src/main/jniLibs/
 *.pcap
 *.pcapng
 auth_log.txt
+
+# SEC-03: vendor binaries, RE output, captures, local agent state
+*.apk
+*.apks
+*.apkm
+*.xapk
+*.aab
+*.so
+*.dex
+*.smali
+*.jadx
+*.flows
+*.har
+_tools/
+_work/
+_jadx/
+.venv-mitm/
+.mitmproxy/
+diag_log.txt
+diag_log.txt.1
+.claude/

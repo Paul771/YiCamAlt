@@ -1,0 +1,120 @@
+#!/bin/sh
+# FILE: tools/git-hooks/pre-commit
+# ROLE: SCRIPT
+#
+# PURPOSE: Repo guard for SEC-03. Refuses a commit that would put vendor binaries, decompiled
+#   code, traffic captures or real secret values into this PUBLIC repository.
+#
+# RULES (each hit prints "pre-commit: BLOCKED rule=<rule> file=<path> [line=<n>]"; the matched
+#   value itself is never echoed):
+#   vendor-or-capture-path  staged path is an APK/bundle, native lib, dex/smali/jadx output,
+#                           a capture (flow/pcap/har/mitm) or a diag/auth log, or lives under
+#                           _apk, _re, _work, _tools, _jadx, captures or app/src/main/jniLibs.
+#   decompiled-code         an added line in a .java/.kt file carries a decompiler marker.
+#   secret-value            an added line holds a real-looking token / License / InitString /
+#                           password / hmac value or a Bearer credential. Lines containing the
+#                           marker SYNTH (synthetic test fixtures) are allowed.
+#
+# MODES:
+#   (no args)                 check the index (normal pre-commit use)
+#   --range <base>..<head>    apply the same rules to a commit range, so commits that reached
+#                             history without this hook are still caught
+#
+# INSTALL: powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-hooks.ps1
+#   (copies this file to .git/hooks/pre-commit; the Git LFS hooks stay untouched)
+# SELF-TEST: sh tools/git-hooks/test-pre-commit.sh
+#
+# EXIT CODE: 0 clean, 1 blocked, 2 usage or git error.
+
+PATH_RE='(^|/)(_apk|_re|_work|_tools|_jadx|captures)/|^app/src/main/jniLibs/|\.(apk|apks|apkm|xapk|aab|so|dex|smali|jadx|flow|flows|mitm|pcap|pcapng|har)$|(^|/)(auth_log|diag_log)\.txt(\.1)?$'
+
+mode=index
+range=
+if [ "${1:-}" = "--range" ]; then
+    if [ -z "${2:-}" ]; then
+        echo "pre-commit: usage: pre-commit [--range <base>..<head>]" >&2
+        exit 2
+    fi
+    mode=range
+    range=$2
+fi
+
+list_files() {
+    if [ "$mode" = range ]; then
+        git diff --name-only --no-renames --diff-filter=ACMR "$range"
+    else
+        git diff --cached --name-only --no-renames --diff-filter=ACMR
+    fi
+}
+
+added_diff() {
+    if [ "$mode" = range ]; then
+        git diff -U0 --no-color --no-ext-diff --no-renames --diff-filter=ACMR "$range"
+    else
+        git diff --cached -U0 --no-color --no-ext-diff --no-renames --diff-filter=ACMR
+    fi
+}
+
+files=$(list_files) || { echo "pre-commit: ERROR cannot list changed files (mode=$mode)" >&2; exit 2; }
+diff_out=$(added_diff) || { echo "pre-commit: ERROR cannot read diff (mode=$mode)" >&2; exit 2; }
+
+blocked=0
+
+# START_BLOCK_PATH_RULE
+path_hits=$(printf '%s\n' "$files" | grep -E "$PATH_RE")
+if [ -n "$path_hits" ]; then
+    blocked=1
+    printf '%s\n' "$path_hits" | while IFS= read -r p; do
+        echo "pre-commit: BLOCKED rule=vendor-or-capture-path file=$p" >&2
+    done
+fi
+# END_BLOCK_PATH_RULE
+
+# START_BLOCK_CONTENT_RULES
+# Walks the -U0 diff, tracks the current file and the new-side line number, and reports
+# rule/file/line only.
+content_hits=$(printf '%s\n' "$diff_out" | awk '
+BEGIN {
+    s1 = "\"(token|token_secret|access_token|refresh_token|license|initstring|password|hmac)\"[[:space:]]*:[[:space:]]*\"[a-z0-9+/=:_-]{20,}\""
+    s2 = "[?&]hmac=[a-z0-9%+/=]{20,}"
+    s3 = "bearer [a-z0-9._-]{20,}"
+    hdr = 0; f = ""; dec = 0; ln = 0
+}
+/^diff --git / { hdr = 1; next }
+hdr && /^\+\+\+ / {
+    f = substr($0, 5); gsub(/"/, "", f); sub(/^b\//, "", f)
+    dec = (f ~ /\.(java|kt)$/)
+    next
+}
+/^@@ / {
+    hdr = 0
+    s = $0; sub(/^@@ -[0-9,]+ \+/, "", s); sub(/[ ,].*$/, "", s); ln = s + 0
+    next
+}
+hdr { next }
+/^\+/ {
+    line = $0
+    if (dec && line ~ /JADX WARN|loaded from: classes[0-9]*\.dex|Decompiled by|^\+\.class public|^\+\.method /)
+        print "decompiled-code file=" f " line=" ln
+    if (index(line, "SYNTH") == 0) {
+        low = tolower(line)
+        if (low ~ s1 || low ~ s2 || low ~ s3)
+            print "secret-value file=" f " line=" ln
+    }
+    ln++
+    next
+}
+')
+if [ -n "$content_hits" ]; then
+    blocked=1
+    printf '%s\n' "$content_hits" | while IFS= read -r h; do
+        echo "pre-commit: BLOCKED rule=$h" >&2
+    done
+fi
+# END_BLOCK_CONTENT_RULES
+
+if [ "$blocked" -ne 0 ]; then
+    echo "pre-commit: remove the blocked files/values (see SEC-03 in HANDOFF.md section 6)" >&2
+    exit 1
+fi
+exit 0

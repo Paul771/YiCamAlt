@@ -133,6 +133,7 @@ git reset --hard origin/master
 4. **`adb` не в PATH.** Используйте полный путь: `$env:ANDROID_SDK_ROOT\platform-tools\adb.exe`.
 5. **Порт 8080 свободен** — иначе mitmproxy не стартует.
 6. **Python 3.11, не 3.13/3.14.** На 3.14 mitmproxy ломает TLS (`Recv failure: Connection was reset`).
+7. **Install the repo guard:** `powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-hooks.ps1` (blocks vendor binaries, captures and secret values from commits; SEC-03). Копирует `tools/git-hooks/pre-commit` в `.git/hooks/`, LFS-хуки не трогает. Самопроверка: `sh tools/git-hooks/test-pre-commit.sh` (8 строк `PASS`).
 
 ## 5. Куда писать результат
 
@@ -146,4 +147,5 @@ git reset --hard origin/master
 
 - Логин и пароль Yi-аккаунта вводятся пользователем вручную и **не** должны появляться в чате, командах, логах, коммитах или документации.
 - `captures/` (flow-файлы mitmproxy), `auth_log.txt`, токены и cookie не коммитить — они исключены из Git, но проверяйте `git status` перед коммитом.
+- SEC-03: pre-commit-хук (п. 4.7) блокирует `*.apk`/`*.so`/`*.dex`/`*.smali`/`*.jadx`, capture-файлы, `_apk/`, `_re/`, `_work/`, `_tools/`, `jniLibs/` и строки с реальными значениями token/License/InitString/password/hmac. Фиктивные значения в тестах должны содержать `SYNTH`. Проверка уже попавших коммитов: `sh tools/git-hooks/pre-commit --range <base>..HEAD`.
 - Логи приложения уже маскируют `password=`, `account=` и `Authorization` значениями `██`. Не отключайте `RedactionScanner` и не возвращайте plaintext-пароль в URL.
