@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: executing
+stopped_at: Completed 01-00-PLAN.md
+last_updated: "2026-10-10T18:14:53.995Z"
+last_activity: 2026-10-10
+progress:
+  total_phases: 6
+  completed_phases: 0
+  total_plans: 13
+  completed_plans: 1
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -5,20 +21,21 @@
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 1 — Секреты и реальный список камер
+**Current focus:** Phase 01 — secrets-camera-list
 
 ## Current Position
 
-Phase: 1 of 6 (Секреты и реальный список камер)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-10-10 — Roadmap created (6 phases, 33/33 v1 requirements mapped)
+Phase: 01 (secrets-camera-list) — EXECUTING
+Plan: 2 of 13
+Status: Ready to execute
+Last activity: 2026-10-10
 
 Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: -
 - Total execution time: 0.0 hours
@@ -30,10 +47,12 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: -
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01 P00 | 50min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -46,6 +65,7 @@ Recent decisions affecting current work:
 - [Roadmap]: TNP — транспорт по умолчанию, TUTK-адаптер только при камере type 0
 - [Roadmap]: Phase 5 (события) идёт параллельно с P2P-линией (Phases 2–4); EVT-04 замыкается после Phase 4
 - [Roadmap]: GSD-нумерация фаз независима от GRACE `Phase-N`; каждая фаза обновляет GRACE-артефакты (контракты, development-plan, knowledge-graph, verification-plan)
+- [Phase 01]: gradle.ps1 clears handle inheritance (except stdin) before spawning Gradle; unknown exit code reports 1
 
 ### Pending Todos
 
@@ -59,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10
-Stopped at: Roadmap and state initialized
+Last session: 2026-10-10T18:14:53.988Z
+Stopped at: Completed 01-00-PLAN.md
 Resume file: None

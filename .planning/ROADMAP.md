@@ -34,7 +34,7 @@
 **Plans:** 13 plans
 
 Plans:
-- [ ] 01-00-PLAN.md — Wave 0: починка tools/gradle.ps1, компилируемая базовая линия, GRACE-контракты новых модулей (planned)
+- [x] 01-00-PLAN.md — Wave 0: починка tools/gradle.ps1, компилируемая базовая линия, GRACE-контракты новых модулей (planned)
 - [ ] 01-01-PLAN.md — Редакция логов: RedactionScanner + фикстуры, shape-only LogRedactor, BASIC-логгер HttpClientModule (wave 1)
 - [ ] 01-02-PLAN.md — Диагностический лог только во внутреннем хранилище; серийники/uid/epoch убраны из логов (wave 1)
 - [ ] 01-03-PLAN.md — .gitignore + pre-commit хук (в т.ч. режим --range) против бинарников, захватов и секретов (wave 1)
