@@ -1,5 +1,5 @@
 // FILE: LogRedactor.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Single source of log-value masking for the HTTP layer (SEC-01).
 //   SCOPE: mask secret query parameters in request/response lines; reduce JSON bodies to shape-only form.
@@ -26,7 +26,10 @@ import kotlinx.serialization.json.booleanOrNull
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - SEC-01: extracted from HttpClientModule ad-hoc regexes. Bodies are masked by
+//   LAST_CHANGE: v0.1.1 - Security review (MEDIUM): QUERY_KEYS was a hand list that missed device_id,
+//     deviceid, user_id, access_token. maskQuery now classifies every query key with isSecretKey(), and
+//     QUERY_KEYS is derived from SECRET_KEY_EXACT + SECRET_KEY_FRAGMENTS, so the lists cannot drift.
+//   PREV_CHANGE: v0.1.0 - SEC-01: extracted from HttpClientModule ad-hoc regexes. Bodies are masked by
 //     ALLOWLIST (every string/number masked except `code`), because unknown device-list field names
 //     cannot be protected by a key denylist. Encoded-`data` string envelopes are masked recursively.
 // END_CHANGE_SUMMARY
@@ -34,11 +37,6 @@ import kotlinx.serialization.json.booleanOrNull
 internal object LogRedactor {
 
     const val MASK = "██"
-
-    val QUERY_KEYS = listOf(
-        "password", "account", "hmac", "token", "token_secret", "userid", "uid",
-        "pincode", "did", "license", "nonce",
-    )
 
     private val SECRET_KEY_FRAGMENTS = listOf(
         "token", "secret", "password", "pwd", "hmac", "license", "initstring", "nonce",
@@ -50,10 +48,15 @@ internal object LogRedactor {
         "account", "email", "mac", "ip", "ssid",
     )
 
-    // Key must not be preceded by a word char, so `seq=` or `xuid=` are not touched by accident.
-    private val QUERY_REGEX = Regex(
-        "(?i)((?<![A-Za-z0-9_])(?:${QUERY_KEYS.sortedByDescending { it.length }.joinToString("|")})=)[^&\\s#]+",
-    )
+    /**
+     * Derived, never hand-maintained: every exact secret key plus every secret fragment.
+     * maskQuery masks any query key for which isSecretKey() is true, so query and key-name
+     * classification cannot drift apart (access_token, device_id, user_id, p2pid, sn, ...).
+     */
+    val QUERY_KEYS: List<String> = (SECRET_KEY_EXACT + SECRET_KEY_FRAGMENTS).toList()
+
+    // Any `key=value` whose key is not preceded by a key char; the key is classified by isSecretKey().
+    private val QUERY_PAIR_REGEX = Regex("(?<![A-Za-z0-9_.-])([A-Za-z0-9_.-]+)=([^&\\s#]+)")
 
     private val SAFE_KEY = Regex("^[A-Za-z_][A-Za-z0-9_.-]{0,39}$")
     private val DIGIT_RUN = Regex("\\d{5,}")
@@ -64,11 +67,14 @@ internal object LogRedactor {
     // START_CONTRACT: maskQuery
     //   PURPOSE: Mask values of secret query parameters inside a log line or URL.
     //   INPUTS: { text: String - request/response line or encoded path }
-    //   OUTPUTS: { String - same text with `key=██` for every QUERY_KEYS key }
+    //   OUTPUTS: { String - same text with `key=██` for every key where isSecretKey(key) is true }
     //   SIDE_EFFECTS: none
     //   LINKS: M-HTTP
     // END_CONTRACT: maskQuery
-    fun maskQuery(text: String): String = text.replace(QUERY_REGEX, "$1$MASK")
+    fun maskQuery(text: String): String = text.replace(QUERY_PAIR_REGEX) { m ->
+        val key = m.groupValues[1]
+        if (isSecretKey(key)) "$key=$MASK" else m.value
+    }
 
     // START_CONTRACT: isSecretKey
     //   PURPOSE: Name-based classification of a key as secret-bearing.

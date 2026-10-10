@@ -53,6 +53,31 @@ class LogRedactorTest {
         val out = LogRedactor.maskQuery("?token=${F.TOKEN}&token_secret=${F.TOKEN_SECRET}&xuid=7&seq=1")
         assertEquals("?token=██&token_secret=██&xuid=7&seq=1", out)
     }
+
+    @Test
+    fun `maskQuery masks device and user identifiers of event and tnp urls`() {
+        val out = LogRedactor.maskQuery("?device_id=SYNTH123456&user_id=77&p2pid=SYNTHAAAA&access_token=abc&sn=SYNTH9&seq=1&event_id=5")
+        assertEquals("?device_id=██&user_id=██&p2pid=██&access_token=██&sn=██&seq=1&event_id=5", out)
+    }
+
+    @Test
+    fun `maskQuery masks every id and token key of an event-list URL`() {
+        val line = "--> GET https://h/v5/alert/events?seq=1&user_id=${F.USER_ID}&device_id=${F.SERIAL}" +
+            "&deviceid=${F.DID}&access_token=${F.TOKEN}&sn=${F.SERIAL}&limit=20&type=motion"
+        assertEquals(
+            "--> GET https://h/v5/alert/events?seq=1&user_id=██&device_id=██&deviceid=██&access_token=██" +
+                "&sn=██&limit=20&type=motion",
+            LogRedactor.maskQuery(line),
+        )
+    }
+
+    @Test
+    fun `QUERY_KEYS is derived from the secret-key classifier`() {
+        listOf("device_id", "deviceid", "user_id", "userid", "uid", "did", "token", "hmac", "password", "account")
+            .forEach { assertTrue(it in LogRedactor.QUERY_KEYS || LogRedactor.isSecretKey(it), it) }
+        LogRedactor.QUERY_KEYS.forEach { assertTrue(LogRedactor.isSecretKey(it), "QUERY_KEYS entry not secret: $it") }
+        assertTrue(LogRedactor.isSecretKey("access_token"))
+    }
     // END_BLOCK_MASK_QUERY_TESTS
 
     // START_BLOCK_MASK_BODY_TESTS
