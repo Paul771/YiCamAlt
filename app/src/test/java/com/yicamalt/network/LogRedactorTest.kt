@@ -78,6 +78,18 @@ class LogRedactorTest {
         LogRedactor.QUERY_KEYS.forEach { assertTrue(LogRedactor.isSecretKey(it), "QUERY_KEYS entry not secret: $it") }
         assertTrue(LogRedactor.isSecretKey("access_token"))
     }
+
+    @Test
+    fun `maskQuery masks compound keys with an exact secret segment`() {
+        val out = LogRedactor.maskQuery("?x-uid=1&user.account=2&cam-did=3&seq=1")
+        assertEquals("?x-uid=██&user.account=██&cam-did=██&seq=1", out)
+    }
+
+    @Test
+    fun `maskQuery masks pairs embedded in a non-secret value`() {
+        val out = LogRedactor.maskQuery("?next=https://h/p?token=abc&seq=1&ref=a=b")
+        assertEquals("?next=https://h/p?token=██&seq=1&ref=a=b", out)
+    }
     // END_BLOCK_MASK_QUERY_TESTS
 
     // START_BLOCK_MASK_BODY_TESTS

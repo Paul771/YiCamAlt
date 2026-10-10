@@ -73,7 +73,8 @@ internal object LogRedactor {
     // END_CONTRACT: maskQuery
     fun maskQuery(text: String): String = text.replace(QUERY_PAIR_REGEX) { m ->
         val key = m.groupValues[1]
-        if (isSecretKey(key)) "$key=$MASK" else m.value
+        // Non-secret value may embed pairs (redirect=https://h/x?token=..): mask those too.
+        if (isSecretKey(key)) "$key=$MASK" else "$key=${maskQuery(m.groupValues[2])}"
     }
 
     // START_CONTRACT: isSecretKey
@@ -85,7 +86,9 @@ internal object LogRedactor {
     // END_CONTRACT: isSecretKey
     fun isSecretKey(key: String): Boolean {
         val k = key.lowercase()
-        return k in SECRET_KEY_EXACT || SECRET_KEY_FRAGMENTS.any { k.contains(it) }
+        return k in SECRET_KEY_EXACT ||
+            k.split('.', '-').any { it in SECRET_KEY_EXACT } ||
+            SECRET_KEY_FRAGMENTS.any { k.contains(it) }
     }
 
     // START_CONTRACT: maskJsonBody
