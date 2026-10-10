@@ -129,4 +129,8 @@ tasks.withType<Test> {
         "-Djavax.net.ssl.trustStorePassword=changeit",
         "-Djavax.net.ssl.trustStoreType=JKS",
     )
+    // SEC-01: opt-in sweep of a pulled device log (RealLogScanTest), -PredactionLogFile=<abs path>.
+    val redactionLogFile = (project.findProperty("redactionLogFile") as String?).orEmpty()
+    systemProperty("redaction.logFile", redactionLogFile)
+    if (redactionLogFile.isNotBlank()) outputs.upToDateWhen { false }
 }
