@@ -20,26 +20,52 @@
 #
 #   Also: a hard timeout with a kill, so a wedged build can never occupy a harness slot again.
 #
-# USAGE:
-#   .\tools\gradle.ps1 :app:testDebugUnitTest
-#   .\tools\gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.event.*"
-#   .\tools\gradle.ps1 :app:assembleDebug -TimeoutSec 3600
+# USAGE (always via -File from the repo root; AppLocker blocks .bat/.cmd):
+#   powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest
+#   powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.event.*" -PredactionLogFile=E:/x/diag_log.txt
+#   powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest :app:assembleDebug -TimeoutSec 3600
+#
+#   Named parameters of this script: -TimeoutSec, -DryRun; everything else goes to Gradle.
+#   -DryRun prints "GRADLE_ARGS=<args joined with '|'> TIMEOUT=<n>" and exits 0 without
+#   starting Java (used by tools/test-gradle-args.ps1).
+#
+# LOGS: each run writes build/logs/gradle-<PID>.log and gradle-<PID>.err.log (PID of this
+#   wrapper process), so parallel runs cannot clobber each other; when the run ends they are
+#   copied to build/logs/gradle-last.log and gradle-last.err.log. Judge a run only by its own
+#   per-PID log and the "--- gradle exit=" line.
 #
 # EXIT CODE: Gradle's exit code. 124 if the timeout fired and the process tree was killed.
 
+# PositionalBinding=$false: with -File, a plain positional token must never bind to
+# -TimeoutSec ("cannot convert ':app:testDebugUnitTest' to Int32"). Only GradleArgs is positional.
+[CmdletBinding(PositionalBinding = $false)]
 param(
-    [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+    [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$GradleArgs,
-    [int]$TimeoutSec = 1800
+    [int]$TimeoutSec = 1800,
+    [switch]$DryRun
 )
+
+if ($DryRun) {
+    Write-Output ("GRADLE_ARGS=" + ($GradleArgs -join '|') + " TIMEOUT=$TimeoutSec")
+    exit 0
+}
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $logDir = Join-Path $repoRoot 'build\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-$outLog = Join-Path $logDir 'gradle-last.log'
-$errLog = Join-Path $logDir 'gradle-last.err.log'
+$outLog = Join-Path $logDir "gradle-$PID.log"
+$errLog = Join-Path $logDir "gradle-$PID.err.log"
+$lastOutLog = Join-Path $logDir 'gradle-last.log'
+$lastErrLog = Join-Path $logDir 'gradle-last.err.log'
+Write-Output "--- gradle log=$outLog ---"
+
+function Copy-LastLogs {
+    Copy-Item -LiteralPath $outLog -Destination $lastOutLog -Force -ErrorAction SilentlyContinue
+    Copy-Item -LiteralPath $errLog -Destination $lastErrLog -Force -ErrorAction SilentlyContinue
+}
 
 # HANDOFF.md §4.1: invoke the wrapper's Java entry point directly, no .bat/.cmd layer.
 $java = Join-Path $env:JAVA_HOME 'bin\java.exe'
@@ -71,6 +97,7 @@ if (-not $finished) {
             'org.gradle.wrapper.GradleWrapperMain' '--stop' 2>&1 | Out-Null } catch { }
     try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
     Get-Content -LiteralPath $outLog -Tail 40 -ErrorAction SilentlyContinue
+    Copy-LastLogs
     exit 124
 }
 
@@ -83,5 +110,6 @@ if ((Get-Item -LiteralPath $errLog -ErrorAction SilentlyContinue).Length -gt 0) 
     Get-Content -LiteralPath $errLog -Tail 20 -ErrorAction SilentlyContinue
 }
 
+Copy-LastLogs
 Write-Output "--- gradle exit=$code elapsed=${elapsed}s log=$outLog ---"
 exit $code
