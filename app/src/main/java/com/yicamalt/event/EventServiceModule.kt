@@ -1,11 +1,11 @@
 // FILE: EventServiceModule.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Fetch, cache, and serve the Yi camera event timeline; resolve event playback URLs.
 //   SCOPE: getEventTimeline (paged cloud fetch + Room cache), getEventById, getLocalTimeline,
 //     getPlaybackUrl, syncEventsToDb, getLocalEventCount; emits BLOCK_FETCH_EVENTS /
 //     BLOCK_SYNC_TO_DB / BLOCK_RESOLVE_PLAYBACK_URL trace markers.
-//   DEPENDS: M-HTTP (YiCloudEventApi), M-AUTH (SessionSource), M-LOCAL-DB (EventDao)
+//   DEPENDS: M-HTTP (YiCloudEventApi, YiRequestSigner), M-AUTH (SessionSource), M-LOCAL-DB (EventDao)
 //   LINKS: M-EVENT, M-UI-EVENTS, M-EVENT-PLAYBACK
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -15,6 +15,7 @@ package com.yicamalt.event
 import com.yicamalt.auth.SessionSource
 import com.yicamalt.database.EventDao
 import com.yicamalt.database.EventEntity
+import com.yicamalt.network.YiRequestSigner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
@@ -35,6 +36,7 @@ import retrofit2.HttpException
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.1.1 - Signing via YiRequestSigner; EventSigner removed.
 //   LAST_CHANGE: v0.1.0 - Created for Phase-3 M-EVENT against the planned contract exports.
 //     DEVIATION (added exports): getLocalTimeline and EventTimelinePort were added because the
 //     contract's syncEventsToDb / getLocalEventCount are otherwise write-only — a cache with no
@@ -88,10 +90,7 @@ class EventServiceModule @Inject constructor(
         Timber.d("[Event][getEventTimeline][BLOCK_FETCH_EVENTS] page=$safePage windowMs=${to - from}")
 
         val s = session.currentSession() ?: throw EventError.Unauthorized
-        val hmac = EventSigner.hmacSha1Base64(
-            key = s.accessToken + "&" + s.refreshToken,
-            msg = EventSigner.canonicalMessage(s.userId),
-        )
+        val hmac = YiRequestSigner.sign(s.accessToken, s.refreshToken, s.userId)
         val envelope = try {
             api.eventList(
                 userId = s.userId,
@@ -166,10 +165,7 @@ class EventServiceModule @Inject constructor(
         }
 
         val s = session.currentSession() ?: throw EventError.Unauthorized
-        val hmac = EventSigner.hmacSha1Base64(
-            key = s.accessToken + "&" + s.refreshToken,
-            msg = EventSigner.canonicalMessage(s.userId),
-        )
+        val hmac = YiRequestSigner.sign(s.accessToken, s.refreshToken, s.userId)
         val envelope = try {
             api.playbackUrl(userId = s.userId, hmac = hmac, eventId = eventId)
         } catch (e: HttpException) {

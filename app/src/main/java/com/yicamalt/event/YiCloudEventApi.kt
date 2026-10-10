@@ -1,5 +1,5 @@
 // FILE: YiCloudEventApi.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Retrofit interface + envelope DTO for the Yi Cloud event timeline and playback endpoints.
 //   SCOPE: eventList() and playbackUrl(); data is kept as raw JsonElement because the real
@@ -21,10 +21,11 @@ import retrofit2.http.Query
 //   YiCloudEventApi - Retrofit service for the event timeline + playback URL endpoints.
 //   EventListEnvelope - code/message/data wrapper; data kept as raw JsonElement.
 //   EventPaths - path constants isolated so a live capture edits one place only.
-//   EventSigner - provisional hmac request signing, mirroring the confirmed device-API scheme.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.1.2 - EventSigner removed; event requests are signed by network/YiRequestSigner
+//     (deferred-2 in verification-plan closed).
 //   LAST_CHANGE: v0.1.1 - EventPaths re-pointed from `v1/camera/event/{list,playback}` to
 //     `/v5/alert/events` + `/bs/v8/recording/{id}`, on static APK evidence (tools/apk_endpoints.py,
 //     docs/reference/yi-cloud-endpoints.md). The old values were disproven: neither appears among
@@ -100,22 +101,4 @@ interface YiCloudEventApi {
         @Query("hmac") hmac: String,
         @Query("event_id") eventId: String,
     ): EventListEnvelope
-}
-
-/**
- * Provisional request signing for the event API.
- *
- * Mirrors the scheme confirmed on-device for the device API — Base64(HMAC-SHA1) keyed on
- * "<token>&<token_secret>" over the canonical parameter string. Unconfirmed for events.
- */
-internal object EventSigner {
-    fun hmacSha1Base64(key: String, msg: String): String {
-        val mac = javax.crypto.Mac.getInstance("HmacSHA1")
-        mac.init(javax.crypto.spec.SecretKeySpec(key.toByteArray(Charsets.UTF_8), "HmacSHA1"))
-        return java.util.Base64.getEncoder()
-            .encodeToString(mac.doFinal(msg.toByteArray(Charsets.UTF_8)))
-    }
-
-    /** Canonical signed string for a signed request; kept in one place so tests can recompute it. */
-    fun canonicalMessage(userId: String, seq: String = "1"): String = "seq=$seq&userid=$userId"
 }
