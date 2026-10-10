@@ -1,5 +1,5 @@
 // FILE: AuthRepositoryTest.kt
-// VERSION: 0.1.1
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify login/refresh/logout/session flows against MockWebServer + in-memory AuthStore + fake clock.
 //   SCOPE: success + failure scenarios for V-M-AUTH; trace + redaction assertions.
@@ -9,6 +9,11 @@
 //   MAP_MODE: LOCALS
 // END_MODULE_CONTRACT
 package com.yicamalt.auth
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - refresh bound tests: 5x getAccessToken + 3x refresh on an expired session with a
+//     failing refresh API = exactly 1 auth_token call; a new login re-arms exactly one more attempt.
+// END_CHANGE_SUMMARY
 
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
@@ -252,5 +257,42 @@ class AuthRepositoryTest {
         assertEquals(2, refreshMarkers, "refresh marker appears on refresh() start + success lines")
         // Verify only one refresh network call hit the server.
         assertEquals(2, server.requestCount, "login + one refresh only")
+    }
+
+    @Test
+    fun `refresh bound at most one auth_token call per session expiry`() {
+        // login #1 (expires in 1s), then every further response is a failing refresh body.
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", expiresIn = 1)))
+        repeat(10) { server.enqueue(MockResponse().setBody("""{"code":"20201"}""")) }
+        val r = repo
+        runBlocking { r.login("user@example.com", "pw") }
+        clock.advance(2_000L)
+        runBlocking {
+            repeat(5) { assertEquals("acc-1", r.getAccessToken(), "stale token returned after failed refresh") }
+            repeat(3) { assertNull(r.refresh(), "authenticator path sees the same memo") }
+        }
+        assertEquals(2, server.requestCount, "login + exactly ONE auth_token call")
+        recorder.assertMarkerAppeared("BLOCK_REFRESH_ONCE_PER_EXPIRY")
+    }
+
+    @Test
+    fun `refresh bound re-arms after a new successful login`() {
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", expiresIn = 1)))
+        server.enqueue(MockResponse().setBody("""{"code":"20201"}"""))
+        val r = repo
+        runBlocking { r.login("user@example.com", "pw") }
+        clock.advance(2_000L)
+        runBlocking { repeat(3) { r.getAccessToken() } }
+        assertEquals(2, server.requestCount)
+        // New login -> new expiresAt -> exactly one more refresh attempt on the next expiry.
+        server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2", expiresIn = 1)))
+        repeat(5) { server.enqueue(MockResponse().setBody("""{"code":"20201"}""")) }
+        runBlocking { r.login("user@example.com", "pw") }
+        clock.advance(2_000L)
+        runBlocking {
+            repeat(4) { r.getAccessToken() }
+            repeat(2) { r.refresh() }
+        }
+        assertEquals(4, server.requestCount, "login, refresh, login, ONE more refresh")
     }
 }

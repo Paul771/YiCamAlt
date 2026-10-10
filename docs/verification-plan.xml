@@ -179,13 +179,21 @@
         <scenario-2 kind="success" evidence-type="trace">Auth header injected on requests when token present</scenario-2>
         <scenario-3 kind="failure" evidence-type="trace">401 response triggers exactly one token refresh and one retry</scenario-3>
         <scenario-4 kind="failure" evidence-type="trace">Authorization header not present in any captured log (RedactionScanner clean)</scenario-4>
+        <scenario-8 kind="success" evidence-type="deterministic">base-url-switch-reaches-new-server-without-rebuild (Retrofit on placeholder yi-api.invalid, per-request rewrite)</scenario-8>
+        <scenario-9 kind="success" evidence-type="deterministic">app-headers-on-device-paths-not-on-login (x-kamihome-*, x-xiaoyi-*, User-Agent yihome/6.9.8)</scenario-9>
+        <scenario-10 kind="success" evidence-type="deterministic">base-path-prefix-preserved</scenario-10>
+        <scenario-11 kind="failure" evidence-type="deterministic">invalid-base-url-is-ioexception CONFIG_BAD_BASE_URL</scenario-11>
+        <scenario-12 kind="failure" evidence-type="deterministic">expired-session-at-most-one-auth-token-call (real AuthRepository behind the client)</scenario-12>
+        <scenario-13 kind="success" evidence-type="deterministic">probe-client-sends-no-authorization-and-never-refreshes</scenario-13>
       </scenarios>
       <required-log-markers>
         <marker-1>[Network][init][BLOCK_INIT_HTTP_CLIENT]</marker-1>
+        <marker-2>[Network][rebuild][BLOCK_INIT_HTTP_CLIENT] base url resolved per request</marker-2>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>401 triggers exactly one token refresh and one retry</assertion-1>
         <assertion-2>Auth header redacted from all log output</assertion-2>
+        <assertion-3>Expired session costs at most one POST /v4/users/auth_token until the session changes</assertion-3>
       </required-trace-assertions>
       <wave-follow-up>M-AUTH uses the HTTP client for the login endpoint against FakeYiApi.</wave-follow-up>
       <phase-follow-up>API error handling works across all endpoints (login, camera list, events, control).</phase-follow-up>
@@ -219,6 +227,7 @@
       <deferred-note>Code + test written (commit 3e901ae). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/auth/AuthRepositoryTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.auth.*"</check-1>
@@ -231,11 +240,13 @@
         <scenario-3 kind="success" evidence-type="trace">Token refresh on expiry re-validates and stores new tokens</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Invalid credentials return AuthInvalidCredentials</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">Network error returns AuthNetworkError without leaking stack trace</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">refresh-bound-at-most-one-auth-token-call-per-session-expiry (5x getAccessToken + 3x refresh = 1 call; new login re-arms one more)</scenario-6>
       </scenarios>
       <required-log-markers>
         <marker-1>[Auth][login][BLOCK_VALIDATE_CREDENTIALS]</marker-1>
         <marker-2>[Auth][login][BLOCK_STORE_TOKEN]</marker-2>
         <marker-3>[Auth][refresh][BLOCK_REFRESH_TOKEN]</marker-3>
+        <marker-4>[Auth][refresh][BLOCK_REFRESH_ONCE_PER_EXPIRY]</marker-4>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Password must never appear in any captured log (RedactionScanner clean)</assertion-1>

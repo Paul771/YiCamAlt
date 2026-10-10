@@ -1,5 +1,5 @@
 // FILE: HttpClientModuleTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify HTTP client wiring, auth header injection, 401 refresh+retry, and redacted logging.
 //   SCOPE: success + failure scenarios for V-M-HTTP using MockWebServer + a fake AuthProvider.
@@ -11,12 +11,16 @@
 package com.yicamalt.network
 
 // START_MODULE_MAP
-//   FakeAuthProvider - scripted AuthProvider counting refresh calls.
-//   HttpClientModuleTest - scenario_1..scenario_7 (scenario_5..7: SEC-01 query and body redaction).
+//   FakeAuthProvider - scripted AuthProvider counting refresh and getAccessToken calls.
+//   HttpClientModuleTest - scenario_1..scenario_13 (5..7: SEC-01 redaction; 8..11: per-request base URL +
+//     app headers; 12: one auth_token per expiry; 13: refresh-free probe client).
+//   MutableTestConfig - ConfigModule with a switchable base URL.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - SEC-01: scenario_5 (hmac/userid query masking), scenario_6 (encoded-data login
+//   LAST_CHANGE: v0.3.0 - scenario_1 asserts the placeholder host; scenario_8..13 pin the stale-Retrofit fix,
+//     official app headers (login untouched), base-path prefix, CONFIG_BAD_BASE_URL, refresh bound, probeClient.
+//   PREV_CHANGE: v0.2.0 - SEC-01: scenario_5 (hmac/userid query masking), scenario_6 (encoded-data login
 //     envelope), scenario_7 (/v4/tnp/device_info) using synthetic RedactionFixtures.
 // END_CHANGE_SUMMARY
 
@@ -46,7 +50,8 @@ private class FakeAuthProvider(
 ) : AuthProvider {
     private val token = java.util.concurrent.atomic.AtomicReference(initialToken)
     val refreshCount = AtomicInteger(0)
-    override suspend fun getAccessToken(): String? = token.get()
+    val getCount = AtomicInteger(0)
+    override suspend fun getAccessToken(): String? { getCount.incrementAndGet(); return token.get() }
     override suspend fun refresh(): String? {
         refreshCount.incrementAndGet()
         token.set(refreshedToken)
@@ -86,10 +91,11 @@ class HttpClientModuleTest {
     }
 
     @Test
-    fun `scenario_1 retrofit built with base url and auth interceptor`() {
+    fun `scenario_1 retrofit built once on the placeholder host`() {
         val client = buildWithBaseUrl("https://api.example.com/v1/", FakeAuthProvider())
         val retrofit = client.createRetrofit()
-        assertTrue(retrofit.baseUrl().toString().startsWith("https://api.example.com/v1/"))
+        assertEquals(HttpClientModule.PLACEHOLDER_HOST, retrofit.baseUrl().host)
+        assertEquals("yi-api.invalid", retrofit.baseUrl().host)
         recorder.assertMarkerAppeared("BLOCK_INIT_HTTP_CLIENT")
     }
 
@@ -206,6 +212,136 @@ class HttpClientModuleTest {
         redaction.assertClean(trace, extraLiterals = RedactionFixtures.ALL_SECRETS)
     }
     // END_BLOCK_SEC01_SCENARIOS
+
+    // START_BLOCK_BASE_URL_SCENARIOS
+    private fun placeholder(path: String) = HttpClientModule.PLACEHOLDER_BASE_URL + path
+
+    private fun mutableClient(cfg: MutableTestConfig, auth: AuthProvider = FakeAuthProvider()) =
+        HttpClientModule(cfg, Provider { auth }).apply { logSink = { msg -> logBuffer.appendLine(msg) } }
+
+    @Test
+    fun `scenario_8 base url switch reaches new server without rebuild`() {
+        val serverB = MockWebServer().apply { start() }
+        try {
+            server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+            serverB.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+            val cfg = MutableTestConfig(server.url("/").toString())
+            val client = mutableClient(cfg)
+            val api = client.createRetrofit().create(PingApi::class.java) // created ONCE
+            runBlocking { api.ping() }
+            cfg.url = serverB.url("/").toString()
+            runBlocking { api.ping() }
+            assertEquals(1, server.requestCount, "A served only the first call")
+            assertEquals(1, serverB.requestCount, "same API instance reached B after the switch")
+            assertEquals("/ping", serverB.takeRequest().path)
+        } finally {
+            serverB.shutdown()
+        }
+    }
+
+    @Test
+    fun `scenario_9 app headers on device paths not on login`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        val client = mutableClient(MutableTestConfig(server.url("/").toString()))
+        val http = client.getHttpClient()
+        http.newCall(okhttp3.Request.Builder().url(placeholder("v5/devices/list")).build()).execute().close()
+        http.newCall(okhttp3.Request.Builder().url(placeholder("v4/users/login")).build()).execute().close()
+        http.newCall(okhttp3.Request.Builder().url(server.url("/raw")).build()).execute().close()
+
+        val device = server.takeRequest()
+        assertEquals("/v5/devices/list", device.path)
+        assertEquals("ANDROID", device.getHeader("x-kamihome-appType"))
+        assertEquals("RELEASE", device.getHeader("x-kamihome-packageType"))
+        assertEquals("android;454;6.9.8_20260826105838", device.getHeader("x-xiaoyi-appVersion"))
+        assertTrue(!device.getHeader("x-xiaoyi-appCountryCode").isNullOrBlank())
+        assertTrue(device.getHeader("User-Agent")!!.startsWith("yihome/6.9.8_20260826105838"))
+
+        val login = server.takeRequest()
+        assertEquals("/v4/users/login", login.path)
+        listOf("x-kamihome-appType", "x-kamihome-packageType", "x-xiaoyi-appCountryCode", "x-xiaoyi-appVersion")
+            .forEach { assertNull(login.getHeader(it), "login must not carry $it") }
+
+        // Absolute non-placeholder, non-xiaoyi URL: not rewritten, no app headers.
+        val raw = server.takeRequest()
+        assertEquals("/raw", raw.path)
+        assertNull(raw.getHeader("x-kamihome-appType"))
+    }
+
+    @Test
+    fun `scenario_10 base path prefix preserved`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        val client = mutableClient(MutableTestConfig(server.url("/api/").toString()))
+        client.getHttpClient().newCall(okhttp3.Request.Builder().url(placeholder("v5/devices/list?seq=1")).build())
+            .execute().close()
+        assertEquals("/api/v5/devices/list?seq=1", server.takeRequest().path)
+    }
+
+    @Test
+    fun `scenario_11 invalid base url is ioexception`() {
+        val client = mutableClient(MutableTestConfig("not a url"))
+        val err = org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+            client.getHttpClient().newCall(okhttp3.Request.Builder().url(placeholder("v5/devices/list")).build())
+                .execute().close()
+        }
+        assertTrue(err.message!!.startsWith("CONFIG_BAD_BASE_URL"), err.message)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `scenario_12_expired_session_at_most_one_auth_token_call`() {
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.path!!.contains("/v4/users/auth_token")) MockResponse().setBody("""{"code":"20201"}""")
+                else MockResponse().setResponseCode(200).setBody("{}")
+        }
+        val now = 10_000_000L
+        val store = object : com.yicamalt.auth.AuthStore {
+            private var held: com.yicamalt.auth.AuthSession? = com.yicamalt.auth.AuthSession(
+                accessToken = "expired-tok", refreshToken = "sec", expiresAt = now - 1,
+                userId = "u", authMethod = com.yicamalt.auth.AuthMethod.PASSWORD,
+            )
+            override fun putSession(session: com.yicamalt.auth.AuthSession) { held = session }
+            override fun getSession(): com.yicamalt.auth.AuthSession? = held
+            override fun clear() { held = null }
+        }
+        val clock = object : com.yicamalt.auth.Clock { override fun nowMillis(): Long = now }
+        lateinit var repo: com.yicamalt.auth.AuthRepository
+        val client = HttpClientModule(MutableTestConfig(server.url("/").toString()), Provider { repo })
+            .apply { logSink = { } }
+        repo = com.yicamalt.auth.AuthRepository(
+            client.createRetrofit().create(com.yicamalt.auth.YiCloudAuthApi::class.java), store, clock,
+        )
+        repeat(5) {
+            client.getHttpClient().newCall(okhttp3.Request.Builder().url(placeholder("v5/devices/list")).build())
+                .execute().close()
+        }
+        val paths = (0 until server.requestCount).map { server.takeRequest().path!! }
+        assertEquals(1, paths.count { it.substringBefore('?').endsWith("/v4/users/auth_token") }, paths.toString())
+        assertEquals(5, paths.count { it.startsWith("/v5/devices/list") })
+    }
+
+    @Test
+    fun `scenario_13_probe_client_sends_no_authorization_and_never_refreshes`() {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("{}"))
+        val auth = FakeAuthProvider(initialToken = "tok-probe")
+        val client = mutableClient(MutableTestConfig(server.url("/").toString()), auth)
+        client.probeClient().newCall(okhttp3.Request.Builder().url(server.url("/v5/devices/list")).build())
+            .execute().use { assertEquals(401, it.code) }
+        val rec = server.takeRequest()
+        assertNull(rec.getHeader("Authorization"))
+        assertEquals(1, server.requestCount, "no retry after 401")
+        assertEquals(0, auth.refreshCount.get())
+        assertEquals(0, auth.getCount.get())
+        assertTrue(client.probeClient() === client.probeClient(), "built once")
+    }
+
+    /** ConfigModule whose base URL can be switched at runtime (region switch). */
+    private class MutableTestConfig(@Volatile var url: String) : ConfigModule() {
+        override fun getApiBaseUrl(): String = url
+    }
+    // END_BLOCK_BASE_URL_SCENARIOS
 
     /** ConfigModule subclass that lets the test point at the mock server. */
     private open class TestConfig(private val baseUrl: String) : ConfigModule() {

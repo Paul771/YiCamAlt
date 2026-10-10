@@ -1,5 +1,5 @@
 // FILE: AuthRepository.kt
-// VERSION: 0.4.2
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Yi Cloud authentication: login, refresh, logout, session access; implements AuthProvider for M-HTTP.
 //   SCOPE: validate credentials, exchange for tokens, persist via AuthStore, refresh on expiry; emit trace markers.
@@ -22,7 +22,11 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.2 - SEC-01: auth logs carry hasUser/expiresInSec instead of user id and epoch millis
+//   LAST_CHANGE: v0.5.0 - at most one refresh attempt per session expiry: refreshFailedForExpiresAt
+//     memo (BLOCK_REFRESH_ONCE_PER_EXPIRY) shared by getAccessToken(), refresh() and refreshSession().
+//     Before: every request on an expired session triggered POST /v4/users/auth_token. After a failed
+//     refresh getAccessToken() returns the stale token without network; a new login re-arms the memo.
+//   PREV_CHANGE: v0.4.2 - SEC-01: auth logs carry hasUser/expiresInSec instead of user id and epoch millis
 //   LAST_CHANGE: v0.4.1 - Login WORKS on gw-eu (code 20000 = success). Spinner deadlock fixed:
 //     (a) token_secret now mapped as refresh token (REFRESH_KEYS),
 //     (b) missing expires_in no longer yields an instantly-expired session
@@ -112,11 +116,35 @@ class AuthRepository @Inject constructor(
         return session
     }
 
-    /** Refresh the access token using the stored refresh token. Returns the new token, or null on failure. */
-    override suspend fun refresh(): String? = doRefresh()?.accessToken
+    // START_BLOCK_REFRESH_ONCE_PER_EXPIRY
+    /**
+     * expiresAt of the session whose refresh already failed; -1 = none. A new login or a
+     * successful refresh produces a new expiresAt, which re-arms exactly one more attempt.
+     * Bounds POST /v4/users/auth_token to at most one call per session expiry.
+     */
+    @Volatile private var refreshFailedForExpiresAt: Long = -1
 
-    /** Refresh and return the full updated session, or null on failure. */
-    suspend fun refreshSession(): AuthSession? = doRefresh()
+    private fun refreshAlreadyFailed(s: AuthSession?): Boolean =
+        s != null && s.expiresAt == refreshFailedForExpiresAt
+
+    /** doRefresh() guarded by the per-expiry memo; records the failure for the current expiresAt. */
+    private suspend fun refreshOncePerExpiry(): AuthSession? {
+        val current = sessionRef ?: store.getSession() ?: return null
+        if (refreshAlreadyFailed(current)) {
+            AuthLog.d("[Auth][refresh][BLOCK_REFRESH_ONCE_PER_EXPIRY] skipped reason=already-failed-for-this-expiry")
+            return null
+        }
+        val refreshed = doRefresh()
+        if (refreshed == null) refreshFailedForExpiresAt = current.expiresAt
+        return refreshed
+    }
+    // END_BLOCK_REFRESH_ONCE_PER_EXPIRY
+
+    /** Refresh the access token using the stored refresh token. Returns the new token, or null on failure. */
+    override suspend fun refresh(): String? = refreshOncePerExpiry()?.accessToken
+
+    /** Refresh and return the full updated session, or null on failure (same once-per-expiry bound). */
+    suspend fun refreshSession(): AuthSession? = refreshOncePerExpiry()
 
     private suspend fun doRefresh(): AuthSession? {
         val current = sessionRef ?: store.getSession() ?: return null
@@ -143,8 +171,11 @@ class AuthRepository @Inject constructor(
     override suspend fun getAccessToken(): String? {
         val s = sessionRef ?: return null
         if (clock.nowMillis() >= s.expiresAt) {
-            // Token expired: attempt one refresh; return null if it fails.
-            return doRefresh()?.accessToken
+            // Token expired: at most ONE refresh per expiry. After a failure the stale token is
+            // returned without touching the network (the device API ignores Bearer; a real 401
+            // is handled once by the authenticator, which hits the same memo).
+            if (refreshAlreadyFailed(s)) return s.accessToken
+            return refreshOncePerExpiry()?.accessToken ?: s.accessToken
         }
         return s.accessToken
     }
