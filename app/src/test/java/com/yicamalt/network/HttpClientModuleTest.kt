@@ -1,16 +1,27 @@
 // FILE: HttpClientModuleTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify HTTP client wiring, auth header injection, 401 refresh+retry, and redacted logging.
 //   SCOPE: success + failure scenarios for V-M-HTTP using MockWebServer + a fake AuthProvider.
-//   DEPENDS: M-HTTP, M-CONFIG, TestInfrastructure
-//   LINKS: V-M-HTTP
+//   DEPENDS: M-HTTP, M-CONFIG, TestInfrastructure, RedactionFixtures
+//   LINKS: V-M-HTTP, SEC-01
 //   ROLE: TEST
 //   MAP_MODE: LOCALS
 // END_MODULE_CONTRACT
 package com.yicamalt.network
 
+// START_MODULE_MAP
+//   FakeAuthProvider - scripted AuthProvider counting refresh calls.
+//   HttpClientModuleTest - scenario_1..scenario_7 (scenario_5..7: SEC-01 query and body redaction).
+// END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - SEC-01: scenario_5 (hmac/userid query masking), scenario_6 (encoded-data login
+//     envelope), scenario_7 (/v4/tnp/device_info) using synthetic RedactionFixtures.
+// END_CHANGE_SUMMARY
+
 import com.yicamalt.config.ConfigModule
+import com.yicamalt.test.RedactionFixtures
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
 import kotlinx.coroutines.runBlocking
@@ -153,6 +164,48 @@ class HttpClientModuleTest {
         client.getHttpClient().newCall(req).execute().close()
         assertEquals("Bearer manual-token", server.takeRequest().getHeader("Authorization"))
     }
+
+    // START_BLOCK_SEC01_SCENARIOS
+    @Test
+    fun `scenario_5 hmac userid query values masked in request log`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        val client = buildClient(FakeAuthProvider())
+        val url = server.url("/v5/devices/list?seq=1&userid=${RedactionFixtures.USER_ID}&hmac=${RedactionFixtures.HMAC}")
+        client.getHttpClient().newCall(okhttp3.Request.Builder().url(url).build()).execute().close()
+        val logged = logBuffer.toString()
+        assertTrue(logged.contains("hmac=██"), "request line must show hmac=██")
+        assertTrue(logged.contains("userid=██"), "request line must show userid=██")
+        assertTrue(logged.contains("seq=1"), "non-secret params stay readable")
+        redaction.assertClean(logged, extraLiterals = RedactionFixtures.ALL_SECRETS + RedactionFixtures.USER_ID)
+    }
+
+    @Test
+    fun `scenario_6 login encoded-data envelope body log is scanner-clean`() {
+        val body = """{"code":"20000","data":"{\"access_token\":\"${RedactionFixtures.TOKEN}\",""" +
+            """\"token_secret\":\"${RedactionFixtures.TOKEN_SECRET}\",\"userid\":${RedactionFixtures.USER_ID}}"}"""
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+        val client = buildClient(FakeAuthProvider())
+        client.getHttpClient().newCall(okhttp3.Request.Builder().url(server.url("/v4/users/login")).build()).execute().close()
+        val trace = recorder.bufferText()
+        recorder.assertMarkerAppeared("BLOCK_REDACTED_LOG")
+        assertTrue(trace.contains("access_token") && trace.contains("token_secret"), "key names stay readable")
+        redaction.assertClean(trace, extraLiterals = RedactionFixtures.ALL_SECRETS)
+        redaction.assertClean(logBuffer.toString(), extraLiterals = RedactionFixtures.ALL_SECRETS)
+    }
+
+    @Test
+    fun `scenario_7 tnp device_info body log is scanner-clean`() {
+        val body = """{"code":"20000","data":{"DID":"${RedactionFixtures.DID}","InitString":"${RedactionFixtures.INIT_STRING}",""" +
+            """"License":"${RedactionFixtures.LICENSE}"}}"""
+        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+        val client = buildClient(FakeAuthProvider())
+        client.getHttpClient().newCall(okhttp3.Request.Builder().url(server.url("/v4/tnp/device_info")).build()).execute().close()
+        val trace = recorder.bufferText()
+        assertTrue(trace.contains("[Network][body][BLOCK_REDACTED_LOG] path=/v4/tnp/device_info"), trace)
+        assertTrue(trace.contains("\"DID\":\"██\""), "DID value masked")
+        redaction.assertClean(trace, extraLiterals = RedactionFixtures.ALL_SECRETS)
+    }
+    // END_BLOCK_SEC01_SCENARIOS
 
     /** ConfigModule subclass that lets the test point at the mock server. */
     private open class TestConfig(private val baseUrl: String) : ConfigModule() {

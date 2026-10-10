@@ -1,10 +1,10 @@
 // FILE: HttpClientModule.kt
-// VERSION: 0.1.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Shared HTTP client (OkHttp + Retrofit2) with TLS config, auth interceptor, redacted logging, and 401 refresh+retry.
 //   SCOPE: build OkHttpClient + Retrofit; inject Bearer token; retry exactly once after a single token refresh on 401.
-//   DEPENDS: M-CONFIG
-//   LINKS: M-AUTH, M-CONFIG
+//   DEPENDS: M-CONFIG, LogRedactor
+//   LINKS: M-AUTH, M-CONFIG, SEC-01
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
@@ -39,7 +39,11 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.2 - Log sink now masks password= and account= query values with ██:
+//   LAST_CHANGE: v0.4.0 - SEC-01: query masking (hmac/userid/uid/token/...) and JSON-walk body masking via
+//     LogRedactor; closes CONCERNS HIGH leaks (hmac logged verbatim; encoded-`data` envelope bypassed the
+//     body regex). Logger level HEADERS -> BASIC: request/status lines only, no header values at all
+//     (redactHeader kept as defence in depth). Body logger also covers /deviceshare and /tnp.
+//   PREV_CHANGE: v0.3.2 - Log sink now masks password= and account= query values with ██:
 //     the login URL carried the password in plaintext and leaked it into auth_log.txt
 //     (user's real password was exposed). Matches RedactionScanner allow-list convention.
 // END_CHANGE_SUMMARY
@@ -95,16 +99,15 @@ class HttpClientModule @Inject constructor(
     private val redactedLogger = HttpLoggingInterceptor { msg ->
         // START_BLOCK_REDACTED_LOG
         // Authorization/Cookie headers are redacted via redactHeader() above.
-        // Login query params (password digest, account email) must never reach logs;
-        // ██ (U+2588) matches the RedactionScanner allow-list convention.
-        val safe = msg
-            .replace(Regex("(password=)[^&\\s]+"), "$1██")
-            .replace(Regex("(account=)[^&\\s]+"), "$1██")
+        // Secret query params (password digest, account, hmac, userid, uid, token, ...) must never
+        // reach logs; ██ (U+2588) matches the RedactionScanner allow-list convention.
+        val safe = LogRedactor.maskQuery(msg)
         val sink = logSink
         if (sink != null) sink.invoke(safe) else timber.log.Timber.d(safe)
         // END_BLOCK_REDACTED_LOG
     }.apply {
-        level = HttpLoggingInterceptor.Level.HEADERS
+        // BASIC: request line + response status line only; header values are never logged.
+        level = HttpLoggingInterceptor.Level.BASIC
         redactHeader("Authorization")
         redactHeader("Set-Cookie")
         redactHeader("Cookie")
@@ -127,19 +130,21 @@ class HttpClientModule @Inject constructor(
 
     /**
      * Captures login/auth response bodies for reverse-engineering evidence.
-     * Token-shaped VALUES are masked (██); field NAMES stay readable so the envelope
-     * shape can be diagnosed from device logs. Timber is a no-op tree in release builds.
+     * Shape-only: every string/number VALUE is masked (██) except `code`, booleans and null;
+     * field NAMES stay readable so the envelope shape can be diagnosed from device logs
+     * (see LogRedactor.maskJsonBody). Timber is a no-op tree in release builds.
      */
     private val responseBodyLogger = Interceptor { chain ->
         val response = chain.proceed(chain.request())
         val url = response.request.url.encodedPath
         if (url.contains("/login") || url.contains("/auth_token") ||
-            url.contains("/devices") || url.contains("/device")
+            url.contains("/devices") || url.contains("/device") ||
+            url.contains("/deviceshare") || url.contains("/tnp")
         ) {
             val bodyString = response.peekBody(4096L).string()
-            val masked = bodyString
-                .replace(Regex("(\"[^\"]*(?:token|password|secret|authorization)[^\"]*\"\\s*:\\s*\")([^\"]*)(\")", RegexOption.IGNORE_CASE), "$1██$3")
-            TimberLog.d("[Network][body][BLOCK_REDACTED_LOG] path=$url status=${response.code} body=${masked.take(600)}")
+            val masked = LogRedactor.maskJsonBody(bodyString)
+            val safePath = LogRedactor.maskQuery(url)
+            TimberLog.d("[Network][body][BLOCK_REDACTED_LOG] path=$safePath status=${response.code} body=${masked.take(600)}")
         }
         response
     }
