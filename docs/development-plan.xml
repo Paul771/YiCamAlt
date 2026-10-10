@@ -27,6 +27,8 @@
         <export-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
         <export-getFeatureFlags PURPOSE="Return runtime feature flag map" />
         <export-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
+        <export-YiRegion PURPOSE="Yi Cloud region enum with per-region gateway hosts" STATUS="planned" />
+        <export-RegionSelector PURPOSE="Pick and persist the account region; feeds the base URL of M-HTTP" STATUS="planned" />
       </interface>
       <depends>none</depends>
       <target>
@@ -62,6 +64,9 @@
         <export-createRetrofit PURPOSE="Build Retrofit with interceptors" />
         <export-getHttpClient PURPOSE="Return raw OkHttp client" />
         <export-setAuthToken PURPOSE="Update auth header via interceptor" />
+        <export-YiRequestSigner PURPOSE="Sign Yi Cloud requests (hmac over the canonical query string)" STATUS="planned" />
+        <export-LogRedactor PURPOSE="Redact tokens, passwords, serials and secret values from every log line" STATUS="planned" />
+        <export-YiAppHeaders PURPOSE="Official-app header set sent on every Yi Cloud request" STATUS="planned" />
       </interface>
       <depends>M-CONFIG</depends>
       <target>
@@ -109,6 +114,41 @@
       </observability>
       <verification-ref>V-M-LOCAL-DB</verification-ref>
     </M-LOCAL-DB>
+
+    <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" LAYER="0" ORDER="4" STATUS="planned">
+      <contract>
+        <purpose>Keep vendor binaries, decompiled code, captures and secret values out of the public repo</purpose>
+        <inputs>
+          <param name="stagedChanges" type="git index (pre-commit hook input)" />
+        </inputs>
+        <outputs>
+          <param name="verdict" type="hook exit code (0 = allow, non-zero = block with reason)" />
+        </outputs>
+        <errors>
+          <error code="HYGIENE_FORBIDDEN_PATH" />
+          <error code="HYGIENE_SECRET_VALUE" />
+        </errors>
+      </contract>
+      <interface>
+        <export-preCommit PURPOSE="Block commits that add forbidden paths or secret values" />
+        <export-installHooks PURPOSE="Point core.hooksPath at tools/git-hooks" />
+      </interface>
+      <depends>none</depends>
+      <target>
+        <source>tools/git-hooks/pre-commit</source>
+        <source>tools/install-hooks.ps1</source>
+        <source>.gitignore</source>
+        <tests>tools/git-hooks/test-pre-commit.sh</tests>
+      </target>
+      <observability>
+        <log-prefix>[RepoGuard]</log-prefix>
+        <critical-block>BLOCK_SCAN_STAGED_PATHS, BLOCK_SCAN_STAGED_SECRETS</critical-block>
+      </observability>
+      <verification-ref>V-M-REPO-HYGIENE</verification-ref>
+      <notes>
+        <note-1>History is NOT rewritten (owner decision); the guard only protects new commits.</note-1>
+      </notes>
+    </M-REPO-HYGIENE>
 
     <!-- Layer 1: Core Domain -->
 
@@ -669,6 +709,80 @@
       </observability>
       <verification-ref>V-M-MEDIA</verification-ref>
     </M-MEDIA>
+
+    <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" LAYER="1" ORDER="11" STATUS="planned">
+      <contract>
+        <purpose>Debug-only one-shot probe of device-list endpoints across gateways; emits only status/code/length/count/field names</purpose>
+        <inputs>
+          <param name="session" type="Session (M-AUTH)" />
+        </inputs>
+        <outputs>
+          <param name="report" type="List&lt;String&gt; (value-free lines)" />
+        </outputs>
+        <errors>
+          <error code="PROBE_NO_SESSION" />
+          <error code="PROBE_NETWORK_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-runOnce PURPOSE="Run the endpoint x gateway matrix once and return value-free report lines" />
+        <fn-analyze PURPOSE="Reduce a response to status, code, length, item count and field names" />
+        <fn-format PURPOSE="Render one analyzed response as a single value-free line" />
+      </interface>
+      <depends>M-HTTP, M-AUTH</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/debug/EndpointProbe.kt</source>
+        <source>app/src/main/java/com/yicamalt/debug/ProbeMatrix.kt</source>
+        <tests>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Probe]</log-prefix>
+        <critical-block>BLOCK_PROBE_MATRIX, BLOCK_ANALYZE_PROBE_RESPONSE</critical-block>
+      </observability>
+      <verification-ref>V-M-DEBUG-PROBE</verification-ref>
+      <notes>
+        <note-1>Debug builds only. Never logs values: no tokens, serials, uids, passwords, URLs with query strings.</note-1>
+      </notes>
+    </M-DEBUG-PROBE>
+
+    <M-P2P-CREDS NAME="P2pCredentials" TYPE="CORE_LOGIC" LAYER="1" ORDER="12" STATUS="planned">
+      <contract>
+        <purpose>Per-camera P2P transport and credentials: transport resolution, camera-password recovery, tnp device info, encrypted persistence (never Room)</purpose>
+        <inputs>
+          <param name="cameraRecord" type="device-list item (M-CAMERA-LIST)" />
+          <param name="tnpDeviceInfo" type="signed tnp device info response (M-HTTP)" />
+        </inputs>
+        <outputs>
+          <param name="P2pCredentials" type="P2pCredentials" />
+        </outputs>
+        <errors>
+          <error code="P2P_UNKNOWN_TRANSPORT" />
+          <error code="P2P_PASSWORD_DECRYPT_FAILED" />
+          <error code="P2P_STORE_FAILED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-TransportResolver PURPOSE="Map a camera record to TNP or TUTK transport" />
+        <export-CameraPasswordCipher PURPOSE="Recover the camera password from the cloud-provided encrypted value" />
+        <export-P2pCredentialStore PURPOSE="Persist per-camera credentials encrypted (EncryptedSharedPreferences), never in Room" />
+        <type-P2pCredentials PURPOSE="Per-camera transport, uid, password and tnp device info" />
+        <type-TransportType PURPOSE="TNP | TUTK" />
+      </interface>
+      <depends>M-HTTP</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/camera/P2pCredentials.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/CameraPasswordCipher.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/P2pCredentialStore.kt</source>
+      </target>
+      <observability>
+        <log-prefix>[P2pCreds]</log-prefix>
+        <critical-block>BLOCK_RESOLVE_TRANSPORT, BLOCK_DECRYPT_CAMERA_PASSWORD, BLOCK_STORE_P2P_CREDENTIALS</critical-block>
+      </observability>
+      <verification-ref>V-M-P2P-CREDS</verification-ref>
+      <notes>
+        <note-1>Secret values (passwords, uids) are never logged; tests assert redaction.</note-1>
+      </notes>
+    </M-P2P-CREDS>
 
   </Modules>
 
