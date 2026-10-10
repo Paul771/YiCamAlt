@@ -7,9 +7,9 @@
 
 ### Security & Hygiene
 
-- [ ] **SEC-01**: Логи приложения никогда не содержат hmac, токенов, паролей камер, P2P-лицензий, InitString, DID/p2pid, nonce и серийников — проверяется расширенным `RedactionScanner` на реалистичных фикстурах
-- [ ] **SEC-02**: Диагностический лог пишется во внутреннее хранилище приложения (не в MTP-доступный external storage)
-- [ ] **SEC-03**: Вендорские бинарники (APK, .so), декомпилированный код и flow-файлы захвата не попадают в Git — `.gitignore` и проверка перед коммитом
+- [x] **SEC-01**: Логи приложения никогда не содержат hmac, токенов, паролей камер, P2P-лицензий, InitString, DID/p2pid, nonce и серийников — проверяется расширенным `RedactionScanner` на реалистичных фикстурах
+- [x] **SEC-02**: Диагностический лог пишется во внутреннее хранилище приложения (не в MTP-доступный external storage)
+- [x] **SEC-03**: Вендорские бинарники (APK, .so), декомпилированный код и flow-файлы захвата не попадают в Git — `.gitignore` и проверка перед коммитом
 - [ ] **SEC-04**: P2P-реквизиты камер хранятся только в памяти / EncryptedSharedPreferences, не в открытом Room
 
 ### Camera List
@@ -95,9 +95,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | Phase 1 | Pending |
-| SEC-02 | Phase 1 | Pending |
-| SEC-03 | Phase 1 | Pending |
+| SEC-01 | Phase 1 | Complete |
+| SEC-02 | Phase 1 | Complete |
+| SEC-03 | Phase 1 | Complete |
 | SEC-04 | Phase 1 | Pending |
 | CAM-01 | Phase 1 | Pending |
 | CAM-02 | Phase 1 | Pending |
