@@ -1,5 +1,5 @@
 // FILE: CameraDao.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Room DAO for camera cache (insert/upsert, query, clear).
 //   SCOPE: BLOCK_DB_WRITE on insert; offline-first read accessors.
@@ -18,6 +18,10 @@ import androidx.room.Query
 // START_MODULE_MAP
 //   CameraDao - abstract class DAO; concrete insert wraps an annotated raw insert to emit trace marker.
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - SEC-01: BLOCK_DB_WRITE no longer logs device_id (13-digit serials); mirrors EventDao
+// END_CHANGE_SUMMARY
 
 @Dao
 abstract class CameraDao {
@@ -39,7 +43,7 @@ abstract class CameraDao {
 
     // START_BLOCK_DB_WRITE
     open fun insertCamera(entity: CameraEntity) {
-        DbLog.d("[DB][cache][BLOCK_DB_WRITE] camera=${entity.device_id} online=${entity.online}")
+        DbLog.d("[DB][cache][BLOCK_DB_WRITE] online=${entity.online} hasModel=${entity.model.isNotBlank()}")
         insertCameraRaw(entity)
     }
     // END_BLOCK_DB_WRITE

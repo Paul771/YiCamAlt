@@ -1,5 +1,5 @@
 // FILE: YiDatabaseTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify Room cache round-trips, event query by device, clearOldData, and redaction of logs.
 //   SCOPE: success scenarios for V-M-LOCAL-DB using InMemoryRoom + Robolectric; trace + redaction assertions.
@@ -98,8 +98,10 @@ class YiDatabaseTest {
 
     @Test
     fun `scenario_5 redaction db logs do not leak secrets`() {
-        db.cameraDao().insertCamera(camera("cam-1"))
-        redaction.assertClean(recorder.bufferText())
+        // Realistic 13-digit Yi serial (SEC-01): BLOCK_DB_WRITE must not carry device_id.
+        db.cameraDao().insertCamera(camera("9876543210123"))
+        recorder.assertMarkerAppeared("BLOCK_DB_WRITE")
+        redaction.assertClean(recorder.bufferText(), extraLiterals = listOf("9876543210123"))
     }
 
     @Test

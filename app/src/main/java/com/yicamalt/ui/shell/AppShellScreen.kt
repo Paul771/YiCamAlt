@@ -1,5 +1,5 @@
 // FILE: AppShellScreen.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Top-level post-login shell: tab host (Cameras / Settings) with session-aware header.
 //   SCOPE: renders active tab content; emits BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN markers.
@@ -40,6 +40,10 @@ import timber.log.Timber
 //   AppShellScreen - bottom-nav host for Cameras/Settings tabs (post-login).
 // END_MODULE_MAP
 
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.1.1 - SEC-01: render marker logs hasUser instead of the user id
+// END_CHANGE_SUMMARY
+
 private enum class ShellTab(val label: String, val icon: ImageVector) {
     Cameras("Камеры", Icons.Filled.Videocam),
     Settings("Настройки", Icons.Filled.Settings),
@@ -50,7 +54,7 @@ private enum class ShellTab(val label: String, val icon: ImageVector) {
 fun AppShellScreen(userId: String, onLogout: () -> Unit) {
     var selected by remember { mutableIntStateOf(0) }
     // START_BLOCK_RENDER_SHELL
-    Timber.d("[Shell][render][BLOCK_RENDER_SHELL] user=$userId tab=${ShellTab.entries[selected].label}")
+    Timber.d("[Shell][render][BLOCK_RENDER_SHELL] hasUser=${userId.isNotBlank()} tab=${ShellTab.entries[selected].label}")
     // END_BLOCK_RENDER_SHELL
 
     Scaffold(

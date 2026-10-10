@@ -1,5 +1,5 @@
 // FILE: AuthRepositoryTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify login/refresh/logout/session flows against MockWebServer + in-memory AuthStore + fake clock.
 //   SCOPE: success + failure scenarios for V-M-AUTH; trace + redaction assertions.
@@ -218,6 +218,23 @@ class AuthRepositoryTest {
         redaction.assertClean(
             recorder.bufferText(),
             extraLiterals = listOf("acc-secret-1", "ref-secret-2"),
+        )
+    }
+
+    @Test
+    fun `redaction auth logs carry no user id or epoch`() {
+        // Realistic wall clock so expiresAt is a 13-digit epoch-millis value the scanner would catch.
+        clock.advance(1_760_000_000_000L)
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", user = "167315")))
+        server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2", user = "167315")))
+        val r = repo
+        val session = runBlocking { r.login("user@example.com", "pw") }
+        assertNotNull(runBlocking { r.refreshSession() })
+        recorder.assertMarkerAppeared("BLOCK_STORE_TOKEN")
+        recorder.assertMarkerAppeared("BLOCK_REFRESH_TOKEN")
+        redaction.assertClean(
+            recorder.bufferText(),
+            extraLiterals = listOf("167315", session.expiresAt.toString()),
         )
     }
 

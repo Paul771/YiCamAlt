@@ -1,5 +1,5 @@
 // FILE: AuthRepository.kt
-// VERSION: 0.1.0
+// VERSION: 0.4.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Yi Cloud authentication: login, refresh, logout, session access; implements AuthProvider for M-HTTP.
 //   SCOPE: validate credentials, exchange for tokens, persist via AuthStore, refresh on expiry; emit trace markers.
@@ -22,6 +22,7 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.4.2 - SEC-01: auth logs carry hasUser/expiresInSec instead of user id and epoch millis
 //   LAST_CHANGE: v0.4.1 - Login WORKS on gw-eu (code 20000 = success). Spinner deadlock fixed:
 //     (a) token_secret now mapped as refresh token (REFRESH_KEYS),
 //     (b) missing expires_in no longer yields an instantly-expired session
@@ -106,7 +107,7 @@ class AuthRepository @Inject constructor(
         // START_BLOCK_STORE_TOKEN
         store.putSession(session)
         sessionRef = session
-        AuthLog.d("[Auth][login][BLOCK_STORE_TOKEN] session stored user=${session.userId} expiresAt=${session.expiresAt}")
+        AuthLog.d("[Auth][login][BLOCK_STORE_TOKEN] session stored hasUser=${session.userId.isNotBlank()} expiresInSec=${(session.expiresAt - clock.nowMillis()) / 1000}")
         // END_BLOCK_STORE_TOKEN
         return session
     }
@@ -120,7 +121,7 @@ class AuthRepository @Inject constructor(
     private suspend fun doRefresh(): AuthSession? {
         val current = sessionRef ?: store.getSession() ?: return null
         // START_BLOCK_REFRESH_TOKEN
-        AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refreshing user=${current.userId}")
+        AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refreshing hasUser=true")
         val response = try { api.refresh(RefreshRequest(current.refreshToken)) } catch (t: Throwable) { null }
         val tokens = response?.let { extractTokens(it.data) }
         if (tokens?.accessToken.isNullOrBlank()) {
@@ -134,7 +135,7 @@ class AuthRepository @Inject constructor(
         )
         store.putSession(refreshed)
         sessionRef = refreshed
-        AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refreshed user=${refreshed.userId}")
+        AuthLog.d("[Auth][refresh][BLOCK_REFRESH_TOKEN] refreshed hasUser=true")
         // END_BLOCK_REFRESH_TOKEN
         return refreshed
     }
