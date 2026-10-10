@@ -307,14 +307,14 @@
 
     <!-- GSD Phase 01 (secrets-camera-list): contract-first planned nodes -->
 
-    <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" STATUS="planned">
+    <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" STATUS="implemented">
       <purpose>Keep vendor binaries, decompiled code, captures and secret values out of the public repo.</purpose>
       <path>tools/git-hooks/pre-commit</path>
       <depends>none</depends>
       <verification-ref>V-M-REPO-HYGIENE</verification-ref>
       <annotations>
         <fn-preCommit PURPOSE="Block commits that add forbidden paths or secret values" />
-        <fn-installHooks PURPOSE="Point core.hooksPath at tools/git-hooks (tools/install-hooks.ps1)" />
+        <fn-installHooks PURPOSE="Copy the hook into .git/hooks without touching core.hooksPath (tools/install-hooks.ps1)" />
       </annotations>
     </M-REPO-HYGIENE>
 

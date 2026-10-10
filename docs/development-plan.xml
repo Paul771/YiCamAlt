@@ -115,7 +115,7 @@
       <verification-ref>V-M-LOCAL-DB</verification-ref>
     </M-LOCAL-DB>
 
-    <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" LAYER="0" ORDER="4" STATUS="planned">
+    <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" LAYER="0" ORDER="4" STATUS="implemented">
       <contract>
         <purpose>Keep vendor binaries, decompiled code, captures and secret values out of the public repo</purpose>
         <inputs>
@@ -127,11 +127,13 @@
         <errors>
           <error code="HYGIENE_FORBIDDEN_PATH" />
           <error code="HYGIENE_SECRET_VALUE" />
+          <error code="HYGIENE_DECOMPILED_CODE" />
         </errors>
       </contract>
       <interface>
         <export-preCommit PURPOSE="Block commits that add forbidden paths or secret values" />
-        <export-installHooks PURPOSE="Point core.hooksPath at tools/git-hooks" />
+        <export-installHooks PURPOSE="Copy tools/git-hooks/pre-commit into .git/hooks (LF); never sets core.hooksPath, so the Git LFS hooks stay active" />
+        <export-preCommitRange PURPOSE="sh tools/git-hooks/pre-commit --range base..head applies the same rules to a commit range" />
       </interface>
       <depends>none</depends>
       <target>

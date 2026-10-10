@@ -5,7 +5,8 @@
 # PURPOSE: Repo guard for SEC-03. Refuses a commit that would put vendor binaries, decompiled
 #   code, traffic captures or real secret values into this PUBLIC repository.
 #
-# RULES (each hit prints "pre-commit: BLOCKED rule=<rule> file=<path> [line=<n>]"; the matched
+# RULES (each hit prints "pre-commit: BLOCKED rule=<rule> code=<HYGIENE_*> file=<path> [line=<n>]"
+#   followed by the log anchor [RepoGuard][preCommit][BLOCK_SCAN_STAGED_PATHS or _SECRETS]; the matched
 #   value itself is never echoed):
 #   vendor-or-capture-path  staged path is an APK/bundle, native lib, dex/smali/jadx output,
 #                           a capture (flow/pcap/har/mitm) or a diag/auth log, or lives under
@@ -60,17 +61,17 @@ diff_out=$(added_diff) || { echo "pre-commit: ERROR cannot read diff (mode=$mode
 
 blocked=0
 
-# START_BLOCK_PATH_RULE
+# START_BLOCK_SCAN_STAGED_PATHS
 path_hits=$(printf '%s\n' "$files" | grep -E "$PATH_RE")
 if [ -n "$path_hits" ]; then
     blocked=1
     printf '%s\n' "$path_hits" | while IFS= read -r p; do
-        echo "pre-commit: BLOCKED rule=vendor-or-capture-path file=$p" >&2
+        echo "pre-commit: BLOCKED rule=vendor-or-capture-path code=HYGIENE_FORBIDDEN_PATH file=$p [RepoGuard][preCommit][BLOCK_SCAN_STAGED_PATHS]" >&2
     done
 fi
-# END_BLOCK_PATH_RULE
+# END_BLOCK_SCAN_STAGED_PATHS
 
-# START_BLOCK_CONTENT_RULES
+# START_BLOCK_SCAN_STAGED_SECRETS
 # Walks the -U0 diff, tracks the current file and the new-side line number, and reports
 # rule/file/line only.
 content_hits=$(printf '%s\n' "$diff_out" | awk '
@@ -95,11 +96,11 @@ hdr { next }
 /^\+/ {
     line = $0
     if (dec && line ~ /JADX WARN|loaded from: classes[0-9]*\.dex|Decompiled by|^\+\.class public|^\+\.method /)
-        print "decompiled-code file=" f " line=" ln
+        print "decompiled-code code=HYGIENE_DECOMPILED_CODE file=" f " line=" ln
     if (index(line, "SYNTH") == 0) {
         low = tolower(line)
         if (low ~ s1 || low ~ s2 || low ~ s3)
-            print "secret-value file=" f " line=" ln
+            print "secret-value code=HYGIENE_SECRET_VALUE file=" f " line=" ln
     }
     ln++
     next
@@ -108,10 +109,10 @@ hdr { next }
 if [ -n "$content_hits" ]; then
     blocked=1
     printf '%s\n' "$content_hits" | while IFS= read -r h; do
-        echo "pre-commit: BLOCKED rule=$h" >&2
+        echo "pre-commit: BLOCKED rule=$h [RepoGuard][preCommit][BLOCK_SCAN_STAGED_SECRETS]" >&2
     done
 fi
-# END_BLOCK_CONTENT_RULES
+# END_BLOCK_SCAN_STAGED_SECRETS
 
 if [ "$blocked" -ne 0 ]; then
     echo "pre-commit: remove the blocked files/values (see SEC-03 in HANDOFF.md section 6)" >&2

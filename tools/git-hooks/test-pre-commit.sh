@@ -51,11 +51,13 @@ reset_case() {
 expect_block() {
     name=$1; shift
     git add -f -- "$@"
-    if git commit -q -m "case $name" >/dev/null 2>&1; then
+    if out=$(git commit -q -m "case $name" 2>&1); then
         fail "$name"
         git reset -q --soft HEAD~1 2>/dev/null
-    else
+    elif printf '%s\n' "$out" | grep -q 'pre-commit: BLOCKED rule=.*\[RepoGuard\]\[preCommit\]\[BLOCK_SCAN_STAGED_'; then
         pass "$name"
+    else
+        fail "$name (commit failed without a RepoGuard BLOCKED marker)"
     fi
     reset_case "$@"
 }
