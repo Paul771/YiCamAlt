@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.AfterEach
 import java.io.File
 
 // START_MODULE_MAP
@@ -26,7 +26,13 @@ import java.io.File
 
 class DiagnosticLogTest {
 
-    @TempDir lateinit var tmp: File
+    // Own temp dir: JUnit's @TempDir fails the test when Windows briefly locks a just-written file on cleanup.
+    private val tmp: File = java.nio.file.Files.createTempDirectory("diag").toFile()
+
+    @AfterEach
+    fun cleanup() {
+        runCatching { tmp.deleteRecursively() }
+    }
 
     @Test
     fun `internalFile resolves to filesDir diag_log txt`() {
