@@ -95,13 +95,45 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (filled by roadmap) | | |
+| SEC-01 | Phase 1 | Pending |
+| SEC-02 | Phase 1 | Pending |
+| SEC-03 | Phase 1 | Pending |
+| SEC-04 | Phase 1 | Pending |
+| CAM-01 | Phase 1 | Pending |
+| CAM-02 | Phase 1 | Pending |
+| CAM-03 | Phase 1 | Pending |
+| CAM-04 | Phase 1 | Pending |
+| CAM-05 | Phase 1 | Pending |
+| LIVE-01 | Phase 2 | Pending |
+| LIVE-02 | Phase 2 | Pending |
+| LIVE-03 | Phase 2 | Pending |
+| LIVE-04 | Phase 3 | Pending |
+| LIVE-05 | Phase 3 | Pending |
+| LIVE-06 | Phase 3 | Pending |
+| LIVE-07 | Phase 3 | Pending |
+| LIVE-08 | Phase 3 | Pending |
+| LIVE-09 | Phase 3 | Pending |
+| LIVE-10 | Phase 3 | Pending |
+| LIVE-11 | Phase 3 | Pending |
+| SD-01 | Phase 4 | Pending |
+| SD-02 | Phase 4 | Pending |
+| SD-03 | Phase 4 | Pending |
+| SD-04 | Phase 4 | Pending |
+| SD-05 | Phase 4 | Pending |
+| EVT-01 | Phase 5 | Pending |
+| EVT-02 | Phase 5 | Pending |
+| EVT-03 | Phase 5 | Pending |
+| EVT-04 | Phase 5 | Pending |
+| EVT-05 | Phase 5 | Pending |
+| EVT-06 | Phase 5 | Pending |
+| REL-01 | Phase 6 | Pending |
+| REL-02 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35 ⚠️
+- v1 requirements: 33 total
+- Mapped to phases: 33
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-10*
-*Last updated: 2026-10-10 after initial definition*
+*Last updated: 2026-10-10 after roadmap creation (traceability filled; v1 count corrected 35 -> 33)*
