@@ -84,10 +84,44 @@ $argList = @(
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 
+# START_BLOCK_UNINHERIT_STD_HANDLES
+# CreateProcess(bInheritHandles=TRUE) hands the child EVERY inheritable handle of this process,
+# not only the ones in STARTUPINFO. When this script runs under a harness pipe, the pipe's write
+# end lives in this process under std AND stray (inherited-from-parent) handle numbers, so a
+# daemon freshly spawned by this run keeps it alive and the caller never sees EOF (observed
+# 2026-10-10: build done in 1m30s, caller blocked until `--stop`; clearing only the std handles
+# was proven insufficient). Clear HANDLE_FLAG_INHERIT on every handle except stdin, BEFORE
+# Start-Process creates the log-file handles; the child still gets those via -Redirect*.
+try {
+    if (-not ('YiCamAlt.StdHandles' -as [type])) {
+        Add-Type -Namespace YiCamAlt -Name StdHandles -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr GetStdHandle(int nStdHandle);
+[DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetHandleInformation(IntPtr hObject, int dwMask, int dwFlags);
+[DllImport("kernel32.dll", SetLastError = true)] public static extern bool GetHandleInformation(IntPtr hObject, out int lpdwFlags);
+public static int ClearInheritExcept(long keep) {
+    int cleared = 0;
+    for (long v = 4; v < 0x10000; v += 4) {
+        IntPtr h = new IntPtr(v); int flags;
+        if (v != keep && GetHandleInformation(h, out flags) && (flags & 1) != 0 && SetHandleInformation(h, 1, 0)) cleared++;
+    }
+    return cleared;
+}
+'@
+    }
+    $stdin = [YiCamAlt.StdHandles]::GetStdHandle(-10).ToInt64()
+    [void][YiCamAlt.StdHandles]::ClearInheritExcept($stdin)
+} catch {
+    Write-Output "--- warning: could not clear std handle inheritance: $($_.Exception.Message) ---"
+}
+# END_BLOCK_UNINHERIT_STD_HANDLES
+
 # -NoNewWindow + explicit file redirection: the daemon inherits file handles, never our pipe.
 $proc = Start-Process -FilePath $java -ArgumentList $argList `
     -WorkingDirectory $repoRoot -NoNewWindow -PassThru `
     -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+# Touch Handle now: without a cached handle, Start-Process -PassThru returns a Process whose
+# ExitCode is $null after exit, and `exit $null` reports success for a failed build.
+$null = $proc.Handle
 
 $finished = $proc.WaitForExit($TimeoutSec * 1000)
 
@@ -102,6 +136,11 @@ if (-not $finished) {
 }
 
 $code = $proc.ExitCode
+if ($null -eq $code) {
+    # Never let an unknown exit code pass as success.
+    Write-Output '--- warning: gradle exit code unavailable; reporting 1 ---'
+    $code = 1
+}
 $elapsed = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
 
 Get-Content -LiteralPath $outLog -Tail 60 -ErrorAction SilentlyContinue
