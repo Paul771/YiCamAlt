@@ -81,10 +81,14 @@
     <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" STATUS="in-progress">
       <purpose>Fetch and cache the list of user-attached Yi cameras from cloud API. Provides device status, model info, and stream URL resolution.</purpose>
       <path>app/src/main/java/com/yicamalt/camera/CameraRegistry.kt</path>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG</depends>
       <verification-ref>V-M-CAMERA-LIST</verification-ref>
       <annotations>
-        <fn-getCameraList PURPOSE="Fetch camera list from cloud via signed GET (M-HTTP YiRequestSigner; source and region per 01-PROBE-RESULTS.md) and refresh Room cache" />
+        <fn-getCameraList PURPOSE="Signed GET of DeviceSourcePlan.OWNED_PATHS (/v5/devices/list) on the region kept by login; resolve P2P credentials into P2pCredentialStore; atomic Room replaceAll; 20200/empty = no cameras (clears cache + store); throws Unauthorized / ServerRejected / FetchFailed" />
+        <fn-cachedCameras PURPOSE="Room-only camera list for offline display; never throws" />
+        <fn-getCredentials PURPOSE="Phase 2 entry point: P2pCredentials of one camera from the encrypted store" />
+        <fn-clearAll PURPOSE="Logout cleanup (SEC-04): Room cache + P2P credential store" />
+        <const-DeviceSourcePlan PURPOSE="Single edit point for the probe-derived source order (camera/DeviceSourcePlan.kt)" />
         <fn-getCameraById PURPOSE="Get single camera info by deviceId from cache" />
         <fn-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
         <fn-updateCameraStatus PURPOSE="Update online/offline status" />
@@ -92,6 +96,7 @@
       </annotations>
       <change-summary step="1" phase="2" commit="f759486" verification="passed">M-CAMERA-LIST implemented: CameraRegistry (getCameraList/cache/getById/updateStatus/getLiveStreamUrl), YiCloudDeviceApi GET v8/cloud/deviceList (reverse-engineered path), CameraInfo + shape-tolerant CameraListParser (JsonNull-guarded; provisional field keys). 9 module tests green. Live response shape still unconfirmed — provisional pending capture.</change-summary>
       <change-summary phase="01-secrets-camera-list" commit="05dcd39" verification="in-progress">GSD phase 01 (plan 01-04): signing moved to M-HTTP YiRequestSigner (inline HMAC copy removed); stream-URL log no longer prints the device id. Candidate sources /v4/devices/list, /v5/devices/list, /v5/deviceshare/shareddetail; final source and region pending 01-PROBE-RESULTS.md.</change-summary>
+      <change-summary phase="01-secrets-camera-list" plan="01-09" verification="passed">CameraRegistry v0.5.0: BRANCH A source /v5/devices/list only (no shared path, no registry region fallback: tokens are per region, login discovery keeps the region); owned + shared rows deduped by uid; ServerRejected; cachedCameras; CameraDao.replaceAll + refresh Mutex; P2P credentials (transport, decrypted password, TNP DID/InitString/License from /v4/tnp/device_info, reused per DID) only in P2pCredentialStore; clearAll on logout (MainActivity).</change-summary>
     </M-CAMERA-LIST>
 
     <M-CAMERA-CMD NAME="CameraCommand" TYPE="CORE_LOGIC" STATUS="implemented-provisional">

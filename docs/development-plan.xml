@@ -222,27 +222,33 @@
         <errors>
           <error code="CAMERA_FETCH_FAILED" />
           <error code="CAMERA_UNAUTHORIZED" />
+          <error code="CAMERA_SERVER_ERROR" />
         </errors>
       </contract>
       <interface>
-        <export-getCameraList PURPOSE="Fetch camera list from cloud" />
+        <export-getCameraList PURPOSE="Fetch camera list from cloud; empty list = no cameras" />
+        <export-cachedCameras PURPOSE="Room-only list for offline display; never throws" />
+        <export-getCredentials PURPOSE="P2P credentials of one camera from the encrypted store (Phase 2 entry point)" />
+        <export-clearAll PURPOSE="Logout cleanup: camera cache + P2P credential store" />
         <export-getCameraById PURPOSE="Get single camera info by deviceId" />
         <export-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
         <export-updateCameraStatus PURPOSE="Update online/offline status (pushed from FCM)" />
         <export-cacheCameraList PURPOSE="Persist camera list to local DB for offline access" />
       </interface>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG</depends>
       <target>
-        <source>app/src/main/java/com/yicamalt/camera/CameraRegistryModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/CameraRegistry.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/DeviceSourcePlan.kt</source>
         <tests>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/camera/CameraRegistryCredentialsTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Camera]</log-prefix>
-        <critical-block>BLOCK_FETCH_CAMERA_LIST, BLOCK_RESOLVE_STREAM_URL</critical-block>
+        <critical-block>BLOCK_FETCH_SOURCE, BLOCK_FETCH_CAMERA_LIST, BLOCK_RESOLVE_P2P_CREDENTIALS, BLOCK_CLEAR_CAMERA_DATA, BLOCK_RESOLVE_STREAM_URL</critical-block>
       </observability>
       <verification-ref>V-M-CAMERA-LIST</verification-ref>
       <notes>
-        <note-1>Signed GET (hmac via M-HTTP YiRequestSigner). Candidate sources: /v4/devices/list, /v5/devices/list, /v5/deviceshare/shareddetail; source and region chosen from .planning/phases/01-secrets-camera-list/01-PROBE-RESULTS.md</note-1>
+        <note-1>Signed GET (hmac via M-HTTP YiRequestSigner). BRANCH A (01-PROBE-RESULTS.md + addendum): only /v5/devices/list; shared cameras are rows of the same list; the deviceshare shareddetail path is a PUT and is never called. Region = the one kept by login discovery (M-AUTH); the registry never switches region (tokens are per region). Per refresh: 1 list GET + at most 1 /v4/tnp/device_info per TNP camera without a stored license for the same DID.</note-1>
         <note-2>Live stream URL format depends on camera model — need per-model resolver.</note-2>
       </notes>
     </M-CAMERA-LIST>

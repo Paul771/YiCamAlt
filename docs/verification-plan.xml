@@ -116,7 +116,7 @@
     <row-M-HTTP success="9" failure="6" deterministic="12" trace="3" integration="1" semantic="0" autonomy="ready" />
     <row-M-LOCAL-DB success="3" failure="2" deterministic="5" trace="0" integration="1" semantic="0" autonomy="ready" />
     <row-M-AUTH success="3" failure="2" deterministic="2" trace="3" integration="1" semantic="0" autonomy="ready" />
-    <row-M-CAMERA-LIST success="3" failure="1" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-CAMERA-LIST success="5" failure="2" deterministic="5" trace="1" integration="1" semantic="0" autonomy="ready" />
     <row-M-CAMERA-CMD success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-EVENT success="3" failure="1" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-STREAM-DECODE success="2" failure="2" deterministic="2" trace="3" integration="1" semantic="1" autonomy="conditional" />
@@ -288,23 +288,30 @@
     <V-M-CAMERA-LIST MODULE="M-CAMERA-LIST" PRIORITY="high" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/camera/CameraRegistryCredentialsTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraRegistry*"</check-1>
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <notes>
-        <note-1>Real-envelope evidence pending .planning/phases/01-secrets-camera-list/01-PROBE-RESULTS.md (plan 01-06 Task 3); unit evidence is FakeYiApi only.</note-1>
+        <note-1>Field names and source come from 01-PROBE-RESULTS.md (BRANCH A); unit evidence is MockWebServer with synthetic fixtures (DeviceListFixtures, RedactionFixtures). On-device evidence: plan 01-11.</note-1>
       </notes>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">Camera list returned with correct fields (id, name, model, online, streamUrl) from FakeYiApi</scenario-1>
-        <scenario-2 kind="success" evidence-type="deterministic">Stream URL resolution returns correct format per camera model</scenario-2>
-        <scenario-3 kind="success" evidence-type="integration">Camera list cached to InMemoryRoom after fetch</scenario-3>
-        <scenario-4 kind="failure" evidence-type="deterministic">401 from API returns CameraUnauthorized</scenario-4>
+        <scenario-1 kind="success" evidence-type="deterministic">Camera list from /v5/devices/list (path = DeviceSourcePlan.OWNED_PATHS.first(), seq/userid/hmac) with transport and shared; owned duplicate wins over shared</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Code 20200 / empty data = no cameras: one request, Room and the P2P store cleared</scenario-2>
+        <scenario-3 kind="success" evidence-type="integration">Atomic Room replaceAll; cachedCameras reads Room only and never throws; concurrent refreshes serialised</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic">401 / 20201 / 20202 / 20203 -> Unauthorized; IO / 5xx / non-JSON -> FetchFailed; other code -> ServerRejected; cache and store untouched</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic">P2P credentials: one signed tnp device_info per TNP camera (none for TUTK), DID/InitString/license stored, password decrypted, reused on the next refresh (also when the list has no did), refetched when the did changes; tnp failure keeps the list</scenario-5>
+        <scenario-6 kind="success" evidence-type="deterministic">hasPincode -> password null, needsPincode, no PIN endpoint; clearAll wipes Room and the store</scenario-6>
+        <scenario-7 kind="failure" evidence-type="trace">Full refresh through the production HttpClientModule logs no uid, DID, password, InitString, License, hmac, token or user id (RedactionScanner)</scenario-7>
       </scenarios>
       <required-log-markers>
         <marker-1>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</marker-1>
         <marker-2>[Camera][resolveUrl][BLOCK_RESOLVE_STREAM_URL]</marker-2>
+        <marker-3>[Camera][getCameraList][BLOCK_FETCH_SOURCE]</marker-3>
+        <marker-4>[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS]</marker-4>
+        <marker-5>[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA]</marker-5>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Response parsed before DB write (BLOCK_FETCH_CAMERA_LIST precedes DB insert)</assertion-1>
