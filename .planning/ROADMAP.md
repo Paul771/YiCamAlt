@@ -45,7 +45,7 @@ Plans:
 - [x] 01-08-PLAN.md — YiRegion, автоопределение региона при логине, флаг ручного сервера (wave 4)
 - [x] 01-12-PLAN.md — TransportType/P2pCredentials, расшифровка пароля, шифрованное хранилище, Room v2 (wave 4)
 - [x] 01-09-PLAN.md — CameraRegistry: источники по пробе, shared, регион, P2P-реквизиты, кэш (wave 5)
-- [ ] 01-10-PLAN.md — UI списка камер: состояния, pull-to-refresh, кэш при старте (wave 6)
+- [x] 01-10-PLAN.md — UI списка камер: состояния, pull-to-refresh, кэш при старте (wave 6)
 - [ ] 01-11-PLAN.md — Синхронизация GRACE и финальная проверка на телефоне (wave 7, checkpoint)
 **UI hint**: yes
 **Notes**:
