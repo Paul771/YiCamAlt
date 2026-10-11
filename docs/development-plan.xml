@@ -505,6 +505,8 @@
         <export-AppShellContent PURPOSE="Compose root layout with navigation" />
         <export-NavigationHost PURPOSE="Navigation graph host" />
         <export-BottomNavBar PURPOSE="Bottom navigation bar with tabs" />
+        <export-CameraListScreen PURPOSE="Cameras tab (plan 01-10): pull-to-refresh, Loading / Content + stale banner / Empty / Error with retry; UNAUTHORIZED -> onSessionExpired (logout -> login); never renders device id" />
+        <export-CameraListViewModel PURPOSE="Cache-first start then one network refresh; refresh only on screen open and explicit pull/retry (no timers); single-flight" />
       </interface>
       <depends>M-AUTH</depends>
       <target>
@@ -513,7 +515,7 @@
       </target>
       <observability>
         <log-prefix>[Shell]</log-prefix>
-        <critical-block>BLOCK_RENDER_SHELL, BLOCK_NAVIGATE_SCREEN</critical-block>
+        <critical-block>BLOCK_RENDER_SHELL, BLOCK_NAVIGATE_SCREEN, BLOCK_LOAD_CAMERAS, BLOCK_RENDER_CAMERA_LIST</critical-block>
       </observability>
       <verification-ref>V-M-UI-SHELL</verification-ref>
     </M-UI-SHELL>

@@ -652,19 +652,26 @@
     <V-M-UI-SHELL MODULE="M-UI-SHELL" PRIORITY="high">
       <test-files>
         <file>app/src/androidTest/java/com/yicamalt/ui/shell/AppShellScreenTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/cameras/CameraListViewModelTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>./gradlew :app:compileDebugKotlin</check-1>
         <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.shell.*"</check-2>
+        <check-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.ui.cameras.*"</check-3>
       </module-checks>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Shell renders with bottom nav (Live View, Events, Settings tabs)</scenario-1>
         <scenario-2 kind="success" evidence-type="trace">Tap tab switches content screen (BLOCK_NAVIGATE_SCREEN per tab)</scenario-2>
         <scenario-3 kind="success" evidence-type="integration">Login state: show LoginScreen when not authenticated, shell when logged in</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">Camera list cache-first: cached cameras shown as Content(refreshing) before the network answers, then replaced (CameraListViewModelTest)</scenario-4>
+        <scenario-5 kind="edge" evidence-type="deterministic">Empty network list (20200) gives Empty, not Error, also when the cache had cameras</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">FetchFailed / ServerRejected / Unauthorized give three distinct Error kinds and messages; over a cached list the list stays with a stale banner</scenario-6>
+        <scenario-7 kind="edge" evidence-type="deterministic">Single-flight: refresh() while a refresh runs does not call the port again; CancellationException is rethrown, not shown as Error</scenario-7>
       </scenarios>
       <required-log-markers>
         <marker-1>[Shell][render][BLOCK_RENDER_SHELL]</marker-1>
         <marker-2>[Shell][navigate][BLOCK_NAVIGATE_SCREEN]</marker-2>
+        <marker-3>[Cameras][load][BLOCK_LOAD_CAMERAS] (value-free: source, result, count, kind)</marker-3>
       </required-log-markers>
       <wave-follow-up>All screen transitions work correctly.</wave-follow-up>
       <phase-follow-up>Compose UI test: full navigation flow (login -> live view -> events -> settings -> logout).</phase-follow-up>
