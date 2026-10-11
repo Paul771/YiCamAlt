@@ -1,5 +1,5 @@
 // FILE: AppShellScreen.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Top-level post-login shell: tab host (Cameras / Settings) with session-aware header.
 //   SCOPE: renders active tab content; emits BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN markers.
@@ -41,7 +41,8 @@ import timber.log.Timber
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - SEC-01: render marker logs hasUser instead of the user id
+//   LAST_CHANGE: v0.1.2 - CAM-04: camera list UNAUTHORIZED state routes "Войти снова" to onLogout (back to login)
+//   PREV_CHANGE: v0.1.1 - SEC-01: render marker logs hasUser instead of the user id
 // END_CHANGE_SUMMARY
 
 private enum class ShellTab(val label: String, val icon: ImageVector) {
@@ -88,7 +89,7 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (ShellTab.entries[selected]) {
-                ShellTab.Cameras -> com.yicamalt.ui.cameras.CameraListScreen()
+                ShellTab.Cameras -> com.yicamalt.ui.cameras.CameraListScreen(onSessionExpired = onLogout)
                 ShellTab.Settings -> com.yicamalt.ui.settings.SettingsScreen(onBack = {})
             }
         }
