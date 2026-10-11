@@ -118,6 +118,20 @@ None. `getLiveStreamUrl` still throws `NoStreamUrl` for every refreshed camera, 
 - If a real list `did` differs from the TNP DID returned by `device_info`, the license is fetched again on every refresh: 1 call per TNP camera per refresh, still within the bound. Plan 01-11 on the device can show which case applies. The log line `tnpInfo=reused` vs `ok` tells them apart.
 - Production OkHttp keeps its default `retryOnConnectionFailure` (transparent reconnect inside one call). That is HttpClientModule configuration and outside this plan.
 
+## Post-review fix (security review, MEDIUM, fail-open cleanup)
+
+- An interim commit `3310853` (not mine) moved the wipe to a process-wide scope with `NonCancellable`. The wipe still ran in UI code.
+- Commit `b50613f` changes three things:
+  - `AuthRepository.logout()` now calls `LogoutCleanup.clearSignedOutData()` synchronously. `CameraRegistry` implements it and is bound in Hilt; it reaches AuthRepository through a `Provider`, which avoids a dependency cycle. A logout can no longer skip the wipe.
+  - Writes take a `writeLock` and are checked against a wipe generation. A refresh still running when the user logs out writes nothing and ends with Unauthorized.
+  - `MainActivity` runs `purgeIfSignedOut()` on a plain thread at start when there is no session. It sits in MainActivity and not in YiCamAltApp because injecting into the Application broke the Robolectric `YiDatabaseTest`: the Hilt graph needs the AndroidKeyStore.
+- Tests:
+  - creds_11b: logout from a coroutine that is cancelled right away still wipes the cache and the store.
+  - creds_11c: logout while a refresh is running leaves nothing written.
+  - creds_11d: no session with leftover data, and the purge wipes it.
+  - creds_11e: the purge changes nothing while signed in.
+- Gate on HEAD: `:app:testDebugUnitTest :app:assembleDebug` gave `BUILD SUCCESSFUL`, `--- gradle exit=0`. 22 suites, 278 tests, 1 skipped, 0 failures (this run includes the 01-10 commits).
+
 ## Self-Check: PASSED
 
 - Files exist: DeviceSourcePlan.kt, CameraRegistryCredentialsTest.kt, CameraRegistry.kt, MainActivity.kt.
