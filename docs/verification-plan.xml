@@ -369,7 +369,8 @@
 
     <V-M-P2P-CREDS MODULE="M-P2P-CREDS" PRIORITY="high" STATUS="planned">
       <test-files>
-        <file>app/src/test/java/com/yicamalt/camera/TransportResolverTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/camera/P2pCredentialsTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/camera/P2pCredentialStoreTest.kt</file>
         <file>app/src/test/java/com/yicamalt/camera/CameraPasswordCipherTest.kt</file>
       </test-files>
       <module-checks>

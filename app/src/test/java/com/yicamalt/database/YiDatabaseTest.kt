@@ -1,7 +1,7 @@
 // FILE: YiDatabaseTest.kt
-// VERSION: 0.1.1
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Verify Room cache round-trips, event query by device, clearOldData, and redaction of logs.
+//   PURPOSE: Verify Room cache round-trips, event query by device, clearOldData, atomic replaceAll, and redaction of logs.
 //   SCOPE: success scenarios for V-M-LOCAL-DB using InMemoryRoom + Robolectric; trace + redaction assertions.
 //   DEPENDS: M-LOCAL-DB, TestInfrastructure (InMemoryRoom, TraceRecorder, RedactionScanner)
 //   LINKS: V-M-LOCAL-DB
@@ -9,6 +9,10 @@
 //   MAP_MODE: LOCALS
 // END_MODULE_CONTRACT
 package com.yicamalt.database
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - GSD plan 01-12: schema v2 (transport, shared), replaceAll scenarios.
+// END_CHANGE_SUMMARY
 
 import com.yicamalt.test.InMemoryRoom
 import com.yicamalt.test.RedactionScanner
@@ -89,11 +93,49 @@ class YiDatabaseTest {
     }
 
     @Test
-    fun `scenario_4 migration path is flagged as destructive placeholder`() {
-        // v1 only in Phase-1; fallbackToDestructiveMigration configured in DatabaseModule.
-        // This scenario asserts the schema version is 1 and no migration is wired yet.
+    fun `scenario_4 schema is v2 and migration stays destructive`() {
+        // v2 = cameras + transport, shared. fallbackToDestructiveMigration is configured in
+        // DatabaseModule; the tables are a cache, so a wipe on upgrade is acceptable.
         val version = db.openHelper.writableDatabase.version
-        assertEquals(1, version)
+        assertEquals(2, version)
+    }
+
+    @Test
+    fun `scenario_6 transport and shared round trip and default safely`() {
+        db.cameraDao().insertCamera(camera("cam-1").copy(transport = "TNP", shared = true))
+        db.cameraDao().insertCamera(camera("cam-2"))
+        val tnp = db.cameraDao().getById("cam-1")!!
+        assertEquals("TNP", tnp.transport)
+        assertTrue(tnp.shared)
+        val plain = db.cameraDao().getById("cam-2")!!
+        assertEquals("UNKNOWN", plain.transport)
+        assertEquals(false, plain.shared)
+    }
+
+    @Test
+    fun `scenario_7 replaceAll swaps the whole cache`() {
+        // START_BLOCK_S7
+        db.cameraDao().insertCamera(camera("cam-z"))
+        db.cameraDao().replaceAll(listOf(camera("cam-x"), camera("cam-y")))
+        // END_BLOCK_S7
+        assertEquals(listOf("cam-x", "cam-y"), db.cameraDao().getAll().map { it.device_id }.sorted())
+        assertNull(db.cameraDao().getById("cam-z"))
+        db.cameraDao().replaceAll(emptyList())
+        assertEquals(0, db.cameraDao().count())
+    }
+
+    @Test
+    fun `scenario_8 cameras table has no secret column`() {
+        // SEC-04: P2P secrets live only in the encrypted store, never in Room.
+        val columns = mutableListOf<String>()
+        db.openHelper.writableDatabase.query("PRAGMA table_info(cameras)").use { c ->
+            val nameIdx = c.getColumnIndex("name")
+            while (c.moveToNext()) columns += c.getString(nameIdx)
+        }
+        assertEquals(
+            listOf("cached_at", "device_id", "last_seen", "model", "name", "online", "shared", "stream_url", "transport"),
+            columns.sorted(),
+        )
     }
 
     @Test
