@@ -88,12 +88,12 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("https://.../v1/") },
+                label = { Text("https://gw-us.xiaoyi.com/") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
-            Text("Оставьте пустым, чтобы использовать значение по умолчанию.")
+            Text("Пусто = автоматический выбор сервера.")
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = { viewModel.saveBaseUrl(text) },

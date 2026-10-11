@@ -1,10 +1,11 @@
 // FILE: ConfigModule.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Central application configuration: feature flags, API base URLs, build variants, and runtime settings.
-//   SCOPE: read BuildConfig fields once, expose typed accessors, validate keys.
+//   SCOPE: read BuildConfig fields once, expose typed accessors, validate keys; effective API base URL
+//     (override else build default), manual-server flag, RegionSelector implementation (CAM-02).
 //   DEPENDS: none
-//   LINKS: M-HTTP, M-LOCAL-DB
+//   LINKS: M-HTTP, M-LOCAL-DB, M-AUTH, V-M-CONFIG
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
@@ -19,10 +20,18 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   ConfigModule - singleton config provider backed by BuildConfig.
+//   ConfigModule - singleton config provider backed by BuildConfig; implements RegionSelector.
+//   ConfigModule.setManualBaseUrl / isManualBaseUrl - user-typed server; disables automatic region changes.
+//   SettingsStoreModule - Hilt bindings: SettingsStore, RegionSelector.
 //   ConfigError - config error hierarchy (MissingKey).
 //   FeatureFlag - well-known runtime feature flag names.
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - implements RegionSelector; default gateway is real (CAM-02). Manual-server flag:
+//     while set, currentRegion() is null and selectRegion/restoreBaseUrl are no-ops, so login never
+//     hops away from a server the user typed (even when it is one of the three gateways).
+// END_CHANGE_SUMMARY
 
 sealed class ConfigError(message: String) : Error(message) {
     /** Thrown when a required config key is absent or blank. */
@@ -42,12 +51,15 @@ object FeatureFlag {
 abstract class SettingsStoreModule {
     @Binds
     abstract fun bindSettingsStore(impl: PrefsSettingsStore): SettingsStore
+
+    @Binds
+    abstract fun bindRegionSelector(impl: ConfigModule): RegionSelector
 }
 
 @Singleton
 open class ConfigModule @Inject constructor(
     private val settings: SettingsStore,
-) {
+) : RegionSelector {
 
     // Secondary no-arg constructor so unit tests can build a config with an in-memory store.
     constructor() : this(InMemorySettingsStore())
@@ -84,6 +96,48 @@ open class ConfigModule @Inject constructor(
     /** Persist a runtime API base URL override; pass null/blank to clear and fall back to the default. */
     open fun setApiBaseUrl(url: String?) {
         settings.setApiBaseUrl(url?.trim()?.takeIf { it.isNotBlank() })
+    }
+
+    // START_CONTRACT: setManualBaseUrl
+    //   PURPOSE: Store a server typed by the user in Settings and pin it (no automatic region changes).
+    //   INPUTS: { url: String? - null/blank clears the override and returns to automatic selection }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: writes the override and the manual flag to SettingsStore
+    //   LINKS: M-UI-SETTINGS, M-AUTH
+    // END_CONTRACT: setManualBaseUrl
+    open fun setManualBaseUrl(url: String?) {
+        setApiBaseUrl(url)
+        settings.setManualBaseUrl(!url.isNullOrBlank())
+    }
+
+    /** True when the effective server was typed by the user; login then stays on it. */
+    fun isManualBaseUrl(): Boolean = settings.isManualBaseUrl()
+
+    /** Region of the effective base URL; null for a manual or unknown server (no hop, no discovery). */
+    override fun currentRegion(): YiRegion? =
+        if (isManualBaseUrl()) null else YiRegion.fromBaseUrl(getApiBaseUrl())
+
+    // START_CONTRACT: selectRegion
+    //   PURPOSE: Make the region's gateway the effective base URL (resolved per request by M-HTTP).
+    //   INPUTS: { region: YiRegion }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: writes the base URL override; never sets the manual flag; no-op while manual
+    //   LINKS: M-AUTH, M-CAMERA-LIST
+    // END_CONTRACT: selectRegion
+    override fun selectRegion(region: YiRegion) {
+        // START_BLOCK_SELECT_REGION
+        if (isManualBaseUrl()) return
+        setApiBaseUrl(region.baseUrl)
+        TimberLog.d("[Config][region][BLOCK_SELECT_REGION] region=${region.name}")
+        // END_BLOCK_SELECT_REGION
+    }
+
+    override fun currentBaseUrl(): String = getApiBaseUrl()
+
+    /** Put a previously read effective base URL back; never sets the manual flag; no-op while manual. */
+    override fun restoreBaseUrl(url: String) {
+        if (isManualBaseUrl()) return
+        setApiBaseUrl(url)
     }
 
     /** Return runtime feature flag map. */

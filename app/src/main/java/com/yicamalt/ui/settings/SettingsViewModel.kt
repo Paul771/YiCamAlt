@@ -1,5 +1,5 @@
 // FILE: SettingsViewModel.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Settings screen view-model: view/edit the runtime API base URL override; debug endpoint probe.
 //   SCOPE: read current base URL, persist an override (resolved per request by M-HTTP), run the
@@ -28,7 +28,10 @@ import javax.inject.Inject
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Probe replaced by EndpointProbe (debug only); saveBaseUrl relies on per-request
+//   LAST_CHANGE: v0.3.0 - CAM-02: saveBaseUrl stores a MANUAL server (ConfigModule.setManualBaseUrl); the field
+//     shows only a manual server and stays empty in automatic mode, so pressing Save on an auto-selected
+//     gateway cannot pin it by accident. Empty = automatic server selection.
+//   PREV_CHANGE: v0.2.0 - Probe replaced by EndpointProbe (debug only); saveBaseUrl relies on per-request
 //     base URL resolution (httpClient.rebuild() is now a logging no-op).
 // END_CHANGE_SUMMARY
 
@@ -39,7 +42,7 @@ class SettingsViewModel @Inject constructor(
     private val endpointProbe: EndpointProbe,
 ) : ViewModel() {
 
-    private val _baseUrl = MutableStateFlow(config.getApiBaseUrl())
+    private val _baseUrl = MutableStateFlow(manualBaseUrlOrEmpty())
     val baseUrl: StateFlow<String> = _baseUrl.asStateFlow()
 
     private val _probeResults = MutableStateFlow<List<String>?>(null)
@@ -48,14 +51,16 @@ class SettingsViewModel @Inject constructor(
     private val _probeRunning = MutableStateFlow(false)
     val probeRunning: StateFlow<Boolean> = _probeRunning.asStateFlow()
 
-    /** Persist the API base URL override; M-HTTP resolves it on the very next request. */
+    /** Persist a manual server (blank = automatic selection); M-HTTP resolves it on the very next request. */
     fun saveBaseUrl(url: String) {
         // START_BLOCK_SAVE_BASE_URL
-        config.setApiBaseUrl(url)
+        config.setManualBaseUrl(url)
         httpClient.rebuild()
-        _baseUrl.value = config.getApiBaseUrl()
+        _baseUrl.value = manualBaseUrlOrEmpty()
         // END_BLOCK_SAVE_BASE_URL
     }
+
+    private fun manualBaseUrlOrEmpty(): String = if (config.isManualBaseUrl()) config.getApiBaseUrl() else ""
 
     /** Debug-only: run the endpoint/region probe matrix once and surface value-free lines. */
     fun runEndpointProbe() {

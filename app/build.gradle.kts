@@ -24,13 +24,13 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "YI_API_BASE_URL", "\"https://api.yicamalt.local/v1/\"")
+            buildConfigField("String", "YI_API_BASE_URL", "\"https://gw-us.xiaoyi.com/\"")
             buildConfigField("boolean", "LOCAL_RTSP_ENABLED", "true")
         }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "YI_API_BASE_URL", "\"https://api.yicamalt.local/v1/\"")
+            buildConfigField("String", "YI_API_BASE_URL", "\"https://gw-us.xiaoyi.com/\"")
             buildConfigField("boolean", "LOCAL_RTSP_ENABLED", "false")
         }
     }

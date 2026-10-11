@@ -1,16 +1,17 @@
 // FILE: ProbeMatrix.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Probe matrix for the device-list decision (research Conflict A): targets, value-free response analysis, log formatting.
 //   SCOPE: 4 list endpoints x 3 regions (US, EU, SG) + the tnp device_info path; JSON shape analysis
 //     (code, length, count, shape, field NAMES); uid extraction kept in memory only. Pure; no I/O, no logging.
-//   DEPENDS: none
+//   DEPENDS: M-CONFIG (YiRegion)
 //   LINKS: M-DEBUG-PROBE, V-M-DEBUG-PROBE, M-CAMERA-LIST
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
 package com.yicamalt.debug
 
+import com.yicamalt.config.YiRegion
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -26,7 +27,8 @@ import kotlinx.serialization.json.JsonPrimitive
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Initial matrix from research SUMMARY Conflict A.
+//   LAST_CHANGE: v0.1.1 - REGIONS derived from config.YiRegion (CAM-02); same keys, order and URLs as before.
+//   PREV_CHANGE: v0.1.0 - Initial matrix from research SUMMARY Conflict A.
 //     INVARIANT: format() never emits a JSON value — only status/code/len/count/shape/field names.
 //     Keys that look like identifiers (5+ digit runs, odd characters) are counted as redactedKeys, never printed.
 //     firstDeviceUid() returns a value for the next request only; callers must never log it.
@@ -61,11 +63,9 @@ internal data class ProbeResult(
 
 internal object ProbeMatrix {
 
-    val REGIONS: LinkedHashMap<String, String> = linkedMapOf(
-        "US" to "https://gw-us.xiaoyi.com",
-        "EU" to "https://gw-eu.xiaoyi.com",
-        "SG" to "https://gw-sg.xiaoyi.com",
-    )
+    /** Region name -> gateway base URL without trailing slash; derived from YiRegion (single source of truth). */
+    val REGIONS: LinkedHashMap<String, String> =
+        LinkedHashMap(YiRegion.entries.associate { it.name to it.baseUrl.trimEnd('/') })
 
     val LIST_PATHS = listOf(
         "/v4/devices/list",
