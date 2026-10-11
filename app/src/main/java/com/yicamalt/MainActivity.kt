@@ -21,10 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.lifecycleScope
+
 import com.yicamalt.auth.AuthRepository
 import com.yicamalt.camera.CameraRegistry
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import timber.log.Timber
@@ -37,6 +40,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // SEC-04: no session but leftover camera data (interrupted logout) -> wipe at start.
+        if (auth.getSession() == null) cleanupScope.launch { cameraRegistry.clearAll() }
         // START_BLOCK_RENDER_HOST
         setContent {
             var showSettings by remember { mutableStateOf(false) }
@@ -50,7 +55,7 @@ class MainActivity : ComponentActivity() {
                         Timber.d("[Shell][logout][BLOCK_HANDLE_LOGOUT] clearing session")
                         auth.logout()
                         // SEC-04: the camera cache and the P2P credential store must not outlive the session.
-                        lifecycleScope.launch { cameraRegistry.clearAll() }
+                        cleanupScope.launch { cameraRegistry.clearAll() }
                         loggedIn = false
                         // END_BLOCK_HANDLE_LOGOUT
                     },
@@ -62,5 +67,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         // END_BLOCK_RENDER_HOST
+    }
+
+    private companion object {
+        // Not tied to the Activity lifecycle: the wipe must finish even if the Activity is destroyed.
+        val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 }

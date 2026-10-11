@@ -31,6 +31,7 @@ import com.yicamalt.network.YiRequestSigner
 import com.yicamalt.test.RedactionFixtures as F
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -253,6 +254,19 @@ class CameraRegistryCredentialsTest {
         assertNull(store.get(F.CLOUD_UID))
         assertNull(store.get(F.TUTK_UID))
         recorder.assertMarkerAppeared("BLOCK_CLEAR_CAMERA_DATA")
+    }
+
+    @Test
+    fun `creds_11b clearAll still wipes when the calling coroutine is cancelled`() {
+        refresh()
+        runBlocking {
+            val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
+                .launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { registry.clearAll() }
+            job.cancel()
+            job.join()
+        }
+        assertEquals(0, dao.count())
+        assertNull(store.get(F.CLOUD_UID))
     }
 
     @Test

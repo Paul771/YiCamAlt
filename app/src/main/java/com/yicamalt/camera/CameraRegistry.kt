@@ -22,6 +22,7 @@ import com.yicamalt.database.CameraDao
 import com.yicamalt.database.CameraEntity
 import com.yicamalt.network.YiRequestSigner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -283,13 +284,15 @@ class CameraRegistry @Inject constructor(
     fun getCredentials(deviceId: String): P2pCredentials? = credentialStore.get(deviceId)
 
     /** Logout cleanup (SEC-04): wipes the camera cache and the P2P credential store. */
-    suspend fun clearAll() = refreshMutex.withLock {
+    suspend fun clearAll() = withContext(NonCancellable) {
+        refreshMutex.withLock {
         withContext(Dispatchers.IO) {
             // START_BLOCK_CLEAR_CAMERA_DATA
             cameraDao.deleteAll()
             credentialStore.clear()
             Timber.d("[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA] cleared=true")
             // END_BLOCK_CLEAR_CAMERA_DATA
+        }
         }
     }
 
