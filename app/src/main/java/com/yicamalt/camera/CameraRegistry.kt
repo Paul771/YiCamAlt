@@ -1,11 +1,13 @@
 // FILE: CameraRegistry.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Fetch the user's Yi cameras from the probe-proven device-list source, keep an atomic Room cache of
 //     the secret-free fields, and report distinct outcomes (no cameras / rejected / unreachable / unauthorized).
-//   SCOPE: getCameraList (signed list fetch on the session region, dedupe, Room replaceAll), cachedCameras
-//     (Room only), getCameraById, cacheCameraList, updateCameraStatus, getLiveStreamUrl; trace markers
-//     BLOCK_FETCH_SOURCE / BLOCK_FETCH_CAMERA_LIST / BLOCK_RESOLVE_STREAM_URL.
+//   SCOPE: getCameraList (signed list fetch on the session region, dedupe, P2P credential resolution into the
+//     encrypted store, Room replaceAll), cachedCameras (Room only), getCredentials, clearAll (logout),
+//     getCameraById, cacheCameraList, updateCameraStatus, getLiveStreamUrl; trace markers
+//     BLOCK_FETCH_SOURCE / BLOCK_FETCH_CAMERA_LIST / BLOCK_RESOLVE_P2P_CREDENTIALS / BLOCK_CLEAR_CAMERA_DATA /
+//     BLOCK_RESOLVE_STREAM_URL.
 //   DEPENDS: M-HTTP (YiCloudDeviceApi, YiRequestSigner), M-LOCAL-DB (CameraDao), M-AUTH (SessionSource),
 //     M-P2P-CREDS (P2pCredentialStore, TransportResolver), M-CONFIG (region is the one kept by login)
 //   LINKS: M-CAMERA-LIST, M-UI-SHELL, V-M-CAMERA-LIST
@@ -35,10 +37,16 @@ import javax.inject.Singleton
 //   CameraListPort - getCameraList (network refresh) + cachedCameras (Room only) for the UI.
 //   CameraRegistry - facade over the cloud device API, the Room cache and the P2P credential store.
 //   CameraRegistry.dedupeRecords - one record per cloud uid, first (owned) occurrence wins.
+//   CameraRegistry.getCredentials - Phase 2 entry point: stored P2pCredentials of one camera.
+//   CameraRegistry.clearAll - logout cleanup: Room cache + P2P credential store.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - probe-driven sources (DeviceSourcePlan.OWNED_PATHS = /v5/devices/list), owned rows
+//   LAST_CHANGE: v0.5.0 - P2P credential resolution (BLOCK_RESOLVE_P2P_CREDENTIALS): transport, decrypted password
+//     (null when hasPincode), TNP DID/InitString/license from /v4/tnp/device_info, reused while the stored
+//     license belongs to the same list DID (or the row has no did); credentials go only to P2pCredentialStore.
+//     getCredentials, clearAll (SEC-04 logout wipe).
+//   PREV_CHANGE: v0.4.0 - probe-driven sources (DeviceSourcePlan.OWNED_PATHS = /v5/devices/list), owned rows
 //     and shared rows from the same list (dedupe by cloud uid), ServerRejected, cachedCameras, atomic cache
 //     (CameraDao.replaceAll), refresh Mutex. Code 20200 / empty data = "no cameras": cache and credential
 //     store are cleared; error outcomes never clear. A non-JSON body counts as FetchFailed instead of
@@ -112,19 +120,20 @@ class CameraRegistry @Inject constructor(
                 credentialStore.clear()
                 return@withContext emptyList()
             }
+            val credentials = resolveCredentials(s, records)
             val now = System.currentTimeMillis()
-            val cameras = records.map { record ->
-                val transport = TransportResolver.resolve(record.type, record.p2pId).transport
+            val cameras = records.zip(credentials) { record, creds ->
                 CameraInfo(
                     deviceId = record.cloudUid,
                     name = record.name,
                     model = record.model,
                     online = record.online,
                     streamUrl = null,
-                    transport = transport,
+                    transport = creds.transport,
                     shared = record.shared,
                 )
             }
+            credentialStore.replaceAll(credentials)
             cameraDao.replaceAll(cameras.map { it.toEntity(now) })
             Timber.d(
                 "[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=${cameras.size} " +
@@ -181,6 +190,107 @@ class CameraRegistry @Inject constructor(
         }
         return FetchResult(emptyList(), successes, serverFailures, ioFailures)
         // END_BLOCK_FETCH_SOURCE
+    }
+
+    // START_CONTRACT: resolveCredentials
+    //   PURPOSE: Build P2pCredentials for every record (CAM-03): transport, decrypted password, and for TNP
+    //     cameras DID + InitString + license key from /v4/tnp/device_info.
+    //   INPUTS: { s: AuthSession - signing material; records: List<DeviceRecord> - deduped list rows }
+    //   OUTPUTS: { List<P2pCredentials> - same order and size as records }
+    //   SIDE_EFFECTS: at most one GET /v4/tnp/device_info per TNP camera whose license is not stored for the
+    //     same DID (0 on later refreshes); failures give null InitString/license, never an exception.
+    //     Never calls the PIN password endpoint. Logs flags only.
+    //   LINKS: M-P2P-CREDS, V-M-P2P-CREDS, V-M-CAMERA-LIST
+    // END_CONTRACT: resolveCredentials
+    private suspend fun resolveCredentials(s: AuthSession, records: List<DeviceRecord>): List<P2pCredentials> {
+        // START_BLOCK_RESOLVE_P2P_CREDENTIALS
+        val all = records.map { record ->
+            val res = TransportResolver.resolve(record.type, record.p2pId)
+            val password = if (record.hasPincode) null else CameraPasswordCipher.decrypt(record.passwordHex, record.cloudUid)
+            var p2pId = record.p2pId.orEmpty()
+            var initString: String? = null
+            var licenseKey: String? = null
+            var tnpInfo = "n/a"
+            if (res.transport == TransportType.TNP) {
+                // The parser puts the cloud uid into p2pId when the row has no did: that is "no list DID".
+                val listDid = record.p2pId?.takeIf { it != record.cloudUid }
+                val known = credentialStore.get(record.cloudUid)
+                if (known?.licenseKey != null && (listDid.isNullOrBlank() || listDid == known.p2pId)) {
+                    p2pId = known.p2pId
+                    initString = known.initString
+                    licenseKey = known.licenseKey
+                    tnpInfo = "reused"
+                } else {
+                    val info = fetchTnpInfo(s, record.cloudUid)
+                    // The TNP DID comes from device_info (measured source), not from the list row.
+                    p2pId = info?.did ?: record.p2pId.orEmpty()
+                    initString = info?.initString
+                    licenseKey = info?.licenseKey
+                    tnpInfo = if (info != null) "ok" else "failed"
+                }
+            }
+            Timber.d(
+                "[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=${res.transport} mismatch=${res.mismatch} " +
+                    "hasPassword=${password != null} tnpInfo=$tnpInfo needsPincode=${record.hasPincode}",
+            )
+            P2pCredentials(
+                deviceId = record.cloudUid,
+                p2pId = p2pId,
+                transport = res.transport,
+                password = password,
+                initString = initString,
+                licenseKey = licenseKey,
+                p2pEncrypt = record.p2pEncrypt,
+                wakeup = record.wakeup,
+                needsPincode = record.hasPincode,
+            )
+        }
+        Timber.d(
+            "[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] stored=${all.size} " +
+                "withLicense=${all.count { it.licenseKey != null }} withPassword=${all.count { it.password != null }}",
+        )
+        return all
+        // END_BLOCK_RESOLVE_P2P_CREDENTIALS
+    }
+
+    /** One signed GET /v4/tnp/device_info; null on any failure (no retry). */
+    private suspend fun fetchTnpInfo(s: AuthSession, cloudUid: String): TnpDeviceInfo? {
+        val hmac = YiRequestSigner.sign(s.accessToken, s.refreshToken, s.userId, extra = listOf("uid" to cloudUid))
+        val envelope = try {
+            api.tnpDeviceInfo(userId = s.userId, uid = cloudUid, hmac = hmac)
+        } catch (e: IOException) {
+            return null
+        } catch (e: HttpException) {
+            return null
+        } catch (e: SerializationException) {
+            return null
+        }
+        if (envelope.code !in SUCCESS_CODES) {
+            Timber.d("[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] tnpCode=${envelope.code} result=rejected")
+            return null
+        }
+        return DeviceRecordParser.parseTnpInfo(envelope.data)
+    }
+
+    // START_CONTRACT: getCredentials
+    //   PURPOSE: Phase 2 entry point: P2P credentials of one camera from the encrypted store.
+    //   INPUTS: { deviceId: String - cloud uid }
+    //   OUTPUTS: { P2pCredentials? - null when unknown }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-P2P-CREDS
+    // END_CONTRACT: getCredentials
+    /** Phase 2 entry point: the P2P credentials stored for [deviceId], or null. */
+    fun getCredentials(deviceId: String): P2pCredentials? = credentialStore.get(deviceId)
+
+    /** Logout cleanup (SEC-04): wipes the camera cache and the P2P credential store. */
+    suspend fun clearAll() = refreshMutex.withLock {
+        withContext(Dispatchers.IO) {
+            // START_BLOCK_CLEAR_CAMERA_DATA
+            cameraDao.deleteAll()
+            credentialStore.clear()
+            Timber.d("[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA] cleared=true")
+            // END_BLOCK_CLEAR_CAMERA_DATA
+        }
     }
 
     /** One record per cloud uid; the first occurrence (an owned row precedes a shared duplicate) wins. */
