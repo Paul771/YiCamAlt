@@ -52,6 +52,7 @@ fun CameraListScreen(viewModel: CameraListViewModel = hiltViewModel()) {
             Spacer(Modifier.height(12.dp))
             androidx.compose.material3.Button(onClick = { viewModel.load() }) { Text("Повторить") }
         } }
+        is CameraListUiState.Empty -> CenterBox { Text("Камеры не найдены") }
         is CameraListUiState.Content -> {
             if (s.cameras.isEmpty()) {
                 CenterBox { Text("Камеры не найдены") }
