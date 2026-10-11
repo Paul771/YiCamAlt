@@ -200,12 +200,13 @@ java -Djavax.net.ssl.trustStore=C:/Users/pvanyushkin/Android/Sdk/cacerts.jks \
 ## 6. BuildConfig
 
 ```kotlin
-YI_API_BASE_URL = "https://api.yicamalt.local/v1/"   // ПЛЕЙСХОЛДЕР — причина ошибки логина
+YI_API_BASE_URL = "https://gw-us.xiaoyi.com/"   // с плана 01-08; раньше был плейсхолдер api.yicamalt.local
 LOCAL_RTSP_ENABLED = true (debug) / false (release)
 ```
 
 > ⚠️ **Плейсхолдер `api.yicamalt.local` — корневая причина «Ошибка сети. Попробуй снова.»**
 > Исправлено: base URL теперь runtime-configurable через экран настроек.
+> План 01-08: дефолт — реальный шлюз US; при явном входе регион подбирается сам (US, EU, SG) по коду 20253 и по списку камер; сервер, введённый в настройках, не меняется автоматически.
 
 ---
 

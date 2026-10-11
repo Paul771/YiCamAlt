@@ -13,6 +13,9 @@
       <annotations>
         <fn-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API (prefers user override, else BuildConfig)" />
         <fn-setApiBaseUrl PURPOSE="Persist a runtime API base URL override" />
+        <fn-setManualBaseUrl PURPOSE="Store a server typed by the user and pin it; blank returns to automatic selection" />
+        <type-YiRegion PURPOSE="Yi Cloud gateways US, EU, SG (default order); fromBaseUrl, orderStartingWith; app/src/main/java/com/yicamalt/config/YiRegion.kt" />
+        <contract-RegionSelector PURPOSE="Region port (currentRegion, selectRegion, currentBaseUrl, restoreBaseUrl); implemented by ConfigModule, consumed by M-AUTH" />
         <fn-getFeatureFlags PURPOSE="Return runtime feature flag map" />
         <fn-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
         <fn-flag PURPOSE="Look up a single flag by name; throws MissingKey if absent" />
@@ -68,6 +71,7 @@
         <fn-isLoggedIn PURPOSE="Check if user has valid session" />
         <fn-refresh PURPOSE="Refresh access token using refresh token; returns null on failure" />
         <contract-LoginPort PURPOSE="Thin login contract consumed by M-UI-LOGIN; implemented by AuthRepository" />
+        <contract-DeviceListCheckPort PURPOSE="One signed GET /v5/devices/list reduced to code + count for the login region discovery; HttpDeviceListCheck in app/src/main/java/com/yicamalt/auth/RegionDiscovery.kt" />
       </annotations>
       <change-summary step="4" phase="1" commit="afaf797" verification="deferred">AuthRepository implemented: login/refresh/logout/getSession, implements AuthProvider + LoginPort. EncryptedAuthStore (EncryptedSharedPreferences). YiCloudAuthApi (Retrofit). Hilt bindings. Login endpoint corrected to real Yi Cloud surface: GET /v4/users/login (query params seq/account/password/dev_name/dev_type/dev_os_version) + POST /v4/users/auth_token for refresh; response code deserialized as String; missing access_token -> InvalidCredentials. Test written (MockWebServer), deferred (no Android SDK).</change-summary>
       <change-summary step="4" phase="1" commit="local" verification="deferred">v0.3.1 audit fix: reverted unfounded 'login' query-param rename back to 'account' — live probes of gw-us/eu/sg.xiaoyi.com/v4/users/login decoded the error ladder (unrecognized account param -> 20250; account without password -> 20260; account+password -> 20253; GET no-params -> 20203; POST no-body -> -10003). Failure log now carries the server message.</change-summary>
@@ -367,6 +371,7 @@
     <CrossLink from="M-HTTP" to="M-CONFIG" relation="uses for base URL config" />
     <CrossLink from="M-LOCAL-DB" to="M-CONFIG" relation="uses for DB config" />
     <CrossLink from="M-AUTH" to="M-HTTP" relation="uses for API calls" />
+    <CrossLink from="M-AUTH" to="M-CONFIG" relation="selects region on login" />
     <CrossLink from="M-AUTH" to="M-LOCAL-DB" relation="stores auth state" />
     <CrossLink from="M-CAMERA-LIST" to="M-HTTP" relation="uses for API calls" />
     <CrossLink from="M-CAMERA-LIST" to="M-AUTH" relation="uses for auth token" />

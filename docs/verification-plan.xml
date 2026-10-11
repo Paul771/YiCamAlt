@@ -152,9 +152,11 @@
         <scenario-1 kind="success" evidence-type="deterministic">Config returns correct API base URL from BuildConfig + overrides</scenario-1>
         <scenario-2 kind="success" evidence-type="deterministic">Feature flags return expected defaults when not overridden</scenario-2>
         <scenario-3 kind="failure" evidence-type="deterministic">Accessing missing config key throws CONFIG_MISSING_KEY</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">region_1..region_7: YiRegion.fromBaseUrl/orderStartingWith, default server is the real US gateway, selectRegion/restoreBaseUrl, manual server pins the URL (selectRegion no-op), ProbeMatrix.REGIONS derived from YiRegion</scenario-4>
       </scenarios>
       <required-log-markers>
         <marker-1>[Config][init][BLOCK_INIT_CONFIG]</marker-1>
+        <marker-2>[Config][region][BLOCK_SELECT_REGION]</marker-2>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>init reads BuildConfig exactly once</assertion-1>
@@ -243,6 +245,8 @@
       <test-files>
         <file>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</file>
         <file>app/src/test/java/com/yicamalt/auth/AuthRepositoryTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/auth/AuthRegionDiscoveryTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/auth/AuthRegionFakes.kt</file>
       </test-files>
       <module-checks>
         <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.auth.*"</check-1>
@@ -256,17 +260,25 @@
         <scenario-4 kind="failure" evidence-type="deterministic">Invalid credentials return AuthInvalidCredentials</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">Network error returns AuthNetworkError without leaking stack trace</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">refresh-bound-at-most-one-auth-token-call-per-session-expiry (5x getAccessToken + 3x refresh = 1 call; new login re-arms one more)</scenario-6>
+        <scenario-7 kind="failure" evidence-type="trace">login-region-fallback (region_1..region_9): hop only on code 20253, at most 3 login requests per call, original server restored when the account is found nowhere, found region kept on a wrong password, no hop on a network error or a custom server</scenario-7>
+        <scenario-8 kind="success" evidence-type="trace">login-region-discovery (discovery_1..discovery_15): US empty then EU devices = 2 logins + 2 list checks; all empty = first kept, exactly 3 + 3; first non-empty = 1 + 1; wrong password on the second region = first session kept; manual server = 1 login, 0 checks; network error keeps the last good session; never on refresh or app start; refresh suppressed during the check</scenario-8>
+        <scenario-9 kind="success" evidence-type="integration">HttpDeviceListCheck sends one signed GET /v5/devices/list (seq, userid, hmac) to the current server; DeviceListCounter reduces the body to code + count (20200 = empty list)</scenario-9>
       </scenarios>
       <required-log-markers>
         <marker-1>[Auth][login][BLOCK_VALIDATE_CREDENTIALS]</marker-1>
         <marker-2>[Auth][login][BLOCK_STORE_TOKEN]</marker-2>
         <marker-3>[Auth][refresh][BLOCK_REFRESH_TOKEN]</marker-3>
         <marker-4>[Auth][refresh][BLOCK_REFRESH_ONCE_PER_EXPIRY]</marker-4>
+        <marker-5>[Auth][login][BLOCK_REGION_FALLBACK]</marker-5>
+        <marker-6>[Auth][login][BLOCK_REGION_DISCOVERY]</marker-6>
+        <marker-7>[Auth][login][BLOCK_REGION_SELECTED]</marker-7>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Password must never appear in any captured log (RedactionScanner clean)</assertion-1>
         <assertion-2>Token stored before BLOCK_NAVIGATE_SHELL emitted</assertion-2>
         <assertion-3>BLOCK_STORE_TOKEN precedes BLOCK_REFRESH_TOKEN on the refresh path</assertion-3>
+        <assertion-4>BLOCK_REGION_FALLBACK and BLOCK_REGION_DISCOVERY each appear at most 3 times per login call (assertMaxRetries)</assertion-4>
+        <assertion-5>Login trace: BLOCK_VALIDATE_CREDENTIALS -> BLOCK_REGION_FALLBACK -> BLOCK_REGION_SELECTED -> BLOCK_STORE_TOKEN; region lines carry region name, code and count only</assertion-5>
       </required-trace-assertions>
       <wave-follow-up>M-CAMERA-LIST and M-EVENT use M-AUTH token via the HTTP interceptor.</wave-follow-up>
       <phase-follow-up>Full login -> camera list -> logout cycle works end-to-end on emulator.</phase-follow-up>

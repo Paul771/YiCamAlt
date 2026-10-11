@@ -27,8 +27,9 @@
         <export-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
         <export-getFeatureFlags PURPOSE="Return runtime feature flag map" />
         <export-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
-        <export-YiRegion PURPOSE="Yi Cloud region enum with per-region gateway hosts" STATUS="planned" />
-        <export-RegionSelector PURPOSE="Pick and persist the account region; feeds the base URL of M-HTTP" STATUS="planned" />
+        <export-YiRegion PURPOSE="Yi Cloud region enum with per-region gateway hosts" STATUS="implemented" />
+        <export-RegionSelector PURPOSE="Pick and persist the account region; feeds the base URL of M-HTTP" STATUS="implemented" />
+        <export-setManualBaseUrl PURPOSE="Server typed by the user; disables every automatic region change" STATUS="implemented" />
       </interface>
       <depends>none</depends>
       <target>
@@ -42,6 +43,7 @@
       <verification-ref>V-M-CONFIG</verification-ref>
       <notes>
         <note-1>Config values loaded from BuildConfig + default overrides. No network calls.</note-1>
+        <note-2>Plan 01-08: default base URL is the US gateway (region order US, EU, SG); the fourth server api.xiaoyi.com is reachable only as a manual server.</note-2>
       </notes>
     </M-CONFIG>
 
@@ -204,6 +206,7 @@
         <note-1>Tokens stored in EncryptedSharedPreferences backed by Android Keystore.</note-1>
         <note-2>Token refresh happens automatically before API calls via Retrofit interceptor.</note-2>
         <note-3>Reverse-engineered auth endpoint: GET /v4/users/login (query params: seq, account, password, dev_name, dev_type, dev_os_version). Refresh: POST /v4/users/auth_token. Response code is a String; missing access_token -> InvalidCredentials.</note-3>
+        <note-4>Plan 01-08 (CAM-02): explicit login hops on code 20253 and then discovers the region by device list (DeviceListCheckPort: GET /v5/devices/list, code + count). Bound per login call: 3 logins + 3 list checks, no retries; never on refresh or app start; a manual server disables both.</note-4>
       </notes>
     </M-AUTH>
 
