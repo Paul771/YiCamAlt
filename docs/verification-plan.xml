@@ -352,7 +352,7 @@
       </scenarios>
       <gate-evidence>
         <evidence-1>2026-10-11 plan 01-06 wave-2 gate: ProbeMatrixTest 12/12 inside full suite 165 tests, 0 failures</evidence-1>
-        <evidence-2>Device evidence: plan 01-06 Task 2 (user runs the probe once) and Task 3 (log pull, RealLogScanTest sweep, 01-PROBE-RESULTS.md); pending</evidence-2>
+        <evidence-2>Device evidence 2026-10-11 (Mi 9, EU login): 12 requests, redaction sweep passed, BRANCH=D (no row has devices; EU list calls return code 20200, shareddetail returns 405); see 01-PROBE-RESULTS.md</evidence-2>
       </gate-evidence>
       <required-log-markers>
         <marker-1>[Probe][run][BLOCK_PROBE_MATRIX]</marker-1>
