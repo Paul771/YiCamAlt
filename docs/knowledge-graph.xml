@@ -318,9 +318,10 @@
       </annotations>
     </M-REPO-HYGIENE>
 
-    <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" STATUS="planned">
+    <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" STATUS="implemented">
       <purpose>Debug-only one-shot probe of device-list endpoints across gateways; emits only status/code/length/count/field names.</purpose>
       <path>app/src/main/java/com/yicamalt/debug/EndpointProbe.kt</path>
+      <path>app/src/main/java/com/yicamalt/debug/ProbeMatrix.kt</path>
       <depends>M-HTTP, M-AUTH</depends>
       <verification-ref>V-M-DEBUG-PROBE</verification-ref>
       <annotations>

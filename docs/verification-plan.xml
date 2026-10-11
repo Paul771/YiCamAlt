@@ -134,7 +134,7 @@
     <row-M-CAMERA-DISCOVERY success="2" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
     <row-M-CAMERA-SETUP success="1" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
     <row-M-REPO-HYGIENE success="1" failure="2" deterministic="3" trace="0" integration="0" semantic="0" autonomy="ready" />
-    <row-M-DEBUG-PROBE success="1" failure="2" deterministic="3" trace="1" integration="0" semantic="0" autonomy="ready" />
+    <row-M-DEBUG-PROBE success="2" failure="4" deterministic="6" trace="1" integration="0" semantic="0" autonomy="ready" />
     <row-M-P2P-CREDS success="2" failure="2" deterministic="4" trace="1" integration="0" semantic="0" autonomy="ready" />
   </VerificationMatrix>
 
@@ -306,7 +306,7 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-REPO-HYGIENE>
 
-    <V-M-DEBUG-PROBE MODULE="M-DEBUG-PROBE" PRIORITY="high" STATUS="planned">
+    <V-M-DEBUG-PROBE MODULE="M-DEBUG-PROBE" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</file>
       </test-files>
@@ -317,12 +317,18 @@
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">matrix-lines-are-value-free</scenario-1>
         <scenario-2 kind="failure" evidence-type="deterministic">non-json-body-reported-by-length-only</scenario-2>
-        <scenario-3 kind="failure" evidence-type="deterministic">no-session-yields-single-error-line</scenario-3>
+        <scenario-3 kind="failure" evidence-type="deterministic">no-session-yields-single-error-line (EndpointProbe; on-device, plan 01-06)</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">targets-are-12-region-major-in-fixed-path-order</scenario-4>
+        <scenario-5 kind="failure" evidence-type="deterministic">identifier-like-keys-are-counted-never-emitted</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">friends-is-never-a-device-source</scenario-6>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Probe][runOnce][BLOCK_PROBE_MATRIX]</marker-1>
-        <marker-2>[Probe][analyze][BLOCK_ANALYZE_PROBE_RESPONSE]</marker-2>
+        <marker-1>[Probe][run][BLOCK_PROBE_MATRIX]</marker-1>
+        <marker-2>[Probe][run][BLOCK_PROBE_SUMMARY]</marker-2>
       </required-log-markers>
+      <notes>
+        <note-1>ProbeMatrix is pure (BLOCK_ANALYZE_PROBE_RESPONSE is a code anchor, not a log marker); EndpointProbe logs only ProbeMatrix.format() lines.</note-1>
+      </notes>
       <required-trace-assertions>
         <assertion-1>No token, serial, uid or password value appears in any probe line (RedactionScanner clean)</assertion-1>
       </required-trace-assertions>

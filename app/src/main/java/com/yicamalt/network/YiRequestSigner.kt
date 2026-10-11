@@ -19,7 +19,7 @@ import javax.crypto.spec.SecretKeySpec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Collapses CameraRegistry/EventSigner/DeviceSignProbe copies; adds extra
+//   LAST_CHANGE: v0.1.0 - Collapses CameraRegistry/EventSigner/debug sign-probe copies; adds extra
 //     params for /v4/tnp/device_info (seq=1&userid=<uid>&uid=<cloud uid>).
 //   HAZARD: takes plain strings, not AuthSession, so M-HTTP stays independent of M-AUTH.
 //     Never log keys, messages or signatures from here.

@@ -50,7 +50,7 @@ import javax.inject.Singleton
 //     follow base-URL/region changes without restart (CONCERNS: stale Retrofit). appHeadersInterceptor adds
 //     official Yi app headers except on /v4/users/… paths. rebuild() kept as a logging no-op for callers.
 //     Authenticator releases refreshGuard in finally (CONCERNS: guard latched forever if refresh threw).
-//     probeClient(): app headers + redacted logging only; Authenticator.NONE, no redirects, no refresh.
+//     probeClient(): app headers + redacted logging only; no authenticator, no redirects, no refresh.
 //     HAZARD: an absolute Retrofit path (/v5/alert/events) also gets the base path prefix; real bases are host-only.
 //   PREV_CHANGE: v0.4.0 - SEC-01: query masking (hmac/userid/uid/token/...) and JSON-walk body masking via
 //     LogRedactor; closes CONCERNS HIGH leaks (hmac logged verbatim; encoded-`data` envelope bypassed the
@@ -211,7 +211,7 @@ class HttpClientModule @Inject constructor(
 
     /**
      * Refresh-free client for the debug endpoint probe: app headers + redacted logging only.
-     * No auth interceptor and Authenticator.NONE, so nothing can refresh the token mid-run
+     * No auth interceptor and a no-op authenticator, so nothing can refresh the token mid-run
      * (a refresh would invalidate the hmac precomputed from token/token_secret).
      */
     private val probeHttpClient: OkHttpClient by lazy {
@@ -250,7 +250,7 @@ class HttpClientModule @Inject constructor(
     /** Return raw OkHttp client. */
     fun getHttpClient(): OkHttpClient = client
 
-    /** Refresh-free client (no Authorization, Authenticator.NONE, no redirects) for the debug probe. */
+    /** Refresh-free client (no Authorization, no-op authenticator, no redirects) for the debug probe. */
     fun probeClient(): OkHttpClient = probeHttpClient
 
     /** Update auth header token via interceptor (thread-safe). */

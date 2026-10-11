@@ -712,7 +712,7 @@
       <verification-ref>V-M-MEDIA</verification-ref>
     </M-MEDIA>
 
-    <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" LAYER="1" ORDER="11" STATUS="planned">
+    <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" LAYER="1" ORDER="11" STATUS="implemented">
       <contract>
         <purpose>Debug-only one-shot probe of device-list endpoints across gateways; emits only status/code/length/count/field names</purpose>
         <inputs>
@@ -730,6 +730,9 @@
         <export-runOnce PURPOSE="Run the endpoint x gateway matrix once and return value-free report lines" />
         <fn-analyze PURPOSE="Reduce a response to status, code, length, item count and field names" />
         <fn-format PURPOSE="Render one analyzed response as a single value-free line" />
+        <fn-targets PURPOSE="12 list targets, region-major US/EU/SG x {v4,v5}/devices/list, deviceshare friends/shareddetail" />
+        <fn-firstDeviceUid PURPOSE="In-memory uid of the first device row for the single tnp device_info follow-up; never logged" />
+        <fn-isDeviceSource PURPOSE="False for deviceshare friends (person rows never feed tnp)" />
       </interface>
       <depends>M-HTTP, M-AUTH</depends>
       <target>
@@ -739,11 +742,12 @@
       </target>
       <observability>
         <log-prefix>[Probe]</log-prefix>
-        <critical-block>BLOCK_PROBE_MATRIX, BLOCK_ANALYZE_PROBE_RESPONSE</critical-block>
+        <critical-block>BLOCK_PROBE_MATRIX, BLOCK_PROBE_SUMMARY, BLOCK_ANALYZE_PROBE_RESPONSE</critical-block>
       </observability>
       <verification-ref>V-M-DEBUG-PROBE</verification-ref>
       <notes>
         <note-1>Debug builds only. Never logs values: no tokens, serials, uids, passwords, URLs with query strings.</note-1>
+        <note-2>Request bound per press: at most 13 GET (12 list + at most 1 tnp device_info), 0 POST, 0 auth_token. Runs on HttpClientModule.probeClient() (no auth interceptor, Authenticator.NONE). Expired session = zero requests. Replaces the deleted DeviceSignProbe.</note-2>
       </notes>
     </M-DEBUG-PROBE>
 
