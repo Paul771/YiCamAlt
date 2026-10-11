@@ -229,7 +229,8 @@
         <export-getCameraList PURPOSE="Fetch camera list from cloud; empty list = no cameras" />
         <export-cachedCameras PURPOSE="Room-only list for offline display; never throws" />
         <export-getCredentials PURPOSE="P2P credentials of one camera from the encrypted store (Phase 2 entry point)" />
-        <export-clearAll PURPOSE="Logout cleanup: camera cache + P2P credential store" />
+        <export-clearSignedOutData PURPOSE="LogoutCleanup: synchronous wipe of camera cache + P2P credential store, run by AuthRepository.logout" />
+        <export-purgeIfSignedOut PURPOSE="Start-up wipe of camera cache + P2P credential store when there is no session" />
         <export-getCameraById PURPOSE="Get single camera info by deviceId" />
         <export-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
         <export-updateCameraStatus PURPOSE="Update online/offline status (pushed from FCM)" />

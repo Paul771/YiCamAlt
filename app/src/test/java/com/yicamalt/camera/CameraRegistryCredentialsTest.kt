@@ -1,5 +1,5 @@
 // FILE: CameraRegistryCredentialsTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify P2P credential resolution in CameraRegistry: tnp device_info request bounds, stored values,
 //     reuse rules, failure tolerance, logout wipe and the secret-free log of a full refresh.
@@ -16,11 +16,15 @@ package com.yicamalt.camera
 //   PINNED_HEX - AES-128/ECB/PKCS7 of "synthpw1" under the key CLOUD_UID (same vector as CameraPasswordCipherTest).
 //   tnpRow / tutkRow / listOf - synthetic device-list rows in the probe shape.
 //   ScriptedServer - path-keyed dispatcher counting list and tnp requests.
-//   CameraRegistryCredentialsTest - creds_1..creds_11.
+//   CameraRegistryCredentialsTest - creds_1..creds_12 (11b..11e: logout cleanup and start-up purge).
+//   authWithRegistry - AuthRepository whose logout runs the registry cleanup (Hilt wiring in miniature).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Created (plan 01-09, CAM-03, SEC-04).
+//   LAST_CHANGE: v0.2.0 - SEC-04 fail-closed cleanup: logout through a real AuthRepository wipes cache + store
+//     even when the calling coroutine is cancelled (creds_11b); a refresh in flight writes nothing after logout
+//     (creds_11c); start-up purge without a session (creds_11d/e).
+//   PREV_CHANGE: v0.1.0 - Created (plan 01-09, CAM-03, SEC-04).
 // END_CHANGE_SUMMARY
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -31,8 +35,25 @@ import com.yicamalt.network.YiRequestSigner
 import com.yicamalt.test.RedactionFixtures as F
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
+import com.yicamalt.auth.AuthMethod
+import com.yicamalt.auth.AuthRepository
+import com.yicamalt.auth.AuthSession
+import com.yicamalt.auth.LogoutCleanup
+import com.yicamalt.auth.RegionTestClock
+import com.yicamalt.auth.RegionTestStore
+import com.yicamalt.auth.ScriptedAuthApi
+import com.yicamalt.auth.SessionSource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.mockwebserver.Dispatcher
@@ -71,6 +92,7 @@ private fun listBody(vararg rows: String) = """{"code":"20000","data":[${rows.jo
 /** Dispatcher keyed on the request path; bodies can be swapped between refreshes. */
 private class ScriptedServer : Dispatcher() {
     @Volatile var listBody: String = listBody(tnpRow(), TUTK_ROW)
+    @Volatile var listDelayMs: Long = 0
     @Volatile var tnpResponse: () -> MockResponse = { MockResponse().setBody(DeviceListFixtures.TNP_INFO) }
     val paths = CopyOnWriteArrayList<String>()
     val tnpRequests = CopyOnWriteArrayList<RecordedRequest>()
@@ -81,6 +103,7 @@ private class ScriptedServer : Dispatcher() {
         return when {
             path.endsWith(DevicePaths.TNP_DEVICE_INFO) -> { tnpRequests += request; tnpResponse() }
             path.endsWith(DevicePaths.LIST_V5) -> MockResponse().setBody(listBody)
+                .setBodyDelay(listDelayMs, java.util.concurrent.TimeUnit.MILLISECONDS)
             else -> MockResponse().setResponseCode(404)
         }
     }
@@ -241,7 +264,7 @@ class CameraRegistryCredentialsTest {
     }
 
     @Test
-    fun `creds_11 Room rows carry transport and no secret, clearAll wipes both`() {
+    fun `creds_11 Room rows carry transport and no secret, logout cleanup wipes both`() {
         refresh()
         val rows = dao.getAll()
         assertEquals(setOf("TNP", "TUTK"), rows.map { it.transport }.toSet())
@@ -249,25 +272,96 @@ class CameraRegistryCredentialsTest {
         for (secret in listOf("synthpw1", F.INIT_STRING, "SYNTHLIC01", F.DID, PINNED_HEX)) {
             assertFalse(rowText.contains(secret), "Room row must not hold a secret")
         }
-        runBlocking { registry.clearAll() }
+        registry.clearSignedOutData()
         assertEquals(0, dao.count())
         assertNull(store.get(F.CLOUD_UID))
         assertNull(store.get(F.TUTK_UID))
         recorder.assertMarkerAppeared("BLOCK_CLEAR_CAMERA_DATA")
     }
 
+    // START_BLOCK_LOGOUT_CLEANUP_SCENARIOS
+    private val signedIn = AuthSession(F.TOKEN, F.TOKEN_SECRET, Long.MAX_VALUE, F.USER_ID, AuthMethod.PASSWORD)
+
+    /** Real AuthRepository whose logout runs the registry's cleanup, as wired by Hilt. */
+    private fun authWithRegistry(): Pair<AuthRepository, CameraRegistry> {
+        lateinit var reg: CameraRegistry
+        val auth = AuthRepository(
+            api = ScriptedAuthApi(selector = null),
+            store = RegionTestStore(signedIn),
+            clock = RegionTestClock(),
+            logoutCleanup = Provider<LogoutCleanup> { reg },
+        )
+        val api = Retrofit.Builder()
+            .baseUrl(server.url("/").toString())
+            .addConverterFactory(Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(YiCloudDeviceApi::class.java)
+        reg = CameraRegistry(api, dao, auth, store)
+        return auth to reg
+    }
+
     @Test
-    fun `creds_11b clearAll still wipes when the calling coroutine is cancelled`() {
-        refresh()
-        runBlocking {
-            val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
-                .launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { registry.clearAll() }
-            job.cancel()
-            job.join()
+    fun `creds_11b logout from a coroutine cancelled right away still wipes cache and store`() {
+        val (auth, reg) = authWithRegistry()
+        runBlocking { reg.getCameraList() }
+        assertEquals(2, dao.count())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            auth.logout()
+            awaitCancellation()
         }
+        scope.cancel()
+        assertNull(auth.getSession())
         assertEquals(0, dao.count())
         assertNull(store.get(F.CLOUD_UID))
+        assertNull(store.get(F.TUTK_UID))
+        recorder.assertMarkerAppeared("BLOCK_LOGOUT_CLEANUP")
     }
+
+    @Test
+    fun `creds_11c logout during a refresh in flight - nothing is written afterwards`() {
+        val (auth, reg) = authWithRegistry()
+        script.listDelayMs = 400
+        val failure = runBlocking {
+            val refresh = async(Dispatchers.Default) { runCatching { reg.getCameraList() } }
+            withContext(Dispatchers.Default) { while (script.paths.isEmpty()) delay(5) }
+            auth.logout()
+            refresh.await().exceptionOrNull()
+        }
+        assertTrue(failure is CameraError.Unauthorized, "refresh ending after logout must not succeed: $failure")
+        assertEquals(0, dao.count())
+        assertNull(store.get(F.CLOUD_UID))
+        assertTrue(recorder.bufferText().contains("result=session-ended written=false"))
+    }
+
+    @Test
+    fun `creds_11d no session but leftover data - start-up purge wipes it`() {
+        refresh()
+        assertEquals(2, dao.count())
+        val signedOut = CameraRegistry(
+            Retrofit.Builder().baseUrl(server.url("/").toString())
+                .addConverterFactory(Json.asConverterFactory("application/json".toMediaType()))
+                .build().create(YiCloudDeviceApi::class.java),
+            dao,
+            object : SessionSource { override fun currentSession(): AuthSession? = null },
+            store,
+        )
+        val requestsBefore = server.requestCount
+        assertTrue(signedOut.purgeIfSignedOut())
+        assertEquals(0, dao.count())
+        assertNull(store.get(F.CLOUD_UID))
+        assertNull(store.get(F.TUTK_UID))
+        assertEquals(requestsBefore, server.requestCount, "purge is local only")
+    }
+
+    @Test
+    fun `creds_11e start-up purge leaves data alone while signed in`() {
+        refresh()
+        assertFalse(registry.purgeIfSignedOut())
+        assertEquals(2, dao.count())
+        assertNotNull(store.get(F.CLOUD_UID))
+    }
+    // END_BLOCK_LOGOUT_CLEANUP_SCENARIOS
 
     @Test
     fun `creds_12 full refresh through the production HTTP client logs no secret`() {

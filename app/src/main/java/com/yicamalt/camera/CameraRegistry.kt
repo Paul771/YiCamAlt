@@ -1,10 +1,11 @@
 // FILE: CameraRegistry.kt
-// VERSION: 0.5.0
+// VERSION: 0.6.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Fetch the user's Yi cameras from the probe-proven device-list source, keep an atomic Room cache of
 //     the secret-free fields, and report distinct outcomes (no cameras / rejected / unreachable / unauthorized).
 //   SCOPE: getCameraList (signed list fetch on the session region, dedupe, P2P credential resolution into the
-//     encrypted store, Room replaceAll), cachedCameras (Room only), getCredentials, clearAll (logout),
+//     encrypted store, Room replaceAll), cachedCameras (Room only), getCredentials, clearSignedOutData (logout),
+//     purgeIfSignedOut (start-up),
 //     getCameraById, cacheCameraList, updateCameraStatus, getLiveStreamUrl; trace markers
 //     BLOCK_FETCH_SOURCE / BLOCK_FETCH_CAMERA_LIST / BLOCK_RESOLVE_P2P_CREDENTIALS / BLOCK_CLEAR_CAMERA_DATA /
 //     BLOCK_RESOLVE_STREAM_URL.
@@ -21,8 +22,9 @@ import com.yicamalt.auth.SessionSource
 import com.yicamalt.database.CameraDao
 import com.yicamalt.database.CameraEntity
 import com.yicamalt.network.YiRequestSigner
+import com.yicamalt.auth.LogoutCleanup
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -39,11 +41,16 @@ import javax.inject.Singleton
 //   CameraRegistry - facade over the cloud device API, the Room cache and the P2P credential store.
 //   CameraRegistry.dedupeRecords - one record per cloud uid, first (owned) occurrence wins.
 //   CameraRegistry.getCredentials - Phase 2 entry point: stored P2pCredentials of one camera.
-//   CameraRegistry.clearAll - logout cleanup: Room cache + P2P credential store.
+//   CameraRegistry.clearSignedOutData - LogoutCleanup: synchronous wipe of Room cache + P2P store (logout).
+//   CameraRegistry.purgeIfSignedOut - start-up wipe when there is no session.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.0 - P2P credential resolution (BLOCK_RESOLVE_P2P_CREDENTIALS): transport, decrypted password
+//   LAST_CHANGE: v0.6.0 - SEC-04 fail-closed cleanup (security review: the logout wipe ran in a UI coroutine
+//     and could be cancelled or skipped). clearAll replaced by LogoutCleanup.clearSignedOutData, called
+//     synchronously from AuthRepository.logout; purgeIfSignedOut wipes at start when there is no session;
+//     writes take writeLock and are dropped when a wipe happened during the refresh (wipeGeneration).
+//   PREV_CHANGE: v0.5.0 - P2P credential resolution (BLOCK_RESOLVE_P2P_CREDENTIALS): transport, decrypted password
 //     (null when hasPincode), TNP DID/InitString/license from /v4/tnp/device_info, reused while the stored
 //     license belongs to the same list DID (or the row has no did); credentials go only to P2pCredentialStore.
 //     getCredentials, clearAll (SEC-04 logout wipe).
@@ -83,9 +90,15 @@ class CameraRegistry @Inject constructor(
     private val cameraDao: CameraDao,
     private val session: SessionSource,
     private val credentialStore: P2pCredentialStore,
-) : CameraListPort {
+) : CameraListPort, LogoutCleanup {
 
     private val refreshMutex = Mutex()
+
+    /** Guards every write of Room + the credential store against a concurrent logout wipe. */
+    private val writeLock = Any()
+
+    /** Bumped by every wipe; a refresh that started before a wipe must not write afterwards. */
+    @Volatile private var wipeGeneration = 0L
 
     /** Records of one fetch plus how each call ended (drives the distinct error outcomes). */
     private class FetchResult(
@@ -109,6 +122,7 @@ class CameraRegistry @Inject constructor(
         withContext(Dispatchers.IO) {
             // START_BLOCK_FETCH_CAMERA_LIST
             val s = session.currentSession() ?: throw CameraError.Unauthorized
+            val generation = wipeGeneration
             val fetch = fetchOwned(s)
             val records = dedupeRecords(fetch.records)
             if (records.isEmpty()) {
@@ -117,8 +131,7 @@ class CameraRegistry @Inject constructor(
                     throw CameraError.FetchFailed
                 }
                 Timber.d("[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=0 result=no-devices")
-                cameraDao.deleteAll()
-                credentialStore.clear()
+                synchronized(writeLock) { wipeLocked() }
                 return@withContext emptyList()
             }
             val credentials = resolveCredentials(s, records)
@@ -134,8 +147,15 @@ class CameraRegistry @Inject constructor(
                     shared = record.shared,
                 )
             }
-            credentialStore.replaceAll(credentials)
-            cameraDao.replaceAll(cameras.map { it.toEntity(now) })
+            synchronized(writeLock) {
+                // A logout (or start-up purge) during the network calls wins: nothing is written after it.
+                if (generation != wipeGeneration || session.currentSession() == null) {
+                    Timber.d("[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] result=session-ended written=false")
+                    throw CameraError.Unauthorized
+                }
+                credentialStore.replaceAll(credentials)
+                cameraDao.replaceAll(cameras.map { it.toEntity(now) })
+            }
             Timber.d(
                 "[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=${cameras.size} " +
                     "shared=${cameras.count { it.shared }} tnp=${cameras.count { it.transport == TransportType.TNP }} " +
@@ -283,17 +303,47 @@ class CameraRegistry @Inject constructor(
     /** Phase 2 entry point: the P2P credentials stored for [deviceId], or null. */
     fun getCredentials(deviceId: String): P2pCredentials? = credentialStore.get(deviceId)
 
-    /** Logout cleanup (SEC-04): wipes the camera cache and the P2P credential store. */
-    suspend fun clearAll() = withContext(NonCancellable) {
-        refreshMutex.withLock {
-        withContext(Dispatchers.IO) {
+    // START_CONTRACT: clearSignedOutData
+    //   PURPOSE: Logout cleanup (SEC-04), called synchronously by AuthRepository.logout.
+    //   INPUTS: { none }
+    //   OUTPUTS: { Unit - returns only after Room and the credential store are empty }
+    //   SIDE_EFFECTS: blocks the caller while the wipe runs on Dispatchers.IO (Room forbids the main thread);
+    //     no UI scope can cancel it; a refresh in flight is prevented from writing afterwards.
+    //   LINKS: M-AUTH, M-P2P-CREDS, M-LOCAL-DB
+    // END_CONTRACT: clearSignedOutData
+    override fun clearSignedOutData() {
+        runBlocking(Dispatchers.IO) {
             // START_BLOCK_CLEAR_CAMERA_DATA
-            cameraDao.deleteAll()
-            credentialStore.clear()
-            Timber.d("[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA] cleared=true")
+            synchronized(writeLock) { wipeLocked() }
+            Timber.d("[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA] cleared=true reason=logout")
             // END_BLOCK_CLEAR_CAMERA_DATA
         }
+    }
+
+    // START_CONTRACT: purgeIfSignedOut
+    //   PURPOSE: Start-up safety net: with no session, no camera row or P2P credential may remain (a logout
+    //     whose cleanup failed, or a process killed mid-logout).
+    //   INPUTS: { none }
+    //   OUTPUTS: { Boolean - true when there was no session and the wipe ran }
+    //   SIDE_EFFECTS: blocking Room + store access; call off the main thread. With a session: no change.
+    //   LINKS: M-AUTH, M-P2P-CREDS, M-LOCAL-DB
+    // END_CONTRACT: purgeIfSignedOut
+    fun purgeIfSignedOut(): Boolean {
+        val rows = synchronized(writeLock) {
+            if (session.currentSession() != null) return false
+            val count = runCatching { cameraDao.count() }.getOrDefault(-1)
+            wipeLocked()
+            count
         }
+        Timber.d("[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA] cleared=true reason=no-session rows=$rows")
+        return true
+    }
+
+    /** Caller holds [writeLock]. Store first: the secrets matter more than the cache. */
+    private fun wipeLocked() {
+        wipeGeneration++
+        credentialStore.clear()
+        cameraDao.deleteAll()
     }
 
     /** One record per cloud uid; the first occurrence (an owned row precedes a shared duplicate) wins. */

@@ -1,5 +1,5 @@
 // FILE: AuthRepository.kt
-// VERSION: 0.6.0
+// VERSION: 0.7.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Yi Cloud authentication: login, refresh, logout, session access; implements AuthProvider for M-HTTP.
 //   SCOPE: validate credentials, exchange for tokens, persist via AuthStore, refresh on expiry; emit trace markers.
@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 // START_MODULE_MAP
@@ -27,12 +28,16 @@ import javax.inject.Singleton
 //   Clock - injectable time source for expiry testing.
 //   LoginPort - thin login contract consumed by M-UI-LOGIN.
 //   SessionSource - read-only session access for request signing.
+//   LogoutCleanup - port: wipe signed-out local data (camera cache, P2P credentials) synchronously on logout.
 //   NoRegionSelector - default RegionSelector: no region, so no hop and no discovery.
 //   ACCOUNT_NOT_FOUND_CODE / MAX_LOGIN_ATTEMPTS / MAX_DISCOVERY_CALLS - login region constants.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.6.0 - CAM-02: login region fallback on code 20253 (BLOCK_REGION_FALLBACK) and region
+//   LAST_CHANGE: v0.7.0 - SEC-04 fail-closed logout: logout() runs LogoutCleanup synchronously (camera cache +
+//     P2P credential store) after clearing the session, so no UI scope or cancelled coroutine can skip it.
+//     The cleanup comes through a Provider (CameraRegistry depends on SessionSource = this class).
+//   PREV_CHANGE: v0.6.0 - CAM-02: login region fallback on code 20253 (BLOCK_REGION_FALLBACK) and region
 //     discovery by device list (BLOCK_REGION_DISCOVERY), both inside the explicit login call only.
 //     Probe 2026-10-11: the same credentials log in on all three gateways and only one holds the cameras,
 //     so after a successful login on R one signed device-list check runs on R; code 20200 / empty list =>
@@ -90,6 +95,19 @@ interface SessionSource {
     fun currentSession(): AuthSession?
 }
 
+/**
+ * Wipes local data that must not outlive a session (camera cache, P2P credentials). Called synchronously by
+ * [AuthRepository.logout]; must be safe to call from any thread and when there is nothing to wipe.
+ */
+interface LogoutCleanup {
+    fun clearSignedOutData()
+}
+
+/** Default cleanup for tests and graphs without a camera registry. */
+internal object NoLogoutCleanup : LogoutCleanup {
+    override fun clearSignedOutData() = Unit
+}
+
 /** Login code: the account does not exist on this gateway (the only code that makes login hop). */
 internal const val ACCOUNT_NOT_FOUND_CODE = "20253"
 
@@ -114,6 +132,7 @@ class AuthRepository @Inject constructor(
     private val clock: Clock = SystemClock,
     private val regions: RegionSelector = NoRegionSelector,
     private val devices: DeviceListCheckPort = NoDeviceListCheck,
+    private val logoutCleanup: Provider<LogoutCleanup> = Provider { NoLogoutCleanup },
 ) : AuthProvider, LoginPort, SessionSource {
 
     @Volatile private var sessionRef: AuthSession? = store.getSession()
@@ -360,11 +379,21 @@ class AuthRepository @Inject constructor(
     /** SessionSource impl for M-CAMERA-LIST request signing. */
     override fun currentSession(): AuthSession? = sessionRef
 
-    /** Log out: clear store + in-memory session. */
+    /** Log out: clear store + in-memory session, then wipe camera cache and P2P credentials (SEC-04). */
     fun logout() {
         sessionRef = null
         store.clear()
         AuthLog.d("[Auth][logout][BLOCK_LOGOUT] session cleared")
+        // START_BLOCK_LOGOUT_CLEANUP
+        // Synchronous on purpose: a UI coroutine could be cancelled before the wipe ran. On failure the
+        // session is still gone and the start-up purge (CameraRegistry.purgeIfSignedOut) wipes later.
+        try {
+            logoutCleanup.get().clearSignedOutData()
+            AuthLog.d("[Auth][logout][BLOCK_LOGOUT_CLEANUP] cleared=true")
+        } catch (e: RuntimeException) {
+            AuthLog.d("[Auth][logout][BLOCK_LOGOUT_CLEANUP] code=LOGOUT_CLEANUP_FAILED type=${e.javaClass.simpleName}")
+        }
+        // END_BLOCK_LOGOUT_CLEANUP
     }
 
     private fun String.redact(): String =

@@ -303,7 +303,7 @@
         <scenario-3 kind="success" evidence-type="integration">Atomic Room replaceAll; cachedCameras reads Room only and never throws; concurrent refreshes serialised</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">401 / 20201 / 20202 / 20203 -> Unauthorized; IO / 5xx / non-JSON -> FetchFailed; other code -> ServerRejected; cache and store untouched</scenario-4>
         <scenario-5 kind="success" evidence-type="deterministic">P2P credentials: one signed tnp device_info per TNP camera (none for TUTK), DID/InitString/license stored, password decrypted, reused on the next refresh (also when the list has no did), refetched when the did changes; tnp failure keeps the list</scenario-5>
-        <scenario-6 kind="success" evidence-type="deterministic">hasPincode -> password null, needsPincode, no PIN endpoint; clearAll wipes Room and the store</scenario-6>
+        <scenario-6 kind="success" evidence-type="deterministic">hasPincode -> password null, needsPincode, no PIN endpoint; logout (AuthRepository -> LogoutCleanup) wipes Room and the store even from a cancelled coroutine; a refresh in flight writes nothing after logout; start-up purge without a session</scenario-6>
         <scenario-7 kind="failure" evidence-type="trace">Full refresh through the production HttpClientModule logs no uid, DID, password, InitString, License, hmac, token or user id (RedactionScanner)</scenario-7>
       </scenarios>
       <required-log-markers>
@@ -312,6 +312,7 @@
         <marker-3>[Camera][getCameraList][BLOCK_FETCH_SOURCE]</marker-3>
         <marker-4>[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS]</marker-4>
         <marker-5>[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA]</marker-5>
+        <marker-6>[Auth][logout][BLOCK_LOGOUT_CLEANUP]</marker-6>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Response parsed before DB write (BLOCK_FETCH_CAMERA_LIST precedes DB insert)</assertion-1>
