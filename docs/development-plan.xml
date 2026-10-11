@@ -64,23 +64,31 @@
         <export-createRetrofit PURPOSE="Build Retrofit with interceptors" />
         <export-getHttpClient PURPOSE="Return raw OkHttp client" />
         <export-setAuthToken PURPOSE="Update auth header via interceptor" />
-        <export-YiRequestSigner PURPOSE="Sign Yi Cloud requests (hmac over the canonical query string)" STATUS="planned" />
-        <export-LogRedactor PURPOSE="Redact tokens, passwords, serials and secret values from every log line" STATUS="planned" />
-        <export-YiAppHeaders PURPOSE="Official-app header set sent on every Yi Cloud request" STATUS="planned" />
+        <export-YiRequestSigner PURPOSE="Single HMAC-SHA1 signer over the canonical query string (seq, userid, then caller-ordered extra params); used by device list, events and tnp device_info" STATUS="implemented" />
+        <export-LogRedactor PURPOSE="maskQuery (secret-key query values) and maskJsonBody (shape-only allowlist JSON body masking) for every HTTP log line" STATUS="implemented" />
+        <export-YiAppHeaders PURPOSE="Official Yi Home 6.9.8 header set on device/deviceshare/tnp requests (never on /v4/users login)" STATUS="implemented" />
+        <export-probeClient PURPOSE="Client without auth interceptor, Authenticator.NONE and no redirects, for M-DEBUG-PROBE" STATUS="implemented" />
       </interface>
       <depends>M-CONFIG</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/network/HttpClientModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/network/YiRequestSigner.kt</source>
+        <source>app/src/main/java/com/yicamalt/network/LogRedactor.kt</source>
+        <source>app/src/main/java/com/yicamalt/network/YiAppHeaders.kt</source>
         <tests>app/src/test/java/com/yicamalt/network/HttpClientModuleTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/network/YiRequestSignerTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/network/LogRedactorTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Network]</log-prefix>
-        <critical-block>BLOCK_INIT_HTTP_CLIENT</critical-block>
+        <critical-block>BLOCK_INIT_HTTP_CLIENT, BLOCK_RESOLVE_BASE_URL, BLOCK_MASK_JSON_BODY, BLOCK_SIGN_REQUEST</critical-block>
       </observability>
       <verification-ref>V-M-HTTP</verification-ref>
       <notes>
         <note-1>Auth header injected by AccessTokenInterceptor reading from M-AUTH token store.</note-1>
-        <note-2>Response logs redact Authorization header and body on 4xx/5xx.</note-2>
+        <note-2>HTTP logger runs at BASIC level (no header values); query strings pass LogRedactor.maskQuery and bodies pass LogRedactor.maskJsonBody (only `code`, booleans and null survive; non-JSON logs as non-json len=N).</note-2>
+        <note-3>Retrofit built on placeholder https://yi-api.invalid/; base URL resolved per request from M-CONFIG (BLOCK_RESOLVE_BASE_URL), so a region switch needs no rebuild.</note-3>
+        <note-4>Phase 01 (plans 01-01, 01-04, 01-05): LogRedactor, YiRequestSigner, YiAppHeaders, per-request base URL, probeClient; token refresh bounded to one auth_token call per session expiry (M-AUTH).</note-4>
       </notes>
     </M-HTTP>
 
@@ -113,6 +121,9 @@
         <critical-block>BLOCK_INIT_DATABASE</critical-block>
       </observability>
       <verification-ref>V-M-LOCAL-DB</verification-ref>
+      <notes>
+        <note-1>BLOCK_DB_WRITE logs no identifiers (SEC-01): only online= and hasModel= flags, never the device serial (plan 01-02).</note-1>
+      </notes>
     </M-LOCAL-DB>
 
     <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" LAYER="0" ORDER="4" STATUS="implemented">
@@ -196,7 +207,7 @@
       </notes>
     </M-AUTH>
 
-    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" LAYER="1" ORDER="2" STATUS="planned">
+    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" LAYER="1" ORDER="2" STATUS="in-progress">
       <contract>
         <purpose>Fetch and cache the list of user-attached Yi cameras from cloud API. Provides live list with device status (online/offline), model info, firmware version, and stream URL resolution.</purpose>
         <inputs>
@@ -228,7 +239,7 @@
       </observability>
       <verification-ref>V-M-CAMERA-LIST</verification-ref>
       <notes>
-        <note-1>Cloud endpoint: GET /v1/user/camera/list (reverse-engineered).</note-1>
+        <note-1>Signed GET (hmac via M-HTTP YiRequestSigner). Candidate sources: /v4/devices/list, /v5/devices/list, /v5/deviceshare/shareddetail; source and region chosen from .planning/phases/01-secrets-camera-list/01-PROBE-RESULTS.md</note-1>
         <note-2>Live stream URL format depends on camera model — need per-model resolver.</note-2>
       </notes>
     </M-CAMERA-LIST>
@@ -310,6 +321,7 @@
       <notes>
         <note-1>Cloud endpoint: GET /v1/camera/event/list (paginated with cursor).</note-1>
         <note-2>Event thumbnails are JPEG blobs returned inline; full video needs separate URL resolution.</note-2>
+        <note-3>EventSigner removed (plan 01-04); requests are signed via M-HTTP YiRequestSigner, the single HMAC-SHA1 signer.</note-3>
       </notes>
     </M-EVENT>
 
@@ -582,6 +594,9 @@
         <critical-block>BLOCK_RENDER_SETTINGS, BLOCK_HANDLE_LOGOUT, BLOCK_SAVE_PREFERENCES</critical-block>
       </observability>
       <verification-ref>V-M-UI-SETTINGS</verification-ref>
+      <notes>
+        <note-1>Debug builds only: button "Проба эндпоинтов (debug)" triggers M-DEBUG-PROBE runOnce and shows its value-free lines (plan 01-05).</note-1>
+      </notes>
     </M-UI-SETTINGS>
 
     <M-UI-LOGIN NAME="LoginScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="6" STATUS="planned">
@@ -803,7 +818,7 @@
 
     <DF-CAMERA-LIST NAME="CameraListFetch" TRIGGER="App launches or camera list refreshed">
       <step-1>M-CAMERA-LIST requests token from M-AUTH</step-1>
-      <step-2>M-CAMERA-LIST calls cloud API via M-HTTP (GET /v1/user/camera/list)</step-2>
+      <step-2>M-CAMERA-LIST calls cloud API via M-HTTP (signed GET; endpoint and region per 01-PROBE-RESULTS.md)</step-2>
       <step-3>M-CAMERA-LIST parses response, caches in M-LOCAL-DB</step-3>
       <step-4>CameraRegistryState updates, UI refreshes</step-4>
       <evidence>V-M-CAMERA-LIST scenario-1 (success), log marker [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</evidence>

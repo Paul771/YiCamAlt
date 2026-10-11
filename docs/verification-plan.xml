@@ -113,8 +113,8 @@
   <VerificationMatrix>
     <!-- Compact per-module evidence map. Full detail lives in ModuleVerification below. -->
     <row-M-CONFIG success="2" failure="1" deterministic="3" trace="1" integration="0" semantic="0" autonomy="ready" />
-    <row-M-HTTP success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
-    <row-M-LOCAL-DB success="3" failure="1" deterministic="4" trace="0" integration="1" semantic="0" autonomy="ready" />
+    <row-M-HTTP success="9" failure="6" deterministic="12" trace="3" integration="1" semantic="0" autonomy="ready" />
+    <row-M-LOCAL-DB success="3" failure="2" deterministic="5" trace="0" integration="1" semantic="0" autonomy="ready" />
     <row-M-AUTH success="3" failure="2" deterministic="2" trace="3" integration="1" semantic="0" autonomy="ready" />
     <row-M-CAMERA-LIST success="3" failure="1" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-CAMERA-CMD success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
@@ -133,8 +133,8 @@
     <row-M-ONBOARDING success="3" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-CAMERA-DISCOVERY success="2" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
     <row-M-CAMERA-SETUP success="1" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
-    <row-M-REPO-HYGIENE success="1" failure="2" deterministic="3" trace="0" integration="0" semantic="0" autonomy="ready" />
-    <row-M-DEBUG-PROBE success="2" failure="4" deterministic="6" trace="1" integration="0" semantic="0" autonomy="ready" />
+    <row-M-REPO-HYGIENE success="2" failure="4" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
+    <row-M-DEBUG-PROBE success="4" failure="4" deterministic="8" trace="1" integration="0" semantic="0" autonomy="ready" />
     <row-M-P2P-CREDS success="2" failure="2" deterministic="4" trace="1" integration="0" semantic="0" autonomy="ready" />
   </VerificationMatrix>
 
@@ -168,11 +168,12 @@
       <deferred-note>Code + test written (commit d0a9171). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
       <test-files>
         <file>app/src/test/java/com/yicamalt/network/HttpClientModuleTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/network/LogRedactorTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/network/YiRequestSignerTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.network.*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
-        <check-3>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.network.RedactionTest"</check-3>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.network.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Retrofit instance created with correct base URL, TLS 1.2+, and auth interceptor</scenario-1>
@@ -185,11 +186,24 @@
         <scenario-11 kind="failure" evidence-type="deterministic">invalid-base-url-is-ioexception CONFIG_BAD_BASE_URL</scenario-11>
         <scenario-12 kind="failure" evidence-type="deterministic">expired-session-at-most-one-auth-token-call (real AuthRepository behind the client)</scenario-12>
         <scenario-13 kind="success" evidence-type="deterministic">probe-client-sends-no-authorization-and-never-refreshes</scenario-13>
+        <scenario-14 kind="failure" evidence-type="deterministic">query-masking: hmac, userid, uid, token, token_secret, password, device/user ids masked in request logs, seq/limit kept, lookalike keys untouched (LogRedactorTest maskQuery*, HttpClientModuleTest scenario_5)</scenario-14>
+        <scenario-15 kind="failure" evidence-type="deterministic">encoded-data-body-masking: login encoded data envelope and tnp device_info bodies log shape only, non-json logs as length only (LogRedactorTest maskJsonBody*, HttpClientModuleTest scenario_6/7)</scenario-15>
+        <scenario-16 kind="success" evidence-type="deterministic">base-url-switch-without-rebuild (alias of scenario-8; one Retrofit instance follows ConfigModule A to B)</scenario-16>
+        <scenario-17 kind="success" evidence-type="deterministic">app-headers-not-on-login (alias of scenario-9; /v4/users carries no x-kamihome-*/x-xiaoyi-* header)</scenario-17>
+        <scenario-18 kind="success" evidence-type="deterministic">YiRequestSigner vector: HMAC-SHA1 published vector, canonical message with and without extra params, confirmed device-list wire format (YiRequestSignerTest 6 cases)</scenario-18>
       </scenarios>
       <required-log-markers>
         <marker-1>[Network][init][BLOCK_INIT_HTTP_CLIENT]</marker-1>
         <marker-2>[Network][rebuild][BLOCK_INIT_HTTP_CLIENT] base url resolved per request</marker-2>
       </required-log-markers>
+      <code-anchors>
+        <anchor-1>BLOCK_RESOLVE_BASE_URL (HttpClientModule baseUrlInterceptor; code anchor, emits no log line, evidenced by scenario-8/10/11)</anchor-1>
+        <anchor-2>BLOCK_MASK_JSON_BODY (LogRedactor)</anchor-2>
+        <anchor-3>BLOCK_SIGN_REQUEST (YiRequestSigner)</anchor-3>
+      </code-anchors>
+      <gate-evidence>
+        <evidence-1>2026-10-11 full :app:testDebugUnitTest (plan 01-06 wave-2 gate): 165 tests, 1 skipped, 0 failures; HttpClientModuleTest 15/15, LogRedactorTest 14/14, YiRequestSignerTest 6/6</evidence-1>
+      </gate-evidence>
       <required-trace-assertions>
         <assertion-1>401 triggers exactly one token refresh and one retry</assertion-1>
         <assertion-2>Auth header redacted from all log output</assertion-2>
@@ -214,6 +228,7 @@
         <scenario-2 kind="success" evidence-type="deterministic">Event entities insert and query correctly</scenario-2>
         <scenario-3 kind="success" evidence-type="deterministic">Device registry entities insert and query correctly</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Corrupted database throws DB_CORRUPTION on open</scenario-4>
+        <scenario-5 kind="failure" evidence-type="deterministic">13-digit serial never appears in BLOCK_DB_WRITE (YiDatabaseTest scenario_5, serial 9876543210123 as extra literal; SEC-01, plan 01-02)</scenario-5>
       </scenarios>
       <required-log-markers>
         <marker-1>[Database][init][BLOCK_INIT_DATABASE]</marker-1>
@@ -258,14 +273,17 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-AUTH>
 
-    <V-M-CAMERA-LIST MODULE="M-CAMERA-LIST" PRIORITY="high" STATUS="passed">
+    <V-M-CAMERA-LIST MODULE="M-CAMERA-LIST" PRIORITY="high" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraRegistry*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraRegistry*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
+      <notes>
+        <note-1>Real-envelope evidence pending .planning/phases/01-secrets-camera-list/01-PROBE-RESULTS.md (plan 01-06 Task 3); unit evidence is FakeYiApi only.</note-1>
+      </notes>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Camera list returned with correct fields (id, name, model, online, streamUrl) from FakeYiApi</scenario-1>
         <scenario-2 kind="success" evidence-type="deterministic">Stream URL resolution returns correct format per camera model</scenario-2>
@@ -286,23 +304,31 @@
 
     <!-- GSD Phase 01 (secrets-camera-list): contract-first planned verification; scenarios are stubs (names only) -->
 
-    <V-M-REPO-HYGIENE MODULE="M-REPO-HYGIENE" PRIORITY="high" STATUS="planned">
+    <V-M-REPO-HYGIENE MODULE="M-REPO-HYGIENE" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>tools/git-hooks/test-pre-commit.sh</file>
       </test-files>
       <module-checks>
-        <check-1>bash tools/git-hooks/test-pre-commit.sh</check-1>
+        <check-1>sh tools/git-hooks/test-pre-commit.sh</check-1>
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/test-gradle-args.ps1</check-2>
+        <check-3>sh tools/git-hooks/pre-commit --range $(cat .planning/phases/01-secrets-camera-list/01-PHASE-BASE.txt)..HEAD</check-3>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">clean-commit-allowed</scenario-1>
-        <scenario-2 kind="failure" evidence-type="deterministic">forbidden-path-blocked</scenario-2>
-        <scenario-3 kind="failure" evidence-type="deterministic">secret-value-blocked</scenario-3>
+        <scenario-1 kind="success" evidence-type="deterministic">clean-commit-allowed (allow-plain-readme)</scenario-1>
+        <scenario-2 kind="failure" evidence-type="deterministic">forbidden-path-blocked (block-native-lib, block-capture-flows)</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">secret-value-blocked (block-initstring-value, block-hmac-query)</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">synth-fixture-allowed (allow-synth-fixture)</scenario-4>
+        <scenario-5 kind="failure" evidence-type="deterministic">decompiled-code-blocked (block-decompiled-java, HYGIENE_DECOMPILED_CODE)</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">range-mode-blocks-bypassed-commit (block-range-mode)</scenario-6>
       </scenarios>
       <required-log-markers>
         <marker-1>[RepoGuard][preCommit][BLOCK_SCAN_STAGED_PATHS]</marker-1>
         <marker-2>[RepoGuard][preCommit][BLOCK_SCAN_STAGED_SECRETS]</marker-2>
       </required-log-markers>
+      <gate-evidence>
+        <evidence-1>2026-10-10 plan 01-03: test-pre-commit.sh RESULT all 8 cases passed (exit 0)</evidence-1>
+        <evidence-2>2026-10-11 plan 01-06: pre-commit --range 01-PHASE-BASE..HEAD exit 0 (covers commits of waves 1-2)</evidence-2>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-REPO-HYGIENE>
 
@@ -321,7 +347,13 @@
         <scenario-4 kind="success" evidence-type="deterministic">targets-are-12-region-major-in-fixed-path-order</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">identifier-like-keys-are-counted-never-emitted</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">friends-is-never-a-device-source</scenario-6>
+        <scenario-7 kind="success" evidence-type="deterministic">16-byte-accepted-empty-envelope (code 20200, len=16, data absent, devicelike=false)</scenario-7>
+        <scenario-8 kind="success" evidence-type="deterministic">v4-array-shape-yields-count-and-field-names (nested ipcParam names only)</scenario-8>
       </scenarios>
+      <gate-evidence>
+        <evidence-1>2026-10-11 plan 01-06 wave-2 gate: ProbeMatrixTest 12/12 inside full suite 165 tests, 0 failures</evidence-1>
+        <evidence-2>Device evidence: plan 01-06 Task 2 (user runs the probe once) and Task 3 (log pull, RealLogScanTest sweep, 01-PROBE-RESULTS.md); pending</evidence-2>
+      </gate-evidence>
       <required-log-markers>
         <marker-1>[Probe][run][BLOCK_PROBE_MATRIX]</marker-1>
         <marker-2>[Probe][run][BLOCK_PROBE_SUMMARY]</marker-2>
@@ -440,7 +472,7 @@
       <phase-follow-up>Pagination (scroll to load more) verified.</phase-follow-up>
       <deferred>
         <deferred-1>EventPaths constants are a guess: real Yi Cloud paths are versioned without a /v1 prefix. Re-point after a live capture.</deferred-1>
-        <deferred-2>EventSigner duplicates the M-CAMERA-LIST HmacSHA1 scheme; unconfirmed for the event API. Collapse both into M-HTTP after a capture.</deferred-2>
+        <deferred-2 STATUS="closed">EventSigner duplicates the M-CAMERA-LIST HmacSHA1 scheme; unconfirmed for the event API. Collapse both into M-HTTP after a capture. CLOSED 2026-10-10 (plan 01-04, commit 05dcd39): EventSigner deleted, events sign via M-HTTP YiRequestSigner; EventServiceModuleTest 23/23 green. Wire confirmation for the event API still rides on deferred-1.</deferred-2>
         <deferred-3>Playback URL wire format is provisional; only the parse path is proven, not the endpoint.</deferred-3>
       </deferred>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
@@ -880,6 +912,8 @@
         <command-1>./gradlew :app:testDebugUnitTest</command-1>
         <command-2>./gradlew :app:assembleDebug</command-2>
         <command-3>./gradlew :app:connectedDebugAndroidTest</command-3>
+        <command-4>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt</command-4>
+        <command-5>sh tools/git-hooks/pre-commit --range $(cat .planning/phases/01-secrets-camera-list/01-PHASE-BASE.txt)..HEAD</command-5>
       </commands>
       <required-evidence>
         <evidence-1>Camera list fetched from FakeYiApi and displayed</evidence-1>
@@ -887,6 +921,7 @@
         <evidence-3>Settings screen: logout clears session (RedactionScanner confirms token removed from logs)</evidence-3>
         <evidence-4>All Phase-2 unit tests pass</evidence-4>
         <evidence-5>Trace-coverage check passes for all Phase-2 modules</evidence-5>
+        <evidence-6>Device log redaction sweep: RealLogScanTest with -PredactionLogFile passes on the pulled diag_log.txt (+ .1) of the probe session, test executed not skipped (GSD phase 01, SEC-01)</evidence-6>
       </required-evidence>
     </Gate-Phase-2>
 
