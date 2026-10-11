@@ -35,6 +35,7 @@ private class FakePort(
         if (fail) throw com.yicamalt.camera.CameraError.FetchFailed
         return cameras
     }
+    override suspend fun cachedCameras(): List<CameraInfo> = emptyList()
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

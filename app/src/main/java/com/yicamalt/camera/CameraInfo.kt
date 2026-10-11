@@ -1,5 +1,5 @@
 // FILE: CameraInfo.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Domain model for a Yi camera + shape-tolerant JSON parser for the signed Yi device list (/v5/devices/list).
 //   SCOPE: immutable CameraInfo value; CameraListParser maps arbitrary device envelopes to CameraInfo.
@@ -18,14 +18,16 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 // START_MODULE_MAP
-//   CameraInfo - device_id/name/model/online/streamUrl value object.
+//   CameraInfo - device_id/name/model/online/streamUrl/transport/shared value object (no P2P secrets).
 //   CameraListParser - tolerant extractor: finds the first camera array in any data envelope.
 //   CameraListParser.collectCameraObjects / firstString / firstBool / decodeEmbeddedJson - internal
 //     helpers shared with DeviceRecordParser.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - the key "type" is no longer a model key (it is the transport discriminator);
+//   LAST_CHANGE: v0.3.0 - CameraInfo gains transport (TransportType, default UNKNOWN) and shared (default
+//     false); defaults keep existing call sites compiling (plan 01-09). Credentials never go here.
+//   PREV_CHANGE: v0.2.0 - the key "type" is no longer a model key (it is the transport discriminator);
 //     "uid" is the first id key (probe 2026-10-11: the cloud uid is the cache key); helpers made
 //     internal for DeviceRecordParser; data given as a JSON-encoded string is decoded.
 //   LAST_CHANGE: v0.1.0 - Created for Phase-2 M-CAMERA-LIST. Field mapping is PROVISIONAL:
@@ -39,6 +41,8 @@ data class CameraInfo(
     val model: String,
     val online: Boolean,
     val streamUrl: String?,
+    val transport: TransportType = TransportType.UNKNOWN,
+    val shared: Boolean = false,
 )
 
 /** Shape-tolerant device-list parser. Accepts data as an array of camera objects OR an
