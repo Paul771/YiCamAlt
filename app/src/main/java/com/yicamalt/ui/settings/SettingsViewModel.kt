@@ -1,10 +1,11 @@
 // FILE: SettingsViewModel.kt
-// VERSION: 0.1.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Settings screen view-model: view/edit the runtime API base URL override.
-//   SCOPE: read current base URL, persist an override, rebuild the HTTP client on save.
-//   DEPENDS: M-CONFIG, M-HTTP
-//   LINKS: M-CONFIG, M-HTTP
+//   PURPOSE: Settings screen view-model: view/edit the runtime API base URL override; debug endpoint probe.
+//   SCOPE: read current base URL, persist an override (resolved per request by M-HTTP), run the
+//     debug-only EndpointProbe once per press.
+//   DEPENDS: M-CONFIG, M-HTTP, M-DEBUG-PROBE
+//   LINKS: M-CONFIG, M-HTTP, M-DEBUG-PROBE
 //   ROLE: UI
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
@@ -13,7 +14,7 @@ package com.yicamalt.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yicamalt.config.ConfigModule
-import com.yicamalt.debug.DeviceSignProbe
+import com.yicamalt.debug.EndpointProbe
 import com.yicamalt.network.HttpClientModule
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,17 +24,25 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 // START_MODULE_MAP
-//   SettingsViewModel - exposes current base URL, persists changes, runs the dev sign probe.
+//   SettingsViewModel - exposes current base URL, persists changes, runs the debug endpoint probe.
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.3.0 - CAM-02: saveBaseUrl stores a MANUAL server (ConfigModule.setManualBaseUrl); the field
+//     shows only a manual server and stays empty in automatic mode, so pressing Save on an auto-selected
+//     gateway cannot pin it by accident. Empty = automatic server selection.
+//   PREV_CHANGE: v0.2.0 - Probe replaced by EndpointProbe (debug only); saveBaseUrl relies on per-request
+//     base URL resolution (httpClient.rebuild() is now a logging no-op).
+// END_CHANGE_SUMMARY
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val config: ConfigModule,
     private val httpClient: HttpClientModule,
-    private val signProbe: DeviceSignProbe,
+    private val endpointProbe: EndpointProbe,
 ) : ViewModel() {
 
-    private val _baseUrl = MutableStateFlow(config.getApiBaseUrl())
+    private val _baseUrl = MutableStateFlow(manualBaseUrlOrEmpty())
     val baseUrl: StateFlow<String> = _baseUrl.asStateFlow()
 
     private val _probeResults = MutableStateFlow<List<String>?>(null)
@@ -42,22 +51,28 @@ class SettingsViewModel @Inject constructor(
     private val _probeRunning = MutableStateFlow(false)
     val probeRunning: StateFlow<Boolean> = _probeRunning.asStateFlow()
 
-    /** Persist the API base URL override and rebuild the HTTP client so it takes effect immediately. */
+    /** Persist a manual server (blank = automatic selection); M-HTTP resolves it on the very next request. */
     fun saveBaseUrl(url: String) {
         // START_BLOCK_SAVE_BASE_URL
-        config.setApiBaseUrl(url)
+        config.setManualBaseUrl(url)
         httpClient.rebuild()
-        _baseUrl.value = config.getApiBaseUrl()
+        _baseUrl.value = manualBaseUrlOrEmpty()
         // END_BLOCK_SAVE_BASE_URL
     }
 
-    /** Debug-only: run the signed-request probe and surface response codes. */
-    fun runSignProbe() {
+    private fun manualBaseUrlOrEmpty(): String = if (config.isManualBaseUrl()) config.getApiBaseUrl() else ""
+
+    /** Debug-only: run the endpoint/region probe matrix once and surface value-free lines. */
+    fun runEndpointProbe() {
+        if (_probeRunning.value) return
         _probeRunning.value = true
         _probeResults.value = null
         viewModelScope.launch {
-            _probeResults.value = signProbe.runAll()
-            _probeRunning.value = false
+            try {
+                _probeResults.value = endpointProbe.runOnce()
+            } finally {
+                _probeRunning.value = false
+            }
         }
     }
 }

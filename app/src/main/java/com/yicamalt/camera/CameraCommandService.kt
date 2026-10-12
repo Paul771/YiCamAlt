@@ -1,5 +1,5 @@
 // FILE: CameraCommandService.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Validate + dispatch camera commands (PTZ/IR/sound/capture/recording).
 //   SCOPE: model-support and online checks against the camera cache, PTZ normalization,
@@ -26,6 +26,10 @@ import javax.inject.Singleton
 //   CameraCommandError - typed errors (UnsupportedModel, CameraOffline, SendFailed, Timeout).
 //   CommandTransport - delivery seam; CommandTransportRetrofit is the provisional impl.
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.1.1 - SEC-01: command logs carry cmd/pan/tilt only, never device id
+// END_CHANGE_SUMMARY
 
 sealed class CameraCommandError(message: String) : Error(message) {
     object UnsupportedModel : CameraCommandError("CMD_UNSUPPORTED_MODEL: command not supported by this camera")
@@ -79,7 +83,7 @@ class CameraCommandService @Inject constructor(
 
     private suspend fun dispatch(deviceId: String, command: CameraCommand) = withContext(Dispatchers.IO) {
         // START_BLOCK_VALIDATE_COMMAND
-        Timber.d("[CameraCmd][dispatch][BLOCK_VALIDATE_COMMAND] device=$deviceId cmd=${command.type}")
+        Timber.d("[CameraCmd][dispatch][BLOCK_VALIDATE_COMMAND] cmd=${command.type}")
         val camera = cameraDao.getById(deviceId) ?: throw CameraCommandError.UnsupportedModel
         if (!camera.online) throw CameraCommandError.CameraOffline
         if (command.type == CameraCommandType.PTZ && !supportsPtz(camera.model)) {
@@ -88,7 +92,7 @@ class CameraCommandService @Inject constructor(
         // END_BLOCK_VALIDATE_COMMAND
 
         // START_BLOCK_SEND_COMMAND
-        Timber.d("[CameraCmd][dispatch][BLOCK_SEND_COMMAND] device=$deviceId cmd=${command.type} pan=${command.ptzPan} tilt=${command.ptzTilt}")
+        Timber.d("[CameraCmd][dispatch][BLOCK_SEND_COMMAND] cmd=${command.type} pan=${command.ptzPan} tilt=${command.ptzTilt}")
         val payload = CommandPayload(
             device_id = deviceId,
             command = command.type.name.lowercase(),

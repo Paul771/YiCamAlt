@@ -1,5 +1,5 @@
 // FILE: AuthModule.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Hilt module wiring AuthRepository, YiCloudAuthApi (from Retrofit), AuthStore, Clock, and AuthProvider binding.
 //   SCOPE: @Provides for auth graph; binds AuthRepository as AuthProvider so M-HTTP can inject it.
@@ -20,8 +20,14 @@ import retrofit2.Retrofit
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   AuthModule - Hilt module: provides YiCloudAuthApi + Clock; binds AuthRepository -> AuthProvider.
+//   AuthModule - Hilt module: provides YiCloudAuthApi + Clock; binds AuthRepository -> AuthProvider,
+//     HttpDeviceListCheck -> DeviceListCheckPort (login region discovery, CAM-02).
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - CAM-02: bindDeviceListCheck (HttpDeviceListCheck) for the login region discovery.
+//     RegionSelector comes from M-CONFIG (SettingsStoreModule.bindRegionSelector).
+// END_CHANGE_SUMMARY
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -42,6 +48,10 @@ abstract class AuthModule {
     @Binds
     @Singleton
     abstract fun bindSessionSource(impl: AuthRepository): SessionSource
+
+    @Binds
+    @Singleton
+    abstract fun bindDeviceListCheck(impl: HttpDeviceListCheck): DeviceListCheckPort
 }
 
 @Module

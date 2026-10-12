@@ -1,22 +1,64 @@
 # YiCamAlt — Текущее состояние проекта
 
-> Дата: 2026-09-28
+> Дата: 2026-10-12
 > Формат: Markdown-снимок состояния для быстрой ориентации.
 > Канонические GRACE-артефакты: `docs/*.xml` (requirements, technology, development-plan, verification-plan, knowledge-graph, operational-packets).
 
 ---
 
-## 0. Текущий фокус (2026-10-06)
+## 0. Текущий фокус (2026-10-12)
 
 План и статус передаются на другую машину **только через Git**. Точка входа для агента на новом компьютере: `HANDOFF.md` (bootstrap, список загрузок, проверки окружения) + этот файл.
 
 | Параметр | Значение |
 |---|---|
 | Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/` |
-| Ближайшая задача | захват реального запроса списка камер: эмулятор + mitmproxy 11.0.2 + системный CA |
+| Текущий фокус | **GSD Phase 1 (secrets-camera-list) реализована; идёт проверка на устройстве** (план 01-11, Task 2/3) |
+| Планы GSD | `.planning/phases/01-secrets-camera-list/` — результаты зонда `01-PROBE-RESULTS.md`, поправки `01-PLAN-ADDENDUM.md` |
 | Инструкция | `INSTRUCTIONS.md` — эмулятор, mitmproxy, CA, установка APK, диагностика |
-| Блокер 1 (протокол) | эндпоинт домашнего списка камер не найден перебором; нужны реальные flow-ы с устройства |
-| Блокер 2 (железо) | **VT-x выключен в BIOS** — x86_64 эмулятор не стартует, захват трафика на эмуляторе невозможен до включения аппаратной виртуализации |
+| Устройство | физический телефон Mi 9 по USB; эмулятор не нужен (VT-x выключен в BIOS, см. 0.2) |
+| Блокер | нет; ждём ручную установку APK и проверку списка камер пользователем |
+
+### 0.4 Список камер: источник и регион (2026-10-11/12)
+
+Зонд на устройстве (BRANCH A) показал: камеры приходят из подписанного `GET <gateway>/v5/devices/list`
+(seq, userid, hmac); общие камеры — строки того же списка (`category` / `share`), отдельного пути нет;
+код `20200` = «на этом сервере камер нет» (пустой список, не ошибка). Логин проходит на gw-us, gw-eu и
+gw-sg, а камеры владельца лежат только на одном сервере (у пользователя — US), токены у каждого сервера свои.
+Поэтому регион выбирает **только логин**: перескок по коду `20253`, затем проверка `/v5/devices/list`
+на каждом регионе (US, EU, SG), остаётся первый регион с непустым списком; не больше 3 логинов и 3
+проверок за одно нажатие. Сервер по умолчанию теперь `https://gw-us.xiaoyi.com/`. Реестр камер регион
+не меняет. TNP-данные (DID, InitString, License) — из `GET /v4/tnp/device_info`; пароль камеры
+расшифровывается из поля `password`. Все P2P-секреты лежат только в EncryptedSharedPreferences
+(`yicamalt_p2p`), в Room их нет. Выход из аккаунта стирает кэш камер и хранилище P2P синхронно (fail-closed).
+Значения (id пользователя, e-mail, идентификаторы камер) в документы не записываются.
+
+### 0.5 Проверка на устройстве: команды
+
+- **APK ставится вручную.** `adb install` на этом Xiaomi заблокирован (`INSTALL_FAILED_USER_RESTRICTED`),
+  `pm clear` не используем. Пользователь сам копирует `app/build/outputs/apk/debug/app-debug.apk` на телефон.
+- **Лог** теперь внутренний: `files/diag_log.txt` (+ ротированный `files/diag_log.txt.1`), во внешней
+  памяти ничего не пишется. Старая инструкция «забрать `auth_log.txt` по USB MTP» больше не действует.
+  Забирать двумя вызовами, без `sh -c` (его блокирует проверка безопасности), ротированный файл первым:
+
+  ```bash
+  ADB="$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe"
+  mkdir -p E:/Dev/YiCamAlt/build/device-logs
+  "$ADB" exec-out run-as com.yicamalt cat files/diag_log.txt.1 >  E:/Dev/YiCamAlt/build/device-logs/diag_log.txt
+  "$ADB" exec-out run-as com.yicamalt cat files/diag_log.txt   >> E:/Dev/YiCamAlt/build/device-logs/diag_log.txt
+  ```
+
+  Если `.1` нет, первая команда просто вернёт ошибку `cat` — это нормально. Весь файл в чат не выводить,
+  только grep по маркерам (`BLOCK_FETCH_CAMERA_LIST] devices=`, `BLOCK_RESOLVE_P2P_CREDENTIALS] stored=`,
+  `BLOCK_LOAD_CAMERAS] source=cache`, `BLOCK_INIT_APP] diagLog=internal`).
+- **Свип редакции** — обязательно с `--rerun-tasks`, иначе Gradle может отдать результат RealLogScanTest из кэша:
+
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks
+  ```
+
+  В `app/build/test-results/testDebugUnitTest/TEST-com.yicamalt.test.RealLogScanTest.xml` должно быть
+  `skipped="0"` и `failures="0"`. После свипа скачанный лог удалить.
 
 ### 0.1 Профиль машины (Windows 10 Pro 19045, x64, без прав администратора)
 
@@ -35,7 +77,7 @@
 | mitmproxy 11.0.2 | `%USERPROFILE%\venvs\mitm\Scripts\mitmdump.exe` | OK в отдельном venv (Python под uv, `pip install` в него запрещён) |
 | Gradle | wrapper 8.5 в репозитории | OK, запуск только через `tools\gradle.ps1` |
 
-Проверено: `:app:testDebugUnitTest` — **91/91 green**, сборка проходит.
+Проверено (2026-10-12): `:app:testDebugUnitTest :app:assembleDebug` — **22 набора, 278 тестов, 1 пропущен (RealLogScanTest без лог-файла), 0 падений**, `app-debug.apk` собирается.
 Порт 8080 свободен.
 
 ### 0.2 Виртуализация — блокер эмулятора
@@ -81,8 +123,9 @@ Intel VT-x / AMD SVM в UEFI, перезагрузиться. Альтернат
 
 | Фаза | Статус | Примечание |
 |------|--------|-----------|
-| **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; реальный логин подтверждён (user 167315) |
+| **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; реальный логин подтверждён на устройстве |
 | **Phase-2 (Camera Management)** | 🟡 `in-progress` | M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit-тестов); discovery/setup deferred |
+| **GSD Phase 1 (secrets-camera-list)** | 🟡 реализована, ждёт устройства | M-CONFIG (YiRegion), M-AUTH (поиск региона при логине, fail-closed logout), M-CAMERA-LIST (`/v5/devices/list`), новый M-P2P-CREDS, M-LOCAL-DB v2, M-UI-SHELL (состояния списка, pull-to-refresh); 278 JVM-тестов зелёные; V-M-CAMERA-LIST `in-progress` до проверки на телефоне |
 | **Phase-3 (Streaming Core)** | 🟡 `in-progress` | **M-EVENT done** (23 unit-теста; suite 91/91 green). Остальное ждёт захвата стрим-протокола |
 | Phase-4 (Notifications & Polish) | ⏳ не начата | M-PUSH, M-MEDIA, M-ONBOARDING, M-UI-* polish |
 
@@ -200,12 +243,13 @@ java -Djavax.net.ssl.trustStore=C:/Users/pvanyushkin/Android/Sdk/cacerts.jks \
 ## 6. BuildConfig
 
 ```kotlin
-YI_API_BASE_URL = "https://api.yicamalt.local/v1/"   // ПЛЕЙСХОЛДЕР — причина ошибки логина
+YI_API_BASE_URL = "https://gw-us.xiaoyi.com/"   // с плана 01-08; раньше был плейсхолдер api.yicamalt.local
 LOCAL_RTSP_ENABLED = true (debug) / false (release)
 ```
 
 > ⚠️ **Плейсхолдер `api.yicamalt.local` — корневая причина «Ошибка сети. Попробуй снова.»**
 > Исправлено: base URL теперь runtime-configurable через экран настроек.
+> План 01-08: дефолт — реальный шлюз US; при явном входе регион подбирается сам (US, EU, SG) по коду 20253 и по списку камер; сервер, введённый в настройках, не меняется автоматически.
 
 ---
 
@@ -373,6 +417,9 @@ https://gw-us.xiaoyi.com
 
 ## 10. Следующие шаги
 
+> **Актуально на 2026-10-12:** пункты ниже — исторические (логин давно работает). Текущий шаг — проверка
+> списка камер на телефоне по плану 01-11 (Task 2/3), команды в разделе 0.5.
+
 1. **✅ НАЙДЕН логин-эндпоинт:** `GET https://gw-us.xiaoyi.com/v4/users/login` (query params: `seq`, `account`, `password`, `dev_name`, `dev_type`, `dev_os_version`).
 2. **✅ ОБНОВЛЁН `YiCloudAuthApi`** — заменён `POST /v1/account/login` на `GET /v4/users/login` + `POST /v4/users/auth_token` (refresh). Коммиты `7b6e456`, `58b77f2`, `afaf797`.
 3. **✅ Формат ответа** — `code` десериализуется как `String`; отсутствие `data.access_token` → `InvalidCredentials` (код `40110`).
@@ -400,7 +447,7 @@ https://gw-us.xiaoyi.com
 
 ### Исправлено (v0.3.1)
 - **Регресс:** беспочвенная замена `account` → `login` (сервер отвечал `20250` → маппилось в «Неверный email или пароль») откачена; тест `AuthRepositoryTest` ассертит `account`.
-- **Диагностика:** лог отказа теперь содержит `code` + `message` сервера; `auth_log.txt` пишется и во внешнюю директорию `/sdcard/Android/data/com.yicamalt/files/` (доступна по USB MTP без root).
+- **Диагностика:** лог отказа теперь содержит `code` + `message` сервера; `auth_log.txt` пишется и во внешнюю директорию `/sdcard/Android/data/com.yicamalt/files/` (доступна по USB MTP без root). **Устарело (план 01-02, SEC-02):** лог теперь только внутренний (`files/diag_log.txt`), забирать через `adb exec-out run-as com.yicamalt cat ...` (раздел 0.5).
 
 ### Исправлено (v0.3.2) — ПЕРВОПРИЧИНА НАЙДЕНА
 - **Сервер ожидает HMAC-хэш пароля, а не открытый текст.** Код `20261` = «аккаунт найден, пароль неверен» (на plaintext ВСЕГДА 20261); `20253` = «аккаунт не найден». Аккаунт пользователя подтверждён на `gw-us` (его email + фейковый пароль → `20261`).
@@ -412,7 +459,7 @@ https://gw-us.xiaoyi.com
 - **Дыра редакции закрыта:** HttpLoggingInterceptor логировал URL с паролем открытым текстом — пароль пользователя утёк в `auth_log.txt` и чат. Лог-сток теперь маскирует `password=` и `account=` значениями `██`. ⚠️ Пользователю: сменить пароль Yi-аккаунта и удалить старый `auth_log.txt` с устройства.
 
 ### Статус (v0.4.2): АУТЕНТИФИКАЦИЯ VERIFIED НА РЕАЛЬНОМ УСТРОЙСТВЕ
-- Подтверждено пользователем 2026-09-09: логин успешен, HomeScreen показывает «Вход выполнен», ID пользователя 167315.
+- Подтверждено пользователем 2026-09-09: логин успешен, HomeScreen показывает «Вход выполнен» (id пользователя в документы не пишем).
 - Итоговая цепочка: GET /v4/users/login + account/password(HMAC-SHA256→Base64) → code 20000 → token/token_secret/userid → сессия в EncryptedSharedPreferences → HomeScreen.
 - Лог 2026-09-09: 4/4 логина успешны, refresh-дедлок устранён, редакция логов подтверждена (`Authorization: ██`).
 - Полный shell с bottom-nav и списком камер — Phase-2 (следующий шаг).
@@ -421,6 +468,8 @@ https://gw-us.xiaoyi.com
 - `HttpClientModule.rebuild()` пересоздаёт Retrofit, но `YiCloudAuthApi` — `@Singleton`, созданный из старого Retrofit: смена base URL в настройках действует **только после перезапуска приложения**. Временный обход: перезапустить приложение после смены сервера.
 
 ### Гипотеза по реальному аккаунту пользователя
+> **Закрыто 2026-10-11:** аккаунт логинится на всех трёх серверах, камеры — на US; регион теперь выбирается автоматически при логине (раздел 0.4).
+
 Реальные креды пользователя отклоняются на `gw-us` (как и фейковые) кодом уровня учётных данных. Официальное приложение имеет выбор региона (`LoginAreaSelectActivity`, `ServerInfo$ServerLocation`) — аккаунт пользователя может быть зарегистрирован на `gw-eu` или `gw-sg`. Доказательство: строка `rejected code=...` в `auth_log.txt` при попытке логина реальными кредами; затем попробовать в настройках `https://gw-eu.xiaoyi.com` и `https://gw-sg.xiaoyi.com` (с перезапуском приложения).
 
 ---
@@ -439,7 +488,8 @@ https://gw-us.xiaoyi.com
 
 ## 12. Тесты
 
-- `:app:testDebugUnitTest` — **91 тест / 0 падений** (2026-09-28; базовая линия была 68, +23 M-EVENT)
+- `:app:testDebugUnitTest` — **278 тестов, 1 пропущен, 0 падений** (2026-10-12, 22 набора; GSD Phase 1)
+- ранее: 91 тест / 0 падений (2026-09-28; базовая линия была 68, +23 M-EVENT)
 - `:app:compileDebugKotlin` — green
 - `:app:assembleDebug` → **app-debug.apk (17.2MB)**
 

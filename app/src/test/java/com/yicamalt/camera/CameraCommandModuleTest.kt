@@ -1,5 +1,5 @@
 // FILE: CameraCommandModuleTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify M-CAMERA-CMD: PTZ normalization, offline/unsupported gating, dispatch payloads.
 //   SCOPE: success + failure scenarios for V-M-CAMERA-CMD; trace marker assertions.
@@ -132,5 +132,19 @@ class CameraCommandModuleTest {
         val red = com.yicamalt.test.RedactionScanner()
         runBlocking { service.sendPTZ("dome-1", 1f, 1f) }
         red.assertClean(recorder.bufferText(), extraLiterals = listOf("Living Room"))
+    }
+
+    @Test
+    fun `redaction no device serial leaks into command logs`() {
+        val serial = "9876543210123"
+        dao.insertCamera(CameraEntity(serial, "Garage", "YI_DOME", true, null, 0, 0))
+        runBlocking {
+            service.sendPTZ(serial, 0.5f, 0.5f)
+            service.toggleIR(serial, true)
+        }
+        assertEquals(serial, transport.sent.first().device_id, "payload still carries the device id")
+        recorder.assertMarkerAppeared("BLOCK_VALIDATE_COMMAND")
+        recorder.assertMarkerAppeared("BLOCK_SEND_COMMAND")
+        com.yicamalt.test.RedactionScanner().assertClean(recorder.bufferText(), extraLiterals = listOf(serial))
     }
 }

@@ -7,3 +7,36 @@ local.properties
 captures/
 .cxx
 .venv/
+
+# Vendor binaries and reverse-engineering output: local only, never in this public repo
+_apk/
+_re/
+# Recovered vendor .so files (extracted at build time from _apk)
+app/src/main/jniLibs/
+# Captured traffic and logs may contain tokens / P2P keys
+*.mitm
+*.flow
+*.pcap
+*.pcapng
+auth_log.txt
+
+# SEC-03: vendor binaries, RE output, captures, local agent state
+*.apk
+*.apks
+*.apkm
+*.xapk
+*.aab
+*.so
+*.dex
+*.smali
+*.jadx
+*.flows
+*.har
+_tools/
+_work/
+_jadx/
+.venv-mitm/
+.mitmproxy/
+diag_log.txt
+diag_log.txt.1
+.claude/

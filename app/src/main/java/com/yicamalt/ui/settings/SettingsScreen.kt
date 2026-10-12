@@ -1,8 +1,8 @@
 // FILE: SettingsScreen.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Compose settings screen: edit the runtime API base URL override.
-//   SCOPE: stateless rendering driven by SettingsViewModel; save + back callbacks.
+//   PURPOSE: Compose settings screen: edit the runtime API base URL override; debug-only endpoint probe button.
+//   SCOPE: stateless rendering driven by SettingsViewModel; save + back callbacks; probe lines (debug builds only).
 //   DEPENDS: M-UI-SETTINGS (SettingsViewModel), M-CONFIG
 //   LINKS: M-UI-SHELL (Phase-2 nav host)
 //   ROLE: UI
@@ -10,7 +10,10 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.ui.settings
 
+import com.yicamalt.BuildConfig
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,8 +43,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
 // START_MODULE_MAP
-//   SettingsScreen - Compose surface to edit the API base URL.
+//   SettingsScreen - Compose surface to edit the API base URL; debug probe button (BuildConfig.DEBUG only).
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - Scrollable column (Arrangement.Top); sign-probe button replaced by the debug-only
+//     "Проба эндпоинтов (debug)" button (M-DEBUG-PROBE), hidden in release builds.
+// END_CHANGE_SUMMARY
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,8 +78,9 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("API сервер (Yi Cloud)")
@@ -79,26 +88,32 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("https://.../v1/") },
+                label = { Text("https://gw-us.xiaoyi.com/") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
-            Text("Оставьте пустым, чтобы использовать значение по умолчанию.")
+            Text("Пусто = автоматический выбор сервера.")
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = { viewModel.saveBaseUrl(text) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Сохранить") }
-            Spacer(Modifier.height(20.dp))
-            Button(
-                onClick = { viewModel.runSignProbe() },
-                enabled = !probeRunning,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (probeRunning) "Проверка…" else "Отладить подпись API") }
-            probeResults?.forEach {
-                Text(it, style = MaterialTheme.typography.bodySmall)
+            // START_BLOCK_DEBUG_PROBE_BUTTON
+            if (BuildConfig.DEBUG) {
+                Spacer(Modifier.height(20.dp))
+                Text("Нажмите один раз после входа. Показываются только коды и имена полей.")
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { viewModel.runEndpointProbe() },
+                    enabled = !probeRunning,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (probeRunning) "Проба идёт…" else "Проба эндпоинтов (debug)") }
+                probeResults?.forEach {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
             }
+            // END_BLOCK_DEBUG_PROBE_BUTTON
         }
     }
 }

@@ -1,10 +1,10 @@
 // FILE: RedactionScanner.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Scan a captured trace buffer for forbidden substrings (tokens, passwords, AES keys, PII).
+//   PURPOSE: Scan a captured trace buffer for forbidden substrings (tokens, passwords, AES keys, P2P secrets, PII).
 //   SCOPE: pure string scanning with regex + literal forbidden patterns. One match fails the gate.
 //   DEPENDS: none
-//   LINKS: TraceRecorder
+//   LINKS: TraceRecorder, RedactionFixtures, SEC-01
 //   ROLE: TEST
 //   MAP_MODE: LOCALS
 // END_MODULE_CONTRACT
@@ -13,7 +13,13 @@ package com.yicamalt.test
 // START_MODULE_MAP
 //   RedactionScanner - asserts no secret pattern appears in a captured log buffer.
 //   ForbiddenMatch - a single leak hit: pattern, matched substring, index.
+//   assertCleanQuiet - device-log sweep variant that never echoes the matched secret.
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - SEC-01: P2P/HMAC secret shapes, DID shape, base64 hmac, long opaque tokens;
+//     assertCleanQuiet for device-log sweeps.
+// END_CHANGE_SUMMARY
 
 class RedactionScanner {
 
@@ -24,8 +30,12 @@ class RedactionScanner {
         Regex("Bearer\\s+[A-Za-z0-9._-]+", RegexOption.IGNORE_CASE),
         Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"), // email
         Regex("\\b\\d{10,}\\b"),                                    // long digit runs (tokens / serials)
-        // key-value assignments that may carry a secret value (exclude already-redacted values)
-        Regex("(?i)(password|authorization|secret|aeskey|aes_key|accesstoken|refreshtoken)\\s*[=:]\\s*(?!<redacted>|\\u2588\\u2588)\\S+"),
+        // key-value assignments (query, header or JSON) that may carry a secret value;
+        // already-redacted values (<redacted>, ██) are allowed.
+        Regex("(?i)\"?\\b(password|pwd|authorization|secret|token|token_secret|access_token|refresh_token|accesstoken|refreshtoken|aeskey|aes_key|hmac|license|licensekey|tnplicensekey|initstring|init_string|nonce|viewpassword|authkey|signature|p2pid|p2p_id|did|pincode|serial)\"?\\s*[=:]\\s*\"?(?!<redacted>|\\u2588\\u2588)[^\\s\",&}]+"),
+        Regex("\\b[A-Z]{3,8}-\\d{6}-[A-Z]{5}\\b"),                       // TNP/CS2 DID shape
+        Regex("(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{27}="),                    // base64 HMAC-SHA1 (28 chars)
+        Regex("(?<![A-Za-z0-9+/_.-])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/_.-])"), // long opaque token / InitString
     )
 
     /** Extra literals to add for a specific test (e.g. a known token value). */
@@ -56,6 +66,18 @@ class RedactionScanner {
         check(hits.isEmpty()) {
             "RedactionScanner found forbidden substrings in logs:\n" +
                 hits.joinToString("\n") { "  - ${it.pattern}: '${it.matched}' @${it.index}" }
+        }
+    }
+
+    /**
+     * Assert the buffer is clean without echoing secrets: the failure lists only the
+     * pattern and the index of each hit, never the matched text (safe for real device logs).
+     */
+    fun assertCleanQuiet(buffer: String) {
+        val hits = scan(buffer)
+        check(hits.isEmpty()) {
+            "RedactionScanner found ${hits.size} forbidden pattern hit(s) in logs:\n" +
+                hits.joinToString("\n") { "  - ${it.pattern} @${it.index}" }
         }
     }
 }

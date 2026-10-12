@@ -1,5 +1,5 @@
 // FILE: AuthRepositoryTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify login/refresh/logout/session flows against MockWebServer + in-memory AuthStore + fake clock.
 //   SCOPE: success + failure scenarios for V-M-AUTH; trace + redaction assertions.
@@ -9,6 +9,15 @@
 //   MAP_MODE: LOCALS
 // END_MODULE_CONTRACT
 package com.yicamalt.auth
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.3.0 - CAM-02: region_1..region_9 pin the login region fallback (hop only on code 20253,
+//     at most 3 login requests per call, original server restored when the account is found nowhere,
+//     found region kept on a wrong password, no hop on a network error or a custom server).
+//     Region discovery by device list is pinned in AuthRegionDiscoveryTest.
+//   PREV_CHANGE: v0.2.0 - refresh bound tests: 5x getAccessToken + 3x refresh on an expired session with a
+//     failing refresh API = exactly 1 auth_token call; a new login re-arms exactly one more attempt.
+// END_CHANGE_SUMMARY
 
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
@@ -27,6 +36,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import retrofit2.Retrofit
+import com.yicamalt.config.YiRegion
+import java.io.IOException
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.atomic.AtomicLong
 
@@ -120,7 +131,7 @@ class AuthRepositoryTest {
         assertTrue(session.expiresAt > clock.nowMillis(), "missing expires_in must NOT produce an already-expired session")
         assertNotNull(store.getSession())
         recorder.assertMarkerAppeared("BLOCK_STORE_TOKEN")
-        recorder.assertSequence("BLOCK_VALIDATE_CREDENTIALS", "BLOCK_STORE_TOKEN")
+        recorder.assertSequence("BLOCK_VALIDATE_CREDENTIALS", "BLOCK_REGION_FALLBACK", "BLOCK_REGION_SELECTED", "BLOCK_STORE_TOKEN")
     }
 
     @Test
@@ -161,7 +172,7 @@ class AuthRepositoryTest {
         assertNotNull(store.getSession())
         recorder.assertMarkerAppeared("BLOCK_VALIDATE_CREDENTIALS")
         recorder.assertMarkerAppeared("BLOCK_STORE_TOKEN")
-        recorder.assertSequence("BLOCK_VALIDATE_CREDENTIALS", "BLOCK_STORE_TOKEN")
+        recorder.assertSequence("BLOCK_VALIDATE_CREDENTIALS", "BLOCK_REGION_FALLBACK", "BLOCK_REGION_SELECTED", "BLOCK_STORE_TOKEN")
     }
 
     @Test
@@ -222,6 +233,23 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun `redaction auth logs carry no user id or epoch`() {
+        // Realistic wall clock so expiresAt is a 13-digit epoch-millis value the scanner would catch.
+        clock.advance(1_760_000_000_000L)
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", user = "167315")))
+        server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2", user = "167315")))
+        val r = repo
+        val session = runBlocking { r.login("user@example.com", "pw") }
+        assertNotNull(runBlocking { r.refreshSession() })
+        recorder.assertMarkerAppeared("BLOCK_STORE_TOKEN")
+        recorder.assertMarkerAppeared("BLOCK_REFRESH_TOKEN")
+        redaction.assertClean(
+            recorder.bufferText(),
+            extraLiterals = listOf("167315", session.expiresAt.toString()),
+        )
+    }
+
+    @Test
     fun `trace refresh called exactly once on expiry`() {
         server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", expiresIn = 1)))
         server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2", expiresIn = 3600)))
@@ -236,4 +264,174 @@ class AuthRepositoryTest {
         // Verify only one refresh network call hit the server.
         assertEquals(2, server.requestCount, "login + one refresh only")
     }
+
+    @Test
+    fun `refresh bound at most one auth_token call per session expiry`() {
+        // login #1 (expires in 1s), then every further response is a failing refresh body.
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", expiresIn = 1)))
+        repeat(10) { server.enqueue(MockResponse().setBody("""{"code":"20201"}""")) }
+        val r = repo
+        runBlocking { r.login("user@example.com", "pw") }
+        clock.advance(2_000L)
+        runBlocking {
+            repeat(5) { assertEquals("acc-1", r.getAccessToken(), "stale token returned after failed refresh") }
+            repeat(3) { assertNull(r.refresh(), "authenticator path sees the same memo") }
+        }
+        assertEquals(2, server.requestCount, "login + exactly ONE auth_token call")
+        recorder.assertMarkerAppeared("BLOCK_REFRESH_ONCE_PER_EXPIRY")
+    }
+
+    @Test
+    fun `refresh bound re-arms after a new successful login`() {
+        server.enqueue(MockResponse().setBody(loginBody("acc-1", "ref-1", expiresIn = 1)))
+        server.enqueue(MockResponse().setBody("""{"code":"20201"}"""))
+        val r = repo
+        runBlocking { r.login("user@example.com", "pw") }
+        clock.advance(2_000L)
+        runBlocking { repeat(3) { r.getAccessToken() } }
+        assertEquals(2, server.requestCount)
+        // New login -> new expiresAt -> exactly one more refresh attempt on the next expiry.
+        server.enqueue(MockResponse().setBody(loginBody("acc-2", "ref-2", expiresIn = 1)))
+        repeat(5) { server.enqueue(MockResponse().setBody("""{"code":"20201"}""")) }
+        runBlocking { r.login("user@example.com", "pw") }
+        clock.advance(2_000L)
+        runBlocking {
+            repeat(4) { r.getAccessToken() }
+            repeat(2) { r.refresh() }
+        }
+        assertEquals(4, server.requestCount, "login, refresh, login, ONE more refresh")
+    }
+
+    // START_BLOCK_REGION_FALLBACK_TESTS
+    private val regionStore = RegionTestStore()
+    private val hasDevices = ScriptedDeviceCheck.TWO
+
+    private fun regionRepo(selector: FakeRegionSelector, api: ScriptedAuthApi, check: DeviceListCheckPort) =
+        AuthRepository(api, regionStore, clock, selector, check)
+
+    private fun regionLogin(r: AuthRepository) = runBlocking { r.login(Synth.EMAIL, Synth.PASSWORD) }
+
+    private fun assertRegionTraceClean() {
+        recorder.assertMaxRetries("BLOCK_REGION_FALLBACK", 3)
+        redaction.assertClean(recorder.bufferText(), extraLiterals = listOf(Synth.EMAIL, Synth.PASSWORD, Synth.USER_ID))
+    }
+
+    @Test
+    fun `region_1 account not found on US then accepted on EU makes 2 login calls and ends on EU`() {
+        val selector = FakeRegionSelector(YiRegion.US)
+        val api = ScriptedAuthApi(selector, queue = listOf(rejected("20253"), ok("EU")))
+        val check = ScriptedDeviceCheck(selector, mapOf("EU" to hasDevices))
+        val session = regionLogin(regionRepo(selector, api, check))
+        assertEquals(listOf("US", "EU"), api.loginRegions)
+        assertEquals(YiRegion.EU, selector.currentRegion())
+        assertEquals(Synth.token("EU"), session.accessToken)
+        assertEquals(Synth.token("EU"), regionStore.getSession()?.accessToken)
+        assertEquals(1, check.calls)
+        recorder.assertMarkerAppeared("BLOCK_REGION_FALLBACK")
+        assertRegionTraceClean()
+    }
+
+    @Test
+    fun `region_2 account found on the third gateway makes 3 login calls and ends on SG`() {
+        val selector = FakeRegionSelector(YiRegion.US)
+        val api = ScriptedAuthApi(selector, queue = listOf(rejected("20253"), rejected("20253"), ok("SG")))
+        val check = ScriptedDeviceCheck(selector, mapOf("SG" to hasDevices))
+        regionLogin(regionRepo(selector, api, check))
+        assertEquals(listOf("US", "EU", "SG"), api.loginRegions)
+        assertEquals(YiRegion.SG, selector.currentRegion())
+        assertEquals(1, check.calls)
+        assertRegionTraceClean()
+    }
+
+    @Test
+    fun `region_3 account found nowhere makes exactly 3 login calls and restores the original server`() {
+        val selector = FakeRegionSelector(YiRegion.EU)
+        val api = ScriptedAuthApi(selector, queue = List(10) { rejected("20253") })
+        val check = ScriptedDeviceCheck(selector, emptyMap())
+        assertThrows(AuthError.InvalidCredentials::class.java) { regionLogin(regionRepo(selector, api, check)) }
+        assertEquals(listOf("EU", "US", "SG"), api.loginRegions, "each region exactly once, starting on the current one")
+        assertEquals(3, api.loginCalls)
+        assertEquals(0, check.calls)
+        assertEquals(listOf(YiRegion.EU.baseUrl), selector.restores)
+        assertEquals(YiRegion.EU, selector.currentRegion())
+        assertEquals(YiRegion.EU.baseUrl, selector.currentBaseUrl())
+        assertNull(regionStore.getSession())
+        assertRegionTraceClean()
+    }
+
+    @Test
+    fun `region_4 wrong password on a later gateway keeps that gateway`() {
+        val selector = FakeRegionSelector(YiRegion.US)
+        val api = ScriptedAuthApi(selector, queue = listOf(rejected("20253"), rejected("20261")))
+        val check = ScriptedDeviceCheck(selector, emptyMap())
+        assertThrows(AuthError.InvalidCredentials::class.java) { regionLogin(regionRepo(selector, api, check)) }
+        assertEquals(2, api.loginCalls)
+        assertEquals(YiRegion.EU, selector.currentRegion(), "the account lives on EU: the next attempt starts there")
+        assertTrue(selector.restores.isEmpty())
+        assertEquals(0, check.calls)
+        assertRegionTraceClean()
+    }
+
+    @Test
+    fun `region_5 wrong password on the first gateway makes exactly 1 call and never hops`() {
+        val selector = FakeRegionSelector(YiRegion.US)
+        val api = ScriptedAuthApi(selector, queue = listOf(rejected("20261")))
+        val check = ScriptedDeviceCheck(selector, emptyMap())
+        assertThrows(AuthError.InvalidCredentials::class.java) { regionLogin(regionRepo(selector, api, check)) }
+        assertEquals(1, api.loginCalls)
+        assertTrue(selector.selections.isEmpty())
+        assertTrue(selector.restores.isEmpty())
+        assertEquals(0, check.calls)
+        assertRegionTraceClean()
+    }
+
+    @Test
+    fun `region_6 network error on the first call propagates after exactly 1 call with the server unchanged`() {
+        val selector = FakeRegionSelector(YiRegion.SG)
+        val api = ScriptedAuthApi(selector, queue = listOf(IOException("synthetic")))
+        val check = ScriptedDeviceCheck(selector, emptyMap())
+        assertThrows(IOException::class.java) { regionLogin(regionRepo(selector, api, check)) }
+        assertEquals(1, api.loginCalls)
+        assertTrue(selector.selections.isEmpty())
+        assertEquals(YiRegion.SG.baseUrl, selector.currentBaseUrl())
+        assertEquals(0, check.calls)
+        assertNull(regionStore.getSession())
+    }
+
+    @Test
+    fun `region_7 network error after a hop puts the original server back`() {
+        val selector = FakeRegionSelector(YiRegion.US)
+        val api = ScriptedAuthApi(selector, queue = listOf(rejected("20253"), IOException("synthetic")))
+        val check = ScriptedDeviceCheck(selector, emptyMap())
+        assertThrows(IOException::class.java) { regionLogin(regionRepo(selector, api, check)) }
+        assertEquals(2, api.loginCalls, "no retry and no third gateway after a network error")
+        assertEquals(YiRegion.US, selector.currentRegion())
+        assertEquals(0, check.calls)
+    }
+
+    @Test
+    fun `region_8 custom server makes exactly 1 call regardless of the code`() {
+        listOf(rejected("20253"), rejected("20261"), ok("X")).forEach { answer ->
+            val selector = FakeRegionSelector(null)
+            val api = ScriptedAuthApi(selector, queue = listOf(answer))
+            val check = ScriptedDeviceCheck(selector, emptyMap())
+            runCatching { regionLogin(regionRepo(selector, api, check)) }
+            assertEquals(1, api.loginCalls)
+            assertEquals(0, check.calls)
+            assertTrue(selector.selections.isEmpty())
+            assertTrue(selector.restores.isEmpty())
+            assertEquals(Synth.CUSTOM_URL, selector.currentBaseUrl())
+        }
+    }
+
+    @Test
+    fun `region_9 three-argument repository makes exactly 1 call and never hops`() {
+        val api = ScriptedAuthApi(null, queue = listOf(rejected("20253"), ok("X")))
+        assertThrows(AuthError.InvalidCredentials::class.java) {
+            runBlocking { AuthRepository(api, regionStore, clock).login(Synth.EMAIL, Synth.PASSWORD) }
+        }
+        assertEquals(1, api.loginCalls)
+        recorder.assertMaxRetries("BLOCK_REGION_FALLBACK", 1)
+    }
+    // END_BLOCK_REGION_FALLBACK_TESTS
 }

@@ -24,13 +24,13 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "YI_API_BASE_URL", "\"https://api.yicamalt.local/v1/\"")
+            buildConfigField("String", "YI_API_BASE_URL", "\"https://gw-us.xiaoyi.com/\"")
             buildConfigField("boolean", "LOCAL_RTSP_ENABLED", "true")
         }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "YI_API_BASE_URL", "\"https://api.yicamalt.local/v1/\"")
+            buildConfigField("String", "YI_API_BASE_URL", "\"https://gw-us.xiaoyi.com/\"")
             buildConfigField("boolean", "LOCAL_RTSP_ENABLED", "false")
         }
     }
@@ -129,4 +129,8 @@ tasks.withType<Test> {
         "-Djavax.net.ssl.trustStorePassword=changeit",
         "-Djavax.net.ssl.trustStoreType=JKS",
     )
+    // SEC-01: opt-in sweep of a pulled device log (RealLogScanTest), -PredactionLogFile=<abs path>.
+    val redactionLogFile = (project.findProperty("redactionLogFile") as String?).orEmpty()
+    systemProperty("redaction.logFile", redactionLogFile)
+    if (redactionLogFile.isNotBlank()) outputs.upToDateWhen { false }
 }

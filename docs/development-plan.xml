@@ -1,4 +1,4 @@
-<DevelopmentPlan VERSION="0.2.0">
+<DevelopmentPlan VERSION="0.3.0">
   <ArchitectureNotes>
     <objective>Спроектировать модульную Android-архитектуру (Clean Architecture: data / domain / presentation) для альтернативного клиента Yi-камер. Каждый модуль должен иметь чёткий contract, measurable verification, и observable log markers.</objective>
     <non-goal>Не создавать server-side компонент; не делать iOS/桌面 версию; не поддерживать камеры не-Yi.</non-goal>
@@ -10,7 +10,7 @@
   <Modules>
     <!-- Layer 0: Foundation / Infrastructure -->
 
-    <M-CONFIG NAME="Config" TYPE="UTILITY" LAYER="0" ORDER="1" STATUS="planned">
+    <M-CONFIG NAME="Config" TYPE="UTILITY" LAYER="0" ORDER="1" STATUS="implemented">
       <contract>
         <purpose>Central application configuration: feature flags, API base URLs, build variants, and runtime settings.</purpose>
         <inputs>
@@ -27,19 +27,26 @@
         <export-getApiBaseUrl PURPOSE="Return base URL for Yi Cloud API" />
         <export-getFeatureFlags PURPOSE="Return runtime feature flag map" />
         <export-isLocalRtspEnabled PURPOSE="Check if local RTSP is allowed by config" />
+        <export-YiRegion PURPOSE="Yi Cloud region enum with per-region gateway hosts" STATUS="implemented" />
+        <export-RegionSelector PURPOSE="Pick and persist the account region; feeds the base URL of M-HTTP" STATUS="implemented" />
+        <export-setManualBaseUrl PURPOSE="Server typed by the user; disables every automatic region change" STATUS="implemented" />
       </interface>
       <depends>none</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/config/ConfigModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/config/YiRegion.kt</source>
+        <source>app/src/main/java/com/yicamalt/config/SettingsStore.kt</source>
         <tests>app/src/test/java/com/yicamalt/config/ConfigModuleTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Config]</log-prefix>
-        <critical-block>BLOCK_INIT_CONFIG</critical-block>
+        <critical-block>BLOCK_INIT_CONFIG, BLOCK_SELECT_REGION</critical-block>
       </observability>
       <verification-ref>V-M-CONFIG</verification-ref>
       <notes>
         <note-1>Config values loaded from BuildConfig + default overrides. No network calls.</note-1>
+        <note-2>Plan 01-08: default base URL is the US gateway (region order US, EU, SG); the fourth server api.xiaoyi.com is reachable only as a manual server.</note-2>
+        <note-3>RegionSelector (currentRegion, selectRegion, currentBaseUrl, restoreBaseUrl) is implemented by ConfigModule and bound in Hilt (bindRegionSelector). Only the M-AUTH login loop calls selectRegion; the camera registry never switches region. While a manual server is set, currentRegion() is null and selectRegion/restoreBaseUrl do nothing. Log: [Config][region][BLOCK_SELECT_REGION] region=NAME (no URL).</note-3>
       </notes>
     </M-CONFIG>
 
@@ -62,24 +69,35 @@
         <export-createRetrofit PURPOSE="Build Retrofit with interceptors" />
         <export-getHttpClient PURPOSE="Return raw OkHttp client" />
         <export-setAuthToken PURPOSE="Update auth header via interceptor" />
+        <export-YiRequestSigner PURPOSE="Single HMAC-SHA1 signer over the canonical query string (seq, userid, then caller-ordered extra params); used by device list, events and tnp device_info" STATUS="implemented" />
+        <export-LogRedactor PURPOSE="maskQuery (secret-key query values) and maskJsonBody (shape-only allowlist JSON body masking) for every HTTP log line" STATUS="implemented" />
+        <export-YiAppHeaders PURPOSE="Official Yi Home 6.9.8 header set on device/deviceshare/tnp requests (never on /v4/users login)" STATUS="implemented" />
+        <export-probeClient PURPOSE="Client without auth interceptor, Authenticator.NONE and no redirects, for M-DEBUG-PROBE" STATUS="implemented" />
       </interface>
       <depends>M-CONFIG</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/network/HttpClientModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/network/YiRequestSigner.kt</source>
+        <source>app/src/main/java/com/yicamalt/network/LogRedactor.kt</source>
+        <source>app/src/main/java/com/yicamalt/network/YiAppHeaders.kt</source>
         <tests>app/src/test/java/com/yicamalt/network/HttpClientModuleTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/network/YiRequestSignerTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/network/LogRedactorTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Network]</log-prefix>
-        <critical-block>BLOCK_INIT_HTTP_CLIENT</critical-block>
+        <critical-block>BLOCK_INIT_HTTP_CLIENT, BLOCK_RESOLVE_BASE_URL, BLOCK_MASK_JSON_BODY, BLOCK_SIGN_REQUEST</critical-block>
       </observability>
       <verification-ref>V-M-HTTP</verification-ref>
       <notes>
         <note-1>Auth header injected by AccessTokenInterceptor reading from M-AUTH token store.</note-1>
-        <note-2>Response logs redact Authorization header and body on 4xx/5xx.</note-2>
+        <note-2>HTTP logger runs at BASIC level (no header values); query strings pass LogRedactor.maskQuery and bodies pass LogRedactor.maskJsonBody (only `code`, booleans and null survive; non-JSON logs as non-json len=N).</note-2>
+        <note-3>Retrofit built on placeholder https://yi-api.invalid/; base URL resolved per request from M-CONFIG (BLOCK_RESOLVE_BASE_URL), so a region switch needs no rebuild.</note-3>
+        <note-4>Phase 01 (plans 01-01, 01-04, 01-05): LogRedactor, YiRequestSigner, YiAppHeaders, per-request base URL, probeClient; token refresh bounded to one auth_token call per session expiry (M-AUTH).</note-4>
       </notes>
     </M-HTTP>
 
-    <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" LAYER="0" ORDER="3" STATUS="planned">
+    <M-LOCAL-DB NAME="LocalDatabase" TYPE="DATA_LAYER" LAYER="0" ORDER="3" STATUS="implemented">
       <contract>
         <purpose>Room-based local persistence for event cache, config state, and offline playback manifest. Acts as a cache layer — source of truth is cloud, but DB ensures UI responsiveness.</purpose>
         <inputs>
@@ -97,22 +115,68 @@
         <export-eventDao PURPOSE="Access event table operations" />
         <export-deviceDao PURPOSE="Access device registry operations" />
         <export-syncDao PURPOSE="Access sync status table" />
+        <export-cameraDao PURPOSE="Camera cache table, schema v2: cameras row + transport, shared; no secret column" STATUS="implemented" />
+        <export-replaceAll PURPOSE="CameraDao.replaceAll: delete + inserts in one Room transaction (used by the M-CAMERA-LIST refresh)" STATUS="implemented" />
       </interface>
       <depends>M-CONFIG</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/database/YiDatabase.kt</source>
-        <tests>app/src/test/java/com/yicamalt/database/LocalDatabaseTest.kt</tests>
+        <source>app/src/main/java/com/yicamalt/database/CameraDao.kt</source>
+        <source>app/src/main/java/com/yicamalt/database/CameraEntity.kt</source>
+        <source>app/src/main/java/com/yicamalt/database/DatabaseModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/database/YiDatabaseTest.kt</tests>
       </target>
       <observability>
-        <log-prefix>[Database]</log-prefix>
-        <critical-block>BLOCK_INIT_DATABASE</critical-block>
+        <log-prefix>[DB]</log-prefix>
+        <critical-block>BLOCK_INIT_DB, BLOCK_DB_WRITE, BLOCK_DB_REPLACE_ALL</critical-block>
       </observability>
       <verification-ref>V-M-LOCAL-DB</verification-ref>
+      <notes>
+        <note-1>BLOCK_DB_WRITE logs no identifiers (SEC-01): only online= and hasModel= flags, never the device serial (plan 01-02).</note-1>
+        <note-2>Plan 01-12: schema version 2 (cameras row + transport, shared) with fallbackToDestructiveMigration, so the cache is wiped once on upgrade. P2P secrets never reach Room (SEC-04): YiDatabaseTest pins the exact cameras column set via PRAGMA table_info.</note-2>
+      </notes>
     </M-LOCAL-DB>
+
+    <M-REPO-HYGIENE NAME="RepoGuard" TYPE="TOOLING" LAYER="0" ORDER="4" STATUS="implemented">
+      <contract>
+        <purpose>Keep vendor binaries, decompiled code, captures and secret values out of the public repo</purpose>
+        <inputs>
+          <param name="stagedChanges" type="git index (pre-commit hook input)" />
+        </inputs>
+        <outputs>
+          <param name="verdict" type="hook exit code (0 = allow, non-zero = block with reason)" />
+        </outputs>
+        <errors>
+          <error code="HYGIENE_FORBIDDEN_PATH" />
+          <error code="HYGIENE_SECRET_VALUE" />
+          <error code="HYGIENE_DECOMPILED_CODE" />
+        </errors>
+      </contract>
+      <interface>
+        <export-preCommit PURPOSE="Block commits that add forbidden paths or secret values" />
+        <export-installHooks PURPOSE="Copy tools/git-hooks/pre-commit into .git/hooks (LF); never sets core.hooksPath, so the Git LFS hooks stay active" />
+        <export-preCommitRange PURPOSE="sh tools/git-hooks/pre-commit --range base..head applies the same rules to a commit range" />
+      </interface>
+      <depends>none</depends>
+      <target>
+        <source>tools/git-hooks/pre-commit</source>
+        <source>tools/install-hooks.ps1</source>
+        <source>.gitignore</source>
+        <tests>tools/git-hooks/test-pre-commit.sh</tests>
+      </target>
+      <observability>
+        <log-prefix>[RepoGuard]</log-prefix>
+        <critical-block>BLOCK_SCAN_STAGED_PATHS, BLOCK_SCAN_STAGED_SECRETS</critical-block>
+      </observability>
+      <verification-ref>V-M-REPO-HYGIENE</verification-ref>
+      <notes>
+        <note-1>History is NOT rewritten (owner decision); the guard only protects new commits.</note-1>
+      </notes>
+    </M-REPO-HYGIENE>
 
     <!-- Layer 1: Core Domain -->
 
-    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" LAYER="1" ORDER="1" STATUS="planned">
+    <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" LAYER="1" ORDER="1" STATUS="implemented">
       <contract>
         <purpose>Handle Yi Cloud authentication: login with email/password or phone, token refresh, session management, and secure storage of tokens in Android Keystore.</purpose>
         <inputs>
@@ -136,25 +200,33 @@
         <export-getAccessToken PURPOSE="Return current valid access token" />
         <export-isLoggedIn PURPOSE="Check if user has valid session" />
         <export-getAuthMethod PURPOSE="Return the auth method used for current session" />
+        <export-DeviceListCheckPort PURPOSE="Login region discovery check: one signed GET /v5/devices/list reduced to code + count (HttpDeviceListCheck in auth/RegionDiscovery.kt)" STATUS="implemented" />
+        <export-LogoutCleanup PURPOSE="Port run synchronously by logout(): wipe camera cache + P2P credential store (implemented by CameraRegistry, injected through a Provider)" STATUS="implemented" />
       </interface>
-      <depends>M-HTTP, M-LOCAL-DB</depends>
+      <depends>M-HTTP, M-LOCAL-DB, M-CONFIG</depends>
       <target>
+        <source>app/src/main/java/com/yicamalt/auth/AuthRepository.kt</source>
+        <source>app/src/main/java/com/yicamalt/auth/RegionDiscovery.kt</source>
         <source>app/src/main/java/com/yicamalt/auth/AuthModule.kt</source>
-        <tests>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/auth/AuthRepositoryTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/auth/AuthRegionDiscoveryTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Auth]</log-prefix>
-        <critical-block>BLOCK_VALIDATE_CREDENTIALS, BLOCK_STORE_TOKEN, BLOCK_REFRESH_TOKEN</critical-block>
+        <critical-block>BLOCK_VALIDATE_CREDENTIALS, BLOCK_REGION_FALLBACK, BLOCK_REGION_DISCOVERY, BLOCK_REGION_SELECTED, BLOCK_STORE_TOKEN, BLOCK_REFRESH_TOKEN, BLOCK_REFRESH_ONCE_PER_EXPIRY, BLOCK_LOGOUT_CLEANUP</critical-block>
       </observability>
       <verification-ref>V-M-AUTH</verification-ref>
       <notes>
         <note-1>Tokens stored in EncryptedSharedPreferences backed by Android Keystore.</note-1>
         <note-2>Token refresh happens automatically before API calls via Retrofit interceptor.</note-2>
         <note-3>Reverse-engineered auth endpoint: GET /v4/users/login (query params: seq, account, password, dev_name, dev_type, dev_os_version). Refresh: POST /v4/users/auth_token. Response code is a String; missing access_token -> InvalidCredentials.</note-3>
+        <note-4>Plan 01-08 (CAM-02): explicit login hops on code 20253 and then discovers the region by device list (DeviceListCheckPort: GET /v5/devices/list, code + count). Bound per login call: 3 logins + 3 list checks, no retries; never on refresh or app start; a manual server disables both.</note-4>
+        <note-5>Region rule as built (addendum): keep the first region whose /v5/devices/list answers code 20000 with count &gt; 0; if none, keep the first region where login succeeded. A wrong password stops the loop; a network error keeps the last good session. loginMutex serialises presses; token refresh is suppressed while the check runs. This login discovery is the only place the region is chosen: the camera registry has no region fallback (tokens are per region).</note-5>
+        <note-6>SEC-04 (plan 01-09 review fix): logout() is fail-closed. It clears the session, then calls LogoutCleanup synchronously; log [Auth][logout][BLOCK_LOGOUT_CLEANUP] cleared=true, or code=LOGOUT_CLEANUP_FAILED type=NAME.</note-6>
       </notes>
     </M-AUTH>
 
-    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" LAYER="1" ORDER="2" STATUS="planned">
+    <M-CAMERA-LIST NAME="CameraRegistry" TYPE="CORE_LOGIC" LAYER="1" ORDER="2" STATUS="implemented">
       <contract>
         <purpose>Fetch and cache the list of user-attached Yi cameras from cloud API. Provides live list with device status (online/offline), model info, firmware version, and stream URL resolution.</purpose>
         <inputs>
@@ -166,28 +238,42 @@
         <errors>
           <error code="CAMERA_FETCH_FAILED" />
           <error code="CAMERA_UNAUTHORIZED" />
+          <error code="CAMERA_SERVER_ERROR" />
         </errors>
       </contract>
       <interface>
-        <export-getCameraList PURPOSE="Fetch camera list from cloud" />
+        <export-getCameraList PURPOSE="Fetch camera list from cloud; empty list = no cameras" />
+        <export-cachedCameras PURPOSE="Room-only list for offline display; never throws" />
+        <export-getCredentials PURPOSE="P2P credentials of one camera from the encrypted store (Phase 2 entry point)" />
+        <export-clearSignedOutData PURPOSE="LogoutCleanup: synchronous wipe of camera cache + P2P credential store, run by AuthRepository.logout" />
+        <export-purgeIfSignedOut PURPOSE="Start-up wipe of camera cache + P2P credential store when there is no session" />
         <export-getCameraById PURPOSE="Get single camera info by deviceId" />
         <export-getLiveStreamUrl PURPOSE="Resolve live stream URL (cloud or local) for a camera" />
         <export-updateCameraStatus PURPOSE="Update online/offline status (pushed from FCM)" />
         <export-cacheCameraList PURPOSE="Persist camera list to local DB for offline access" />
       </interface>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG</depends>
       <target>
-        <source>app/src/main/java/com/yicamalt/camera/CameraRegistryModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/CameraRegistry.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/DeviceSourcePlan.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/DeviceRecordParser.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/YiCloudDeviceApi.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/CameraInfo.kt</source>
         <tests>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/camera/CameraRegistryCredentialsTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/camera/DeviceRecordParserTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Camera]</log-prefix>
-        <critical-block>BLOCK_FETCH_CAMERA_LIST, BLOCK_RESOLVE_STREAM_URL</critical-block>
+        <critical-block>BLOCK_FETCH_SOURCE, BLOCK_FETCH_CAMERA_LIST, BLOCK_RESOLVE_P2P_CREDENTIALS, BLOCK_CLEAR_CAMERA_DATA, BLOCK_RESOLVE_STREAM_URL</critical-block>
       </observability>
       <verification-ref>V-M-CAMERA-LIST</verification-ref>
       <notes>
-        <note-1>Cloud endpoint: GET /v1/user/camera/list (reverse-engineered).</note-1>
+        <note-1>Signed GET (hmac via M-HTTP YiRequestSigner). BRANCH A (01-PROBE-RESULTS.md + addendum): only /v5/devices/list; shared cameras are rows of the same list; the deviceshare shareddetail path is a PUT and is never called. Region = the one kept by login discovery (M-AUTH); the registry never switches region (tokens are per region). Per refresh: 1 list GET + at most 1 /v4/tnp/device_info per TNP camera without a stored license for the same DID.</note-1>
         <note-2>Live stream URL format depends on camera model — need per-model resolver.</note-2>
+        <note-3>Source order as built (DeviceSourcePlan, BRANCH A): OWNED_PATHS = [/v5/devices/list]; no shared path (shared cameras are rows of the same list, category/share), no /v4 fallback (DevicePaths.LIST_V4 is a named constant only). Code 20200 or empty data = no cameras: Room and the P2P store are cleared. Outcomes: 401/20201/20202/20203 -> Unauthorized; IO, 5xx, non-JSON -> FetchFailed; any other code -> ServerRejected (CAMERA_SERVER_ERROR); errors never touch the cache or the store.</note-3>
+        <note-4>No BLOCK_REGION_FALLBACK in this module (deviation from plan 01-09, per the addendum): the registry uses the region kept by M-AUTH login discovery. The logout wipe is triggered by M-AUTH (LogoutCleanup -> clearSignedOutData); purgeIfSignedOut runs from MainActivity at start without a session. Both log [Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA]; there is no export named clearAll.</note-4>
+        <note-5>getLiveStreamUrl stays as legacy (the cloud list carries no stream URL, so it throws NoStreamUrl after a refresh); live view goes through getCredentials in GSD Phase 2.</note-5>
       </notes>
     </M-CAMERA-LIST>
 
@@ -268,6 +354,7 @@
       <notes>
         <note-1>Cloud endpoint: GET /v1/camera/event/list (paginated with cursor).</note-1>
         <note-2>Event thumbnails are JPEG blobs returned inline; full video needs separate URL resolution.</note-2>
+        <note-3>EventSigner removed (plan 01-04); requests are signed via M-HTTP YiRequestSigner, the single HMAC-SHA1 signer.</note-3>
       </notes>
     </M-EVENT>
 
@@ -425,7 +512,7 @@
 
     <!-- Layer 2: UI / Presentation -->
 
-    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" LAYER="2" ORDER="1" STATUS="planned">
+    <M-UI-SHELL NAME="AppShell" TYPE="UI_COMPONENT" LAYER="2" ORDER="1" STATUS="implemented">
       <contract>
         <purpose>Top-level app shell with navigation: bottom navigation bar (Live View, Events, Settings), app bar, and navigation graph. Manages screen transitions and holds shared ViewModel state.</purpose>
       <inputs>
@@ -442,17 +529,25 @@
         <export-AppShellContent PURPOSE="Compose root layout with navigation" />
         <export-NavigationHost PURPOSE="Navigation graph host" />
         <export-BottomNavBar PURPOSE="Bottom navigation bar with tabs" />
+        <export-CameraListScreen PURPOSE="Cameras tab (plan 01-10): pull-to-refresh, Loading / Content + stale banner / Empty / Error with retry; UNAUTHORIZED -> onSessionExpired (logout -> login); never renders device id" />
+        <export-CameraListViewModel PURPOSE="Cache-first start then one network refresh; refresh only on screen open and explicit pull/retry (no timers); single-flight" />
       </interface>
-      <depends>M-AUTH</depends>
+      <depends>M-AUTH, M-CAMERA-LIST</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/cameras/CameraListScreen.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/cameras/CameraListViewModel.kt</source>
+        <tests>app/src/test/java/com/yicamalt/ui/cameras/CameraListViewModelTest.kt</tests>
         <tests>app/src/androidTest/java/com/yicamalt/ui/shell/AppShellScreenTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Shell]</log-prefix>
-        <critical-block>BLOCK_RENDER_SHELL, BLOCK_NAVIGATE_SCREEN</critical-block>
+        <critical-block>BLOCK_RENDER_SHELL, BLOCK_NAVIGATE_SCREEN, BLOCK_LOAD_CAMERAS, BLOCK_RENDER_CAMERA_LIST</critical-block>
       </observability>
       <verification-ref>V-M-UI-SHELL</verification-ref>
+      <notes>
+        <note-1>Plan 01-10: cache-first start ([Cameras][load][BLOCK_LOAD_CAMERAS] source=cache count=N, then source=network result=content|empty|stale|error); Empty (20200) is not an error; a failed refresh over a non-empty list keeps it under a stale banner. AppShellScreenTest.kt does not exist yet (no emulator); the JVM evidence is CameraListViewModelTest.</note-1>
+      </notes>
     </M-UI-SHELL>
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="2" STATUS="planned">
@@ -540,6 +635,9 @@
         <critical-block>BLOCK_RENDER_SETTINGS, BLOCK_HANDLE_LOGOUT, BLOCK_SAVE_PREFERENCES</critical-block>
       </observability>
       <verification-ref>V-M-UI-SETTINGS</verification-ref>
+      <notes>
+        <note-1>Debug builds only: button "Проба эндпоинтов (debug)" triggers M-DEBUG-PROBE runOnce and shows its value-free lines (plan 01-05).</note-1>
+      </notes>
     </M-UI-SETTINGS>
 
     <M-UI-LOGIN NAME="LoginScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="6" STATUS="planned">
@@ -670,12 +768,95 @@
       <verification-ref>V-M-MEDIA</verification-ref>
     </M-MEDIA>
 
+    <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" LAYER="1" ORDER="11" STATUS="implemented">
+      <contract>
+        <purpose>Debug-only one-shot probe of device-list endpoints across gateways; emits only status/code/length/count/field names</purpose>
+        <inputs>
+          <param name="session" type="Session (M-AUTH)" />
+        </inputs>
+        <outputs>
+          <param name="report" type="List&lt;String&gt; (value-free lines)" />
+        </outputs>
+        <errors>
+          <error code="PROBE_NO_SESSION" />
+          <error code="PROBE_NETWORK_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-runOnce PURPOSE="Run the endpoint x gateway matrix once and return value-free report lines" />
+        <fn-analyze PURPOSE="Reduce a response to status, code, length, item count and field names" />
+        <fn-format PURPOSE="Render one analyzed response as a single value-free line" />
+        <fn-targets PURPOSE="12 list targets, region-major US/EU/SG x {v4,v5}/devices/list, deviceshare friends/shareddetail" />
+        <fn-firstDeviceUid PURPOSE="In-memory uid of the first device row for the single tnp device_info follow-up; never logged" />
+        <fn-isDeviceSource PURPOSE="False for deviceshare friends (person rows never feed tnp)" />
+      </interface>
+      <depends>M-HTTP, M-AUTH</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/debug/EndpointProbe.kt</source>
+        <source>app/src/main/java/com/yicamalt/debug/ProbeMatrix.kt</source>
+        <tests>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Probe]</log-prefix>
+        <critical-block>BLOCK_PROBE_MATRIX, BLOCK_PROBE_SUMMARY, BLOCK_ANALYZE_PROBE_RESPONSE</critical-block>
+      </observability>
+      <verification-ref>V-M-DEBUG-PROBE</verification-ref>
+      <notes>
+        <note-1>Debug builds only. Never logs values: no tokens, serials, uids, passwords, URLs with query strings.</note-1>
+        <note-2>Request bound per press: at most 13 GET (12 list + at most 1 tnp device_info), 0 POST, 0 auth_token. Runs on HttpClientModule.probeClient() (no auth interceptor, Authenticator.NONE). Expired session = zero requests. Replaces the deleted DeviceSignProbe.</note-2>
+      </notes>
+    </M-DEBUG-PROBE>
+
+    <M-P2P-CREDS NAME="P2pCredentials" TYPE="CORE_LOGIC" LAYER="1" ORDER="12" STATUS="implemented">
+      <contract>
+        <purpose>Per-camera P2P transport and credentials: transport resolution, camera-password recovery, tnp device info, encrypted persistence (never Room)</purpose>
+        <inputs>
+          <param name="cameraRecord" type="device-list item (M-CAMERA-LIST)" />
+          <param name="tnpDeviceInfo" type="signed tnp device info response (M-HTTP)" />
+        </inputs>
+        <outputs>
+          <param name="P2pCredentials" type="P2pCredentials" />
+        </outputs>
+        <errors>
+          <error code="P2P_STORE_FAILED" NOTE="logged warning (count only) when the encrypted commit returns false; no exception" />
+        </errors>
+        <error-policy>No exceptions: an unknown transport is TransportType.UNKNOWN, a password that cannot be recovered is null, a missing tnp device info is null.</error-policy>
+      </contract>
+      <interface>
+        <export-TransportResolver PURPOSE="resolve(type, p2pId): 2 -> TNP, 0 -> TUTK, 1 -> LANGTAO, other -> UNKNOWN; a missing type falls back to the TNP DID shape; a type/shape conflict sets mismatch, type wins" />
+        <export-CameraPasswordCipher PURPOSE="decrypt(passwordHex, cloudUid): AES/ECB/PKCS5 with key = first 16 chars of the cloud uid; blank field -> factory default; any failure -> null, never logs" />
+        <export-P2pCredentialStore PURPOSE="get / replaceAll / clear; EncryptedP2pCredentialStore (EncryptedSharedPreferences file yicamalt_p2p, bound in Hilt) and InMemoryP2pCredentialStore; never Room" />
+        <type-P2pCredentials PURPOSE="Per-camera transport, p2p id, password, InitString, license, needsPincode; toString prints flags only" />
+        <type-TransportType PURPOSE="TNP | TUTK | LANGTAO | UNKNOWN (fromStorage maps unknown names to UNKNOWN)" />
+      </interface>
+      <depends>M-HTTP</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/camera/P2pCredentials.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/CameraPasswordCipher.kt</source>
+        <source>app/src/main/java/com/yicamalt/camera/P2pCredentialStore.kt</source>
+        <tests>app/src/test/java/com/yicamalt/camera/P2pCredentialsTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/camera/CameraPasswordCipherTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/camera/P2pCredentialStoreTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[P2pCreds]</log-prefix>
+        <critical-block>BLOCK_RESOLVE_TRANSPORT, BLOCK_DECRYPT_CAMERA_PASSWORD, BLOCK_STORE_P2P_CREDENTIALS</critical-block>
+      </observability>
+      <verification-ref>V-M-P2P-CREDS</verification-ref>
+      <notes>
+        <note-1>Secret values (passwords, uids) are never logged; tests assert redaction.</note-1>
+        <note-2>Secrets live in memory / EncryptedSharedPreferences only (SEC-04); the Room cameras row holds transport and shared, nothing else.</note-2>
+        <note-3>BLOCK_RESOLVE_TRANSPORT and BLOCK_DECRYPT_CAMERA_PASSWORD are code anchors in pure helpers that never log. The only log line of this module is [P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS] count=N (or code=P2P_STORE_FAILED count=N). The signed GET /v4/tnp/device_info is issued by M-CAMERA-LIST (BLOCK_RESOLVE_P2P_CREDENTIALS) through YiCloudDeviceApi.tnpDeviceInfo; this module only types and stores the result.</note-3>
+        <note-4>EncryptedP2pCredentialStore needs the Android Keystore and is covered on the device only (plan 01-11 Task 2/3).</note-4>
+      </notes>
+    </M-P2P-CREDS>
+
   </Modules>
 
   <DataFlow>
     <DF-AUTH NAME="UserAuthentication" TRIGGER="User taps Login">
       <step-1>User enters credentials on LoginScreen (M-UI-LOGIN)</step-1>
-      <step-2>M-AUTH validates credentials via M-HTTP (GET /v4/users/login)</step-2>
+      <step-2>M-AUTH validates credentials via M-HTTP (GET /v4/users/login), hops on 20253 and keeps the first region whose GET /v5/devices/list is non-empty (max 3 + 3 requests)</step-2>
       <step-3>M-AUTH stores tokens in encrypted SharedPreferences</step-3>
       <step-4>AuthState updates to LOGGED_IN, navigation shifts to AppShell</step-4>
       <evidence>V-M-AUTH scenario-1 (success path), log marker [Auth][login][BLOCK_STORE_TOKEN]</evidence>
@@ -683,10 +864,10 @@
 
     <DF-CAMERA-LIST NAME="CameraListFetch" TRIGGER="App launches or camera list refreshed">
       <step-1>M-CAMERA-LIST requests token from M-AUTH</step-1>
-      <step-2>M-CAMERA-LIST calls cloud API via M-HTTP (GET /v1/user/camera/list)</step-2>
-      <step-3>M-CAMERA-LIST parses response, caches in M-LOCAL-DB</step-3>
+      <step-2>M-CAMERA-LIST calls M-HTTP: one signed GET /v5/devices/list (seq, userid, hmac) on the region kept by login, plus at most one signed GET /v4/tnp/device_info per TNP camera without a stored license for the same DID</step-2>
+      <step-3>M-CAMERA-LIST parses rows (DeviceRecordParser), stores P2P credentials in M-P2P-CREDS (encrypted), replaces the M-LOCAL-DB cache in one transaction</step-3>
       <step-4>CameraRegistryState updates, UI refreshes</step-4>
-      <evidence>V-M-CAMERA-LIST scenario-1 (success), log marker [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</evidence>
+      <evidence>V-M-CAMERA-LIST scenario-1 (success), log markers [Camera][getCameraList][BLOCK_FETCH_SOURCE], [Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS], [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</evidence>
     </DF-CAMERA-LIST>
 
     <DF-LIVE-STREAM NAME="LiveViewConnection" TRIGGER="User taps camera thumbnail">
@@ -761,6 +942,7 @@
       <step-5 module="M-UI-SHELL" status="done" verification="V-M-UI-SHELL">Build navigation shell with bottom nav</step-5>
       <step-6 module="M-UI-SETTINGS" status="done" verification="V-M-UI-SETTINGS">Build settings screen</step-6>
       <phase-note>2026-09-09: M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit tests green). Steps 3-4 deferred by user decision pending a real protocol capture (conditional autonomy per verification-plan). Camera endpoints (/v8/cloud/deviceList, /v8/device/control) and device field mapping are provisional pending live capture. Full live-view/events tab UX ships in Phase-3.</phase-note>
+      <phase-note>2026-10-12 (GSD Phase 1, secrets-camera-list): camera list resolved via probe BRANCH A (01-PROBE-RESULTS.md): signed GET /v5/devices/list on the region chosen by login discovery (data region US for the owner account); shared cameras are rows of the same list; code 20200 = no cameras. The provisional /v8/cloud/deviceList path is gone from the camera list. New module M-P2P-CREDS (transport, camera password, tnp device info, encrypted store). GSD Phase 1 implemented (22 suites, 278 JVM tests, 1 skipped, 0 failures; assembleDebug OK); complete pending device verification (plan 01-11 Task 2/3).</phase-note>
     </Phase-2>
 
     <Phase-3 name="Streaming Core" status="in-progress">
