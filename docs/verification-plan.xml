@@ -112,11 +112,11 @@
 
   <VerificationMatrix>
     <!-- Compact per-module evidence map. Full detail lives in ModuleVerification below. -->
-    <row-M-CONFIG success="2" failure="1" deterministic="3" trace="1" integration="0" semantic="0" autonomy="ready" />
+    <row-M-CONFIG success="3" failure="1" deterministic="4" trace="1" integration="0" semantic="0" autonomy="ready" />
     <row-M-HTTP success="9" failure="6" deterministic="12" trace="3" integration="1" semantic="0" autonomy="ready" />
-    <row-M-LOCAL-DB success="3" failure="2" deterministic="5" trace="0" integration="1" semantic="0" autonomy="ready" />
-    <row-M-AUTH success="3" failure="2" deterministic="2" trace="3" integration="1" semantic="0" autonomy="ready" />
-    <row-M-CAMERA-LIST success="5" failure="2" deterministic="5" trace="1" integration="1" semantic="0" autonomy="ready" />
+    <row-M-LOCAL-DB success="5" failure="3" deterministic="8" trace="1" integration="1" semantic="0" autonomy="ready" />
+    <row-M-AUTH success="5" failure="4" deterministic="5" trace="5" integration="2" semantic="0" autonomy="ready" />
+    <row-M-CAMERA-LIST success="6" failure="3" deterministic="7" trace="1" integration="1" semantic="0" autonomy="ready" />
     <row-M-CAMERA-CMD success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-EVENT success="3" failure="1" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-STREAM-DECODE success="2" failure="2" deterministic="2" trace="3" integration="1" semantic="1" autonomy="conditional" />
@@ -124,7 +124,7 @@
     <row-M-EVENT-PLAYBACK success="2" failure="2" deterministic="2" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-PUSH success="3" failure="1" deterministic="1" trace="3" integration="1" semantic="0" autonomy="ready" />
     <row-M-MEDIA success="4" failure="0" deterministic="3" trace="2" integration="1" semantic="0" autonomy="ready" />
-    <row-M-UI-SHELL success="3" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
+    <row-M-UI-SHELL success="4" failure="1" deterministic="5" trace="1" integration="1" semantic="0" autonomy="ready" />
     <row-M-UI-LIVEVIEW success="4" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-UI-EVENTS success="4" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
     <row-M-UI-EVENTPLAYBACK success="4" failure="0" deterministic="1" trace="2" integration="1" semantic="0" autonomy="ready" />
@@ -135,18 +135,17 @@
     <row-M-CAMERA-SETUP success="1" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
     <row-M-REPO-HYGIENE success="2" failure="4" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
     <row-M-DEBUG-PROBE success="4" failure="4" deterministic="8" trace="1" integration="0" semantic="0" autonomy="ready" />
-    <row-M-P2P-CREDS success="2" failure="2" deterministic="4" trace="1" integration="0" semantic="0" autonomy="ready" />
+    <row-M-P2P-CREDS success="3" failure="3" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
   </VerificationMatrix>
 
   <ModuleVerification>
-<V-M-CONFIG MODULE="M-CONFIG" PRIORITY="high" STATUS="deferred">
-      <deferred-note>Code + test written (commit 5adf835). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
+<V-M-CONFIG MODULE="M-CONFIG" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/config/ConfigModuleTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.config.*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.config.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Config returns correct API base URL from BuildConfig + overrides</scenario-1>
@@ -160,7 +159,11 @@
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>init reads BuildConfig exactly once</assertion-1>
+        <assertion-2>BLOCK_SELECT_REGION lines carry the region name only, never a URL (region_4)</assertion-2>
       </required-trace-assertions>
+      <gate-evidence>
+        <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; ConfigModuleTest 13/13</evidence-1>
+      </gate-evidence>
       <wave-follow-up>Config correctly injected into M-HTTP and M-LOCAL-DB.</wave-follow-up>
       <phase-follow-up>Full DI graph compiles without errors.</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
@@ -216,14 +219,13 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-HTTP>
 
-<V-M-LOCAL-DB MODULE="M-LOCAL-DB" PRIORITY="high" STATUS="deferred">
-      <deferred-note>Code + test written (commit 5d546b3). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
+<V-M-LOCAL-DB MODULE="M-LOCAL-DB" PRIORITY="high" STATUS="passed">
       <test-files>
-        <file>app/src/test/java/com/yicamalt/database/LocalDatabaseTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/database/YiDatabaseTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.database.*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.database.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Room database opens (InMemoryRoom) and creates all tables</scenario-1>
@@ -231,27 +233,34 @@
         <scenario-3 kind="success" evidence-type="deterministic">Device registry entities insert and query correctly</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Corrupted database throws DB_CORRUPTION on open</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">13-digit serial never appears in BLOCK_DB_WRITE (YiDatabaseTest scenario_5, serial 9876543210123 as extra literal; SEC-01, plan 01-02)</scenario-5>
+        <scenario-6 kind="success" evidence-type="deterministic">Schema v2 with destructive migration; transport and shared round trip and default safely (YiDatabaseTest scenario_4, scenario_6)</scenario-6>
+        <scenario-7 kind="success" evidence-type="deterministic">CameraDao.replaceAll swaps the whole cache in one transaction, also with an empty list (scenario_7)</scenario-7>
+        <scenario-8 kind="failure" evidence-type="deterministic">cameras table has no secret column: PRAGMA table_info pins the exact column set (scenario_8, SEC-04)</scenario-8>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Database][init][BLOCK_INIT_DATABASE]</marker-1>
+        <marker-1>[DB][init][BLOCK_INIT_DB]</marker-1>
+        <marker-2>[DB][cache][BLOCK_DB_WRITE] (online=, hasModel= only)</marker-2>
       </required-log-markers>
+      <code-anchors>
+        <anchor-1>BLOCK_DB_REPLACE_ALL (CameraDao.replaceAll; emits BLOCK_DB_WRITE per row)</anchor-1>
+      </code-anchors>
+      <gate-evidence>
+        <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; YiDatabaseTest 11/11 (Robolectric)</evidence-1>
+      </gate-evidence>
       <wave-follow-up>M-CAMERA-LIST caches to DB successfully (integration check).</wave-follow-up>
       <phase-follow-up>Migration tests pass for any schema version change.</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-LOCAL-DB>
 
-<V-M-AUTH MODULE="M-AUTH" PRIORITY="high" STATUS="deferred">
-      <deferred-note>Code + test written (commit 3e901ae). Verification deferred: no Android SDK in build env; ./gradlew :app:testDebugUnitTest cannot run yet.</deferred-note>
+<V-M-AUTH MODULE="M-AUTH" PRIORITY="high" STATUS="passed">
       <test-files>
-        <file>app/src/test/java/com/yicamalt/auth/AuthModuleTest.kt</file>
         <file>app/src/test/java/com/yicamalt/auth/AuthRepositoryTest.kt</file>
         <file>app/src/test/java/com/yicamalt/auth/AuthRegionDiscoveryTest.kt</file>
         <file>app/src/test/java/com/yicamalt/auth/AuthRegionFakes.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.auth.*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
-        <check-3>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.auth.RedactionTest"</check-3>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.auth.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Login with valid credentials returns Success with tokens (FakeYiApi)</scenario-1>
@@ -263,6 +272,7 @@
         <scenario-7 kind="failure" evidence-type="trace">login-region-fallback (region_1..region_9): hop only on code 20253, at most 3 login requests per call, original server restored when the account is found nowhere, found region kept on a wrong password, no hop on a network error or a custom server</scenario-7>
         <scenario-8 kind="success" evidence-type="trace">login-region-discovery (discovery_1..discovery_15): US empty then EU devices = 2 logins + 2 list checks; all empty = first kept, exactly 3 + 3; first non-empty = 1 + 1; wrong password on the second region = first session kept; manual server = 1 login, 0 checks; network error keeps the last good session; never on refresh or app start; refresh suppressed during the check</scenario-8>
         <scenario-9 kind="success" evidence-type="integration">HttpDeviceListCheck sends one signed GET /v5/devices/list (seq, userid, hmac) to the current server; DeviceListCounter reduces the body to code + count (20200 = empty list)</scenario-9>
+        <scenario-10 kind="failure" evidence-type="deterministic">Fail-closed logout (SEC-04): logout() runs LogoutCleanup synchronously; a cancelled caller still wipes camera cache + P2P store (CameraRegistryCredentialsTest creds_11b..11e)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[Auth][login][BLOCK_VALIDATE_CREDENTIALS]</marker-1>
@@ -272,7 +282,12 @@
         <marker-5>[Auth][login][BLOCK_REGION_FALLBACK]</marker-5>
         <marker-6>[Auth][login][BLOCK_REGION_DISCOVERY]</marker-6>
         <marker-7>[Auth][login][BLOCK_REGION_SELECTED]</marker-7>
+        <marker-8>[Auth][logout][BLOCK_LOGOUT_CLEANUP]</marker-8>
       </required-log-markers>
+      <gate-evidence>
+        <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; AuthRepositoryTest 23/23, AuthRegionDiscoveryTest 18/18</evidence-1>
+        <evidence-2>Device: login on the US gateway without typing a server is pending (plan 01-11 Task 2); expected log [Auth][login][BLOCK_REGION_SELECTED] region=US reason=devices logins=1 lists=1</evidence-2>
+      </gate-evidence>
       <required-trace-assertions>
         <assertion-1>Password must never appear in any captured log (RedactionScanner clean)</assertion-1>
         <assertion-2>Token stored before BLOCK_NAVIGATE_SHELL emitted</assertion-2>
@@ -289,13 +304,17 @@
       <test-files>
         <file>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</file>
         <file>app/src/test/java/com/yicamalt/camera/CameraRegistryCredentialsTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/camera/DeviceRecordParserTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/camera/DeviceListFixtures.kt</file>
       </test-files>
       <module-checks>
-        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraRegistry*"</check-1>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.camera.CameraRegistry*" --tests "com.yicamalt.camera.DeviceRecordParserTest"</check-1>
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <notes>
         <note-1>Field names and source come from 01-PROBE-RESULTS.md (BRANCH A); unit evidence is MockWebServer with synthetic fixtures (DeviceListFixtures, RedactionFixtures). On-device evidence: plan 01-11.</note-1>
+        <note-2>Per the plan addendum there is no shared-list path and no registry region fallback (no BLOCK_REGION_FALLBACK in camera/): the region is chosen by M-AUTH login discovery and tokens are per region. The plan-01-09 scenarios "second owned path" and "region fallback" therefore do not exist; scenario-2 (20200 = one request) replaces them.</note-2>
+        <note-3>Device log pull (plan 01-11 Task 3) without sh -c: two calls, rotated file first: adb exec-out run-as com.yicamalt cat files/diag_log.txt.1 and adb exec-out run-as com.yicamalt cat files/diag_log.txt, appended into build/device-logs/diag_log.txt. Sweep with --rerun-tasks so RealLogScanTest is never served from the Gradle cache.</note-3>
       </notes>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Camera list from /v5/devices/list (path = DeviceSourcePlan.OWNED_PATHS.first(), seq/userid/hmac) with transport and shared; owned duplicate wins over shared</scenario-1>
@@ -305,6 +324,8 @@
         <scenario-5 kind="success" evidence-type="deterministic">P2P credentials: one signed tnp device_info per TNP camera (none for TUTK), DID/InitString/license stored, password decrypted, reused on the next refresh (also when the list has no did), refetched when the did changes; tnp failure keeps the list</scenario-5>
         <scenario-6 kind="success" evidence-type="deterministic">hasPincode -> password null, needsPincode, no PIN endpoint; logout (AuthRepository -> LogoutCleanup) wipes Room and the store even from a cancelled coroutine; a refresh in flight writes nothing after logout; start-up purge without a session</scenario-6>
         <scenario-7 kind="failure" evidence-type="trace">Full refresh through the production HttpClientModule logs no uid, DID, password, InitString, License, hmac, token or user id (RedactionScanner)</scenario-7>
+        <scenario-8 kind="success" evidence-type="deterministic">DeviceRecordParser: bare array, wrapped array, string-JSON, absent data (20200) = empty; ipcParam object or string; p2pId = did, falls back to uid; ownership from category then share; tnp info DID/InitString/License with licenseKey before the first colon; value-free toString; DevicePaths has no deviceshare path (DeviceRecordParserTest 14)</scenario-8>
+        <scenario-9 kind="failure" evidence-type="deterministic">Non-JSON list body = FetchFailed (result=malformed), cache untouched (scenario_5d); tnp device_info failure keeps the list (tnpInfo=failed)</scenario-9>
       </scenarios>
       <required-log-markers>
         <marker-1>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</marker-1>
@@ -313,10 +334,23 @@
         <marker-4>[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS]</marker-4>
         <marker-5>[Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA]</marker-5>
         <marker-6>[Auth][logout][BLOCK_LOGOUT_CLEANUP]</marker-6>
+        <marker-7>[P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS]</marker-7>
       </required-log-markers>
+      <device-log-markers>
+        <marker-1>[Camera][getCameraList][BLOCK_FETCH_SOURCE] source=LABEL code=C count=N</marker-1>
+        <marker-2>[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=T mismatch=B hasPassword=B tnpInfo=ok|reused|failed|n/a needsPincode=B, then stored=N withLicense=N withPassword=N</marker-2>
+        <marker-3>[P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS] count=N</marker-3>
+        <marker-4>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=N shared=N tnp=N tutk=N</marker-4>
+        <marker-5>[Cameras][load][BLOCK_LOAD_CAMERAS] source=cache count=N</marker-5>
+        <marker-6>[App][init][BLOCK_INIT_APP] diagLog=internal legacyPurged=N</marker-6>
+      </device-log-markers>
       <required-trace-assertions>
         <assertion-1>Response parsed before DB write (BLOCK_FETCH_CAMERA_LIST precedes DB insert)</assertion-1>
       </required-trace-assertions>
+      <gate-evidence>
+        <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; CameraRegistryModuleTest 20/20, CameraRegistryCredentialsTest 16/16, DeviceRecordParserTest 14/14</evidence-1>
+        <evidence-2>Device evidence pending: plan 01-11 Task 2/3 (01-DEVICE-VERIFICATION.md); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
       <wave-follow-up>Camera list displayed in shell UI.</wave-follow-up>
       <phase-follow-up>Multi-camera scenario: 3+ cameras with different models.</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
@@ -387,30 +421,40 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-DEBUG-PROBE>
 
-    <V-M-P2P-CREDS MODULE="M-P2P-CREDS" PRIORITY="high" STATUS="planned">
+    <V-M-P2P-CREDS MODULE="M-P2P-CREDS" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/camera/P2pCredentialsTest.kt</file>
         <file>app/src/test/java/com/yicamalt/camera/P2pCredentialStoreTest.kt</file>
         <file>app/src/test/java/com/yicamalt/camera/CameraPasswordCipherTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.camera.*"</check-1>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.camera.P2pCredentialsTest" --tests "com.yicamalt.camera.CameraPasswordCipherTest" --tests "com.yicamalt.camera.P2pCredentialStoreTest"</check-1>
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">tnp-camera-resolves-to-tnp</scenario-1>
-        <scenario-2 kind="success" evidence-type="deterministic">camera-password-decrypts-known-vector</scenario-2>
-        <scenario-3 kind="failure" evidence-type="deterministic">unknown-transport-type-rejected</scenario-3>
-        <scenario-4 kind="failure" evidence-type="deterministic">corrupt-password-yields-decrypt-error</scenario-4>
+        <scenario-1 kind="success" evidence-type="deterministic">Transport matrix: type 2 TNP, 0 TUTK, 1 LANGTAO, missing type falls back to the DID shape, unknown code UNKNOWN; type/shape conflict sets mismatch and type wins; blank id never mismatches; fromStorage tolerates garbage (P2pCredentialsTest)</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Camera password round trip with key = first 16 chars of the cloud uid; pinned synthetic vector (openssl); empty field = factory default 888888; uppercase hex accepted (CameraPasswordCipherTest)</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">Invalid inputs yield null without exception or log: malformed hex, missing/short uid, ciphertext from another key</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">Codec round trip with all and with null optional fields, every transport by name; garbage and incomplete records rejected (P2pCredentialStoreTest)</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic">InMemoryP2pCredentialStore replaceAll / second replaceAll drops stale records / clear / unknown id = null</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">toString prints flags only: no synthetic secret value appears, absent secrets reported as flags</scenario-6>
       </scenarios>
       <required-log-markers>
-        <marker-1>[P2pCreds][resolve][BLOCK_RESOLVE_TRANSPORT]</marker-1>
-        <marker-2>[P2pCreds][decrypt][BLOCK_DECRYPT_CAMERA_PASSWORD]</marker-2>
-        <marker-3>[P2pCreds][store][BLOCK_STORE_P2P_CREDENTIALS]</marker-3>
+        <marker-1>[P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS] count=N (or code=P2P_STORE_FAILED count=N)</marker-1>
       </required-log-markers>
+      <code-anchors>
+        <anchor-1>BLOCK_RESOLVE_TRANSPORT (TransportResolver; pure, emits no log line)</anchor-1>
+        <anchor-2>BLOCK_DECRYPT_CAMERA_PASSWORD (CameraPasswordCipher; pure, emits no log line)</anchor-2>
+      </code-anchors>
       <required-trace-assertions>
         <assertion-1>Camera password and uid never appear in captured logs; credentials never written to Room</assertion-1>
       </required-trace-assertions>
+      <notes>
+        <note-1>EncryptedP2pCredentialStore (EncryptedSharedPreferences, Android Keystore) cannot run on the JVM; it is device-verified in plan 01-11 Task 2/3 (credentials stored for every listed camera, value-free count markers only).</note-1>
+      </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; P2pCredentialsTest 10/10, CameraPasswordCipherTest 7/7, P2pCredentialStoreTest 8/8</evidence-1>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-P2P-CREDS>
 
@@ -668,12 +712,23 @@
         <scenario-5 kind="edge" evidence-type="deterministic">Empty network list (20200) gives Empty, not Error, also when the cache had cameras</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">FetchFailed / ServerRejected / Unauthorized give three distinct Error kinds and messages; over a cached list the list stays with a stale banner</scenario-6>
         <scenario-7 kind="edge" evidence-type="deterministic">Single-flight: refresh() while a refresh runs does not call the port again; CancellationException is rethrown, not shown as Error</scenario-7>
+        <scenario-8 kind="success" evidence-type="deterministic">refresh() sets the transitional state synchronously; stale banner cleared while pulling; isRefreshing() per state (pull-to-refresh contract: one pull = one refresh, ptr.endRefresh after the first non-refreshing state)</scenario-8>
+        <scenario-9 kind="failure" evidence-type="deterministic">UNAUTHORIZED offers "Войти снова" (onSessionExpired -> AppShell onLogout); no device id is rendered (deviceId only as LazyColumn key; grep check, SEC-01)</scenario-9>
       </scenarios>
       <required-log-markers>
         <marker-1>[Shell][render][BLOCK_RENDER_SHELL]</marker-1>
         <marker-2>[Shell][navigate][BLOCK_NAVIGATE_SCREEN]</marker-2>
         <marker-3>[Cameras][load][BLOCK_LOAD_CAMERAS] (value-free: source, result, count, kind)</marker-3>
       </required-log-markers>
+      <code-anchors>
+        <anchor-1>BLOCK_RENDER_CAMERA_LIST (CameraListScreen)</anchor-1>
+      </code-anchors>
+      <notes>
+        <note-1>AppShellScreenTest.kt (instrumented) does not exist yet and no emulator is available; Compose screens are checked on the phone in plan 01-11 Task 2 (pull-to-refresh, airplane-mode relaunch shows the cached list with the stale banner).</note-1>
+      </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; CameraListViewModelTest 17/17</evidence-1>
+      </gate-evidence>
       <wave-follow-up>All screen transitions work correctly.</wave-follow-up>
       <phase-follow-up>Compose UI test: full navigation flow (login -> live view -> events -> settings -> logout).</phase-follow-up>
       <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" note="UI tests require emulator; slower than unit — not for tight worker loops." />
@@ -951,6 +1006,11 @@
         <evidence-5>Trace-coverage check passes for all Phase-2 modules</evidence-5>
         <evidence-6>Device log redaction sweep: RealLogScanTest with -PredactionLogFile passes on the pulled diag_log.txt (+ .1) of the probe session, test executed not skipped (GSD phase 01, SEC-01)</evidence-6>
       </required-evidence>
+      <notes>
+        <note-1>Log pull without sh -c (blocked by a safety check): adb exec-out run-as com.yicamalt cat files/diag_log.txt.1 &gt; build/device-logs/diag_log.txt, then adb exec-out run-as com.yicamalt cat files/diag_log.txt &gt;&gt; build/device-logs/diag_log.txt. Run command-4 with --rerun-tasks: a cached RealLogScanTest result would otherwise prove nothing.</note-1>
+        <note-2>adb install is blocked on the user's Xiaomi phone (INSTALL_FAILED_USER_RESTRICTED): the user copies app/build/outputs/apk/debug/app-debug.apk by hand; pm clear is not used.</note-2>
+        <note-3>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; pre-commit --range 01-PHASE-BASE..HEAD exit 0; test-pre-commit.sh all cases passed.</note-3>
+      </notes>
     </Gate-Phase-2>
 
     <Gate-Phase-3 PHASE="Phase-3">
