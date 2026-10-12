@@ -63,7 +63,7 @@ Plans:
   3. Пользователь на мобильном интернете (Wi-Fi выключен) открывает ту же камеру и видит видео через P2P или relay; режим соединения виден в отладочной информации
   4. Камера с H.265 показывает видео так же, как камера с H.264 (или явно сообщает об отсутствии аппаратного декодера)
   5. Чистое Kotlin-ядро (`YiP2pAuth`, `TnpCodec`, `IFrameDecryptor`, `NalUtils`) покрыто JVM-тестами на эталонных векторах; устаревшие контракты `M-STREAM-LIVE` / `M-STREAM-DECODE` заменены в GRACE-документах
-**Plans:** 12 plans
+**Plans:** 13 plans
 
 Plans:
 - [ ] 02-00-PLAN.md — Wave 0: базовая линия, контракты портов (CameraLink, PpppNative, StreamTypes), FakePpppNative, формы секретов в RedactionScanner, GRACE-узлы (M-STREAM-LIVE/DECODE → superseded)
@@ -76,8 +76,9 @@ Plans:
 - [ ] 02-07-PLAN.md — TnpCameraLink + фабрика (одна сессия на камеру, порядок вызовов вендора, без повторов) (wave 3)
 - [ ] 02-08-PLAN.md — VideoDecoder (MediaCodec async → Surface) + DecoderPolicy (wave 3)
 - [ ] 02-09-PLAN.md — Отладочный экран live из списка камер: режим, кодек, декодер, fps, decryptOk (wave 4)
-- [ ] 02-10-PLAN.md — 2B: TUTK-адаптер за тем же портом, только если гейт 02-06 = needed, иначе задокументированный пропуск (wave 5)
-- [ ] 02-11-PLAN.md — Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, параллельно с официальным приложением (wave 6, checkpoint)
+- [ ] 02-10-PLAN.md — 2B часть A: гейт; при TUTK-камере — TUTK-шим, TutkNative, TutkRuntime, иначе задокументированный пропуск (wave 5)
+- [ ] 02-11-PLAN.md — 2B часть B: TutkCameraLink + диспетчер фабрик по транспорту, или пропуск (wave 6)
+- [ ] 02-12-PLAN.md — Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, передача сессии официальному приложению (wave 7, checkpoint)
 **Research**: done — `.planning/phases/02-p2p/02-RESEARCH.md`
 **UI hint**: yes
 
@@ -139,7 +140,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
-| 2. Нативный P2P и первый кадр | 0/12 | Not started | - |
+| 2. Нативный P2P и первый кадр | 0/13 | Not started | - |
 | 3. Полноценный live-view | 0/TBD | Not started | - |
 | 4. Архив SD-карты | 0/TBD | Not started | - |
 | 5. Лента событий | 0/TBD | Not started | - |
