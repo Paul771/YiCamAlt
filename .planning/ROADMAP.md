@@ -46,7 +46,7 @@ Plans:
 - [x] 01-12-PLAN.md — TransportType/P2pCredentials, расшифровка пароля, шифрованное хранилище, Room v2 (wave 4)
 - [x] 01-09-PLAN.md — CameraRegistry: источники по пробе, shared, регион, P2P-реквизиты, кэш (wave 5)
 - [x] 01-10-PLAN.md — UI списка камер: состояния, pull-to-refresh, кэш при старте (wave 6)
-- [ ] 01-11-PLAN.md — Синхронизация GRACE и финальная проверка на телефоне (wave 7, checkpoint)
+- [x] 01-11-PLAN.md — Синхронизация GRACE и финальная проверка на телефоне (wave 7, checkpoint)
 **UI hint**: yes
 **Notes**:
   - Первая задача — одна проба-матрица на устройстве (`/v4/devices/list`, `/v5/devices/list`, `/v5/deviceshare/*` на трёх регионах + `/v4/tnp/device_info`), логирующая только статус/код/длину/имена полей; дальше — по дереву решений из research/SUMMARY.md.

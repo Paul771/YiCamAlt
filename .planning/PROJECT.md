@@ -18,12 +18,12 @@
 - ✓ HMAC-SHA1 подпись device API (`key = token&token_secret`, `msg = seq=1&userid=<uid>`) → код 20200 на `/v5/devices/list` — подтверждено зондом на устройстве
 - ✓ UI-оболочка: bottom-nav (Камеры / Настройки), logout — existing
 - ✓ Room-БД (камеры, события, мета) и redaction логов (пароли, токены, серийники) — existing
+- ✓ Реальный список камер: регион определяется автоматически при входе (gw-us/eu/sg по непустому списку), `/v5/devices/list`, P2P-реквизиты через `/v4/tnp/device_info` в зашифрованном хранилище; две камеры (TNP + TUTK) совпали с официальным Yi Home на телефоне — Phase 1 (2026-10-12)
+- ✓ Гигиена секретов: редакция логов, внутренний лог, pre-commit защита от вендорских бинарников — Phase 1
 
 ### Active
 
-- [ ] Захват реального трафика Yi Home 6.9.8 на физическом телефоне: APK пропатчен apk-mitm (доверие user-CA, снятие пиннинга), mitmproxy 11 на ПК
-- [ ] Реальный список камер пользователя (эндпоинт + параметры + разбор ответа), включая P2P-реквизиты камеры (TUTK UID, пароль/ключ)
-- [ ] Live-view через вендорский P2P (TNP/CS2-PPPP `libPPPP_API.so` в первую очередь, TUTK `libIOTCAPIs`/`libAVAPIs`/`libsCHL` — фолбэк): .so извлекаются из локального APK при сборке, JNI-шимы, декодирование H.264/H.265 (MediaCodec) + звук
+- [ ] Live-view через вендорский P2P — у пользователя ОБА транспорта (камера TNP + камера TUTK): (TNP/CS2-PPPP `libPPPP_API.so` в первую очередь, TUTK `libIOTCAPIs`/`libAVAPIs`/`libsCHL` — фолбэк): .so извлекаются из локального APK при сборке, JNI-шимы, декодирование H.264/H.265 (MediaCodec) + звук
 - [ ] Live-view работает и в локальной сети, и удалённо (P2P relay)
 - [ ] Архив с SD-карты: список записей по времени и воспроизведение через тот же P2P-канал
 - [ ] Лента событий/алертов движения из реального эндпоинта (`/v5/alert/events` — кандидат) с превью
@@ -84,4 +84,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-10 after initialization*
+*Last updated: 2026-10-12 after Phase 1*
