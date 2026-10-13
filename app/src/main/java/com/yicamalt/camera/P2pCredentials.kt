@@ -87,7 +87,11 @@ object TransportResolver {
     // END_CONTRACT: decide
     fun decide(deviceInfoDid: String?, cloudUid: String): Resolution {
         // START_BLOCK_RESOLVE_TRANSPORT
-        TODO()
+        if (deviceInfoDid != null && isTnpDid(deviceInfoDid)) {
+            return Resolution(TransportType.TNP, deviceInfoDid, Source.DEVICE_INFO)
+        }
+        val transport = if (cloudUid.lowercase() == cloudUid) TransportType.LANGTAO else TransportType.TUTK
+        return Resolution(transport, cloudUid, Source.UID_SHAPE)
         // END_BLOCK_RESOLVE_TRANSPORT
     }
 
