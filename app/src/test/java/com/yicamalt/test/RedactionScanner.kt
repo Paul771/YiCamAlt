@@ -1,5 +1,5 @@
 // FILE: RedactionScanner.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scan a captured trace buffer for forbidden substrings (tokens, passwords, AES keys, P2P secrets, PII).
 //   SCOPE: pure string scanning with regex + literal forbidden patterns. One match fails the gate.
@@ -17,7 +17,10 @@ package com.yicamalt.test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - SEC-01: P2P/HMAC secret shapes, DID shape, base64 hmac, long opaque tokens;
+//   LAST_CHANGE: v0.3.0 - GSD plan 02-00: IPv4 dotted quad (any; P2P logs carry only a lan boolean) and the
+//     31-char TNP authInfo shape (15 alnum, comma, 15 base64 chars). The IPv4 pattern skips 127.x loopback:
+//     MockWebServer URLs (http://127.0.0.1:port) appear in existing HTTP test logs and carry no peer address.
+//   PREVIOUS: v0.2.0 - SEC-01: P2P/HMAC secret shapes, DID shape, base64 hmac, long opaque tokens;
 //     assertCleanQuiet for device-log sweeps.
 // END_CHANGE_SUMMARY
 
@@ -36,6 +39,8 @@ class RedactionScanner {
         Regex("\\b[A-Z]{3,8}-\\d{6}-[A-Z]{5}\\b"),                       // TNP/CS2 DID shape
         Regex("(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{27}="),                    // base64 HMAC-SHA1 (28 chars)
         Regex("(?<![A-Za-z0-9+/_.-])[A-Za-z0-9+/]{32,}={0,2}(?![A-Za-z0-9+/_.-])"), // long opaque token / InitString
+        Regex("(?<![0-9.])(?!127\\.)(?:\\d{1,3}\\.){3}\\d{1,3}(?![0-9.])"), // IPv4 address except loopback
+        Regex("(?<![A-Za-z0-9])[A-Za-z0-9]{15},[A-Za-z0-9+/]{15}(?![A-Za-z0-9+/])"), // TNP authInfo (nonce,hmac)
     )
 
     /** Extra literals to add for a specific test (e.g. a known token value). */
