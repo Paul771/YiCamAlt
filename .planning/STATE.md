@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-00-PLAN.md
-last_updated: "2026-10-12T16:02:31.116Z"
-last_activity: 2026-10-12
+stopped_at: Completed 02-00-PLAN.md
+last_updated: "2026-10-13T16:09:16.461Z"
+last_activity: 2026-10-13
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 26
+  completed_plans: 14
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 01 — secrets-camera-list
+**Current focus:** Phase 02 — p2p
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
+Phase: 02 (p2p) — EXECUTING
+Plan: 2 of 13
 Status: Ready to execute
-Last activity: 2026-10-12
+Last activity: 2026-10-13
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P00 | 50min | 3 tasks | 8 files |
+| Phase 02 P00 | 15min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Phase 5 (события) идёт параллельно с P2P-линией (Phases 2–4); EVT-04 замыкается после Phase 4
 - [Roadmap]: GSD-нумерация фаз независима от GRACE `Phase-N`; каждая фаза обновляет GRACE-артефакты (контракты, development-plan, knowledge-graph, verification-plan)
 - [Phase 01]: gradle.ps1 clears handle inheritance (except stdin) before spawning Gradle; unknown exit code reports 1
+- [Phase 02]: RedactionScanner IPv4 pattern skips 127.x loopback (MockWebServer URLs are not peer addresses)
+- [Phase 02]: Phase 2 stream/p2p packages use // doc comments only (no block comments)
 
 ### Pending Todos
 
@@ -79,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T18:14:53.988Z
-Stopped at: Completed 01-00-PLAN.md
+Last session: 2026-10-13T16:09:16.456Z
+Stopped at: Completed 02-00-PLAN.md
 Resume file: None

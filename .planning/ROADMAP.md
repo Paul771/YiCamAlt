@@ -66,7 +66,7 @@ Plans:
 **Plans:** 13 plans
 
 Plans:
-- [ ] 02-00-PLAN.md — Wave 0: базовая линия, контракты портов (CameraLink, PpppNative, StreamTypes), FakePpppNative, формы секретов в RedactionScanner, GRACE-узлы (M-STREAM-LIVE/DECODE → superseded)
+- [x] 02-00-PLAN.md — Wave 0: базовая линия, контракты портов (CameraLink, PpppNative, StreamTypes), FakePpppNative, формы секретов в RedactionScanner, GRACE-узлы (M-STREAM-LIVE/DECODE → superseded)
 - [ ] 02-01-PLAN.md — Вендорское правило транспорта: /v4/tnp/device_info для каждой камеры, TNP по форме DID, иначе по регистру uid; P2pCredentialsSource (wave 1)
 - [ ] 02-02-PLAN.md — Gradle-извлечение вендорских .so из локального APK + SHA-256 манифест, abiFilters, R8 keep, HANDOFF (wave 1)
 - [ ] 02-03-PLAN.md — Java JNI-шим с вендорскими FQCN, NativeLibs, PpppRuntime, AndroidPpppNative, DecoderCatalog, «Проверить P2P» в настройках (wave 1)
