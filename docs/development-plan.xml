@@ -3,7 +3,7 @@
     <objective>Спроектировать модульную Android-архитектуру (Clean Architecture: data / domain / presentation) для альтернативного клиента Yi-камер. Каждый модуль должен иметь чёткий contract, measurable verification, и observable log markers.</objective>
     <non-goal>Не создавать server-side компонент; не делать iOS/桌面 версию; не поддерживать камеры не-Yi.</non-goal>
     <risk-1>Yi Cloud API может измениться без предупреждения — весь API-интерфейс инкапсулирован в M-HTTP с version-fallback layer.</risk-1>
-    <risk-2>Видеопоток зашифрован AES-128 — ключи получаются через облачный handshake. M-STREAM-DECODE — самый рискованный модуль.</risk-2>
+    <risk-2>Video arrives over the vendor P2P libraries; I-frames are AES-encrypted with a key derived from the camera password (no cloud handshake). Native bring-up (M-P2P-NATIVE) is the riskiest module.</risk-2>
     <risk-3>Local RTSP discovery не работает из-за firewall NAT — требуется fallback к cloud relay.</risk-3>
   </ArchitectureNotes>
 
@@ -358,7 +358,7 @@
       </notes>
     </M-EVENT>
 
-    <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" LAYER="1" ORDER="5" STATUS="planned">
+    <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" LAYER="1" ORDER="5" STATUS="superseded">
       <contract>
         <purpose>Establish and manage live video stream from a Yi camera. Supports cloud relay stream and (optionally) local RTSP stream. Handles stream lifecycle (connect, buffer, play, disconnect), reconnection on network change, and quality adaptation.</purpose>
       <inputs>
@@ -393,14 +393,16 @@
         <critical-block>BLOCK_CONNECT_STREAM, BLOCK_DECODE_FRAME, BLOCK_HANDLE_RECONNECT</critical-block>
       </observability>
       <verification-ref>V-M-STREAM-LIVE</verification-ref>
+      <superseded-by>M-TNP-LINK, M-STREAM-CORE, M-MEDIA-RENDER, M-UI-LIVE-PROBE</superseded-by>
       <notes>
         <note-1>Cloud stream URL: /v1/camera/live/stream — returns encrypted media URL with session key.</note-1>
         <note-2>Local RTSP: rtsp://&lt;camera_ip&gt;/live — only works on same LAN, uses standard RTSP.</note-2>
         <note-3>Stream uses ExoPlayer with custom DataSource for encrypted HLS/HTTP stream.</note-3>
+        <note-superseded>2026-10-12 GSD Phase 2 research: there is no cloud HLS/RTSP stream and no cloud AES handshake; live video is P2P via the vendor PPPP/TUTK libraries; I-frame key = camera password + '0' (02-RESEARCH.md)</note-superseded>
       </notes>
     </M-STREAM-LIVE>
 
-    <M-STREAM-DECODE NAME="StreamDecoder" TYPE="CORE_LOGIC" LAYER="1" ORDER="6" STATUS="planned">
+    <M-STREAM-DECODE NAME="StreamDecoder" TYPE="CORE_LOGIC" LAYER="1" ORDER="6" STATUS="superseded">
       <contract>
         <purpose>Handle video stream decryption and decoding. Decrypts AES-128 encrypted Yi camera streams using keys from the cloud handshake. Wraps ExoPlayer MediaSource with decryption support.</purpose>
         <inputs>
@@ -432,10 +434,12 @@
         <critical-block>BLOCK_HANDSHAKE, BLOCK_AES_DECRYPT_INIT, BLOCK_CREATE_MEDIA_SOURCE</critical-block>
       </observability>
       <verification-ref>V-M-STREAM-DECODE</verification-ref>
+      <superseded-by>M-STREAM-CORE, M-MEDIA-RENDER</superseded-by>
       <notes>
         <note-1>Yi streams use AES-128-ECB or AES-128-CBC. Key derived from cloud handshake response.</note-1>
         <note-2>Handshake endpoint: POST /v1/camera/live/key (reverse-engineered — returns session key).</note-2>
         <note-3>This is the most reverse-engineering-heavy module. API surface may change.</note-3>
+        <note-superseded>2026-10-12 GSD Phase 2 research: there is no cloud HLS/RTSP stream and no cloud AES handshake; live video is P2P via the vendor PPPP/TUTK libraries; I-frame key = camera password + '0' (02-RESEARCH.md)</note-superseded>
       </notes>
     </M-STREAM-DECODE>
 
@@ -552,7 +556,7 @@
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="2" STATUS="planned">
       <contract>
-        <purpose>Live view screen: video preview surface, PTZ joystick, quality selector, camera selector (multi-camera), disconnect button. Integrates with M-STREAM-LIVE for video feed and M-CAMERA-CMD for controls.</purpose>
+        <purpose>Live view screen: video preview surface, PTZ joystick, quality selector, camera selector (multi-camera), disconnect button. Integrates with M-TNP-LINK + M-MEDIA-RENDER for video feed (was M-STREAM-LIVE (superseded 2026-10-12, GSD Phase 2)) and M-CAMERA-CMD for controls.</purpose>
       </contract>
       <interface>
         <export-LiveViewScreen PURPOSE="Compose screen with video + controls" />
@@ -560,7 +564,7 @@
         <export-QualitySelector PURPOSE="Dropdown for SD/HD quality toggle" />
         <export-CameraSelector PURPOSE="Horizontal scroll for multi-camera switch" />
       </interface>
-      <depends>M-UI-SHELL, M-STREAM-LIVE, M-CAMERA-CMD, M-CAMERA-LIST</depends>
+      <depends>M-UI-SHELL, M-TNP-LINK, M-MEDIA-RENDER, M-CAMERA-CMD, M-CAMERA-LIST</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/ui/liveview/LiveViewScreen.kt</source>
         <tests>app/src/androidTest/java/com/yicamalt/ui/liveview/LiveViewScreenTest.kt</tests>
@@ -570,6 +574,9 @@
         <critical-block>BLOCK_RENDER_VIDEO_SURFACE, BLOCK_SEND_PTZ_CMD, BLOCK_QUALITY_SWITCH</critical-block>
       </observability>
       <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
+      <notes>
+        <note-1>2026-10-12: the full live view screen is GSD Phase 3; GSD Phase 2 ships only the debug M-UI-LIVE-PROBE screen over M-TNP-LINK + M-MEDIA-RENDER.</note-1>
+      </notes>
     </M-UI-LIVEVIEW>
 
     <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="3" STATUS="planned">
@@ -851,6 +858,250 @@
       </notes>
     </M-P2P-CREDS>
 
+    <M-P2P-NATIVE NAME="P2pNative" TYPE="INTEGRATION" LAYER="1" ORDER="13" STATUS="planned">
+      <contract>
+        <purpose>Vendor CS2-PPPP library from the user's own APK: build-time extraction with SHA-256 manifest, Java JNI shim at vendor FQCNs, library loading as a state, once-per-process PPPP init with native debug off</purpose>
+        <inputs>
+          <param name="vendorApk" type="user-supplied Yi Home APK (build time, never committed)" />
+          <param name="initString" type="ByteArray (P2pCredentials.initString)" />
+        </inputs>
+        <outputs>
+          <param name="PpppNative" type="PpppNative (AndroidPpppNative on device, FakePpppNative on the JVM)" />
+          <param name="NativeLibs.state" type="loaded | missing | failed" />
+        </outputs>
+        <errors>
+          <error code="NATIVE_UNAVAILABLE" NOTE="library missing or failed to load; surfaced as LinkErrorKind.NATIVE_UNAVAILABLE, never a crash" />
+        </errors>
+      </contract>
+      <interface>
+        <export-PpppNative PURPOSE="9-call seam: initialize, configDebug, apiVersion, connect, connectBreak, check, read, write, forceClose" />
+        <export-NativeLibs PURPOSE="Loads the vendor .so files once; load result is a state, not an exception" />
+        <export-PpppRuntime PURPOSE="Once-per-process PPPP_Initialize + PPPP_Config_Debug(0, 4194311); never PPPP_DeInitialize" />
+        <type-PpppCheck PURPOSE="Value-free st_PPPP_Session projection: code, mode, connectTimeMs, remoteIsPrivate" />
+        <export-PpppCodes PURPOSE="PPPP / app error constants, name(code), classify(code) -> LinkErrorKind" />
+      </interface>
+      <depends>none (vendor .so only)</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/p2p/PpppNative.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/NativeLibs.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/PpppRuntime.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/AndroidPpppNative.kt</source>
+        <source>app/src/main/java/com/p2p/pppp_api/PPPP_APIs.java</source>
+        <source>app/src/main/java/com/tnp/model/st_PPPP_Session.java</source>
+        <source>app/src/main/java/com/tnp/model/st_PPPP_NetInfo.java</source>
+        <source>app/build.gradle.kts (extractVendorNatives / verifyVendorNatives)</source>
+        <source>app/vendor-natives.sha256</source>
+        <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/ShimContractTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/PpppRuntimeTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[P2P]</log-prefix>
+        <critical-block>BLOCK_LOAD_NATIVE, BLOCK_INIT_PPPP, BLOCK_EXTRACT_VENDOR_NATIVES, BLOCK_VERIFY_VENDOR_NATIVES, BLOCK_CLASSIFY_PPPP_CODE</critical-block>
+      </observability>
+      <verification-ref>V-M-P2P-NATIVE</verification-ref>
+      <notes>
+        <note-1>Vendor binaries (.so, APK, dex) are never committed (SEC-03 pre-commit hook); they are extracted at build time from the user's own APK and checked against app/vendor-natives.sha256.</note-1>
+        <note-2>JNI_OnLoad of the vendor library needs the class com.p2p.pppp_api.PPPP_APIs and its callbacks at the exact vendor FQCNs; R8 keep rules protect the shim classes.</note-2>
+        <note-3>Native calls run only on dedicated named platform threads (never Dispatchers.IO or main).</note-3>
+      </notes>
+    </M-P2P-NATIVE>
+
+    <M-TNP-LINK NAME="TnpCameraLink" TYPE="CORE_LOGIC" LAYER="1" ORDER="14" STATUS="planned">
+      <contract>
+        <purpose>One TNP session per camera over PpppNative: connect/check, readers on ch0/1/2/3/6, startup burst 4881/9029/768, auth reply, teardown</purpose>
+        <inputs>
+          <param name="credentials" type="P2pCredentials (TNP)" />
+          <param name="options" type="LinkOptions (forceRelay)" />
+        </inputs>
+        <outputs>
+          <param name="CameraLink" type="CameraLink (state flow + VideoUnit sink)" />
+        </outputs>
+        <errors>
+          <error code="LinkErrorKind" NOTE="PpppCodes.classify: OFFLINE, CREDENTIALS, NETWORK, REMOTE_CLOSED, BUSY, KICKED, WRONG_PASSWORD, PROTOCOL, TIMEOUT, ALREADY_OPEN, INTERNAL" />
+        </errors>
+        <error-policy>One PPPP_Connect per user press; no automatic reconnect or retry; one 30 s connect timeout that aborts; command 9033 is never sent, a received 9033 is a terminal kicked state.</error-policy>
+      </contract>
+      <interface>
+        <export-TnpCameraLink PURPOSE="CameraLink implementation for TNP: start(sink) spawns the connect thread, close(reason) = flag + PPPP_Connect_Break + PPPP_ForceClose + bounded join" />
+        <export-TnpLinkFactory PURPOSE="CameraLinkFactory for TNP: one session per camera, ALREADY_OPEN otherwise" />
+      </interface>
+      <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/p2p/tnp/TnpCameraLink.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/tnp/TnpLinkFactory.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/P2pLinkModule.kt</source>
+        <tests>app/src/test/java/com/yicamalt/p2p/tnp/TnpCameraLinkTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/tnp/TnpLinkFactoryTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[P2P]</log-prefix>
+        <critical-block>BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_CLOSE</critical-block>
+      </observability>
+      <verification-ref>V-M-TNP-LINK</verification-ref>
+    </M-TNP-LINK>
+
+    <M-STREAM-CORE NAME="StreamCore" TYPE="CORE_LOGIC" LAYER="1" ORDER="15" STATUS="planned">
+      <contract>
+        <purpose>Pure-Kotlin protocol core and port types: CameraLink port, YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec, IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline</purpose>
+        <inputs>
+          <param name="VideoUnit" type="VideoUnit (from a CameraLink)" />
+          <param name="cameraPassword" type="String? (P2pCredentials.password)" />
+        </inputs>
+        <outputs>
+          <param name="DecodableFrame" type="DecodableFrame (Annex-B + csd)" />
+        </outputs>
+        <errors>
+          <error code="UNSUPPORTED_CODEC" NOTE="DecodableFrameSink.onUnsupportedCodec(codecId)" />
+        </errors>
+      </contract>
+      <interface>
+        <export-CameraLink PURPOSE="Port for one live session: deviceId, state, start(sink), close(reason)" />
+        <export-CameraLinkFactory PURPOSE="open(credentials, options): one session per camera" />
+        <export-P2pCredentialsSource PURPOSE="credentialsFor(deviceId) -> P2pCredentials?" />
+        <type-LinkState PURPOSE="Idle | Connecting | Connected | Streaming | Failed | Closed" />
+        <type-FrameInfo PURPOSE="24-byte frame head value" />
+        <type-VideoUnit PURPOSE="Transport unit: channel, FrameInfo, payload" />
+        <type-DecodableFrame PURPOSE="Decrypted Annex-B access unit + csd" />
+        <export-YiP2pAuth PURPOSE="authInfo builder (nonce + HMAC prefix)" />
+        <export-TnpCodec PURPOSE="TNP command framing" />
+        <export-IoCtrlMessages PURPOSE="IOCTRL command bodies (4881 / 9029 / 768)" />
+        <export-FrameHeadCodec PURPOSE="Parse the 24-byte frame head (TNP big-endian, TUTK little-endian)" />
+        <export-IFrameDecryptor PURPOSE="AES I-frame decryption with key = camera password + '0'" />
+        <export-NalUtils PURPOSE="Annex-B NAL split, csd extraction" />
+        <export-FrameAssembler PURPOSE="Reassemble units into access units" />
+        <export-FramePipeline PURPOSE="VideoUnitSink -> DecodableFrameSink; waits for the first key frame" />
+      </interface>
+      <depends>M-P2P-CREDS</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/stream/StreamTypes.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/CameraLink.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/YiP2pAuth.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/TnpCodec.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/IoCtrlMessages.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/FrameHeadCodec.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/IFrameDecryptor.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/NalUtils.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/FrameAssembler.kt</source>
+        <source>app/src/main/java/com/yicamalt/stream/FramePipeline.kt</source>
+        <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/YiP2pAuthTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/TnpCodecTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/IoCtrlMessagesTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/FrameHeadCodecTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/IFrameDecryptorTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/NalUtilsTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/FrameAssemblerTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/FramePipelineTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Stream]</log-prefix>
+        <critical-block>BLOCK_BUILD_AUTH_INFO, BLOCK_ENCODE_COMMAND, BLOCK_PARSE_FRAME_HEAD, BLOCK_DECRYPT_IFRAME, BLOCK_SPLIT_NALS, BLOCK_ASSEMBLE_FRAMES, BLOCK_FIRST_KEYFRAME</critical-block>
+      </observability>
+      <verification-ref>V-M-STREAM-CORE</verification-ref>
+      <notes>
+        <note-1>Port types (StreamTypes.kt, CameraLink.kt) exist since plan 02-00 so the parallel wave-1 plans compile against one set of names.</note-1>
+      </notes>
+    </M-STREAM-CORE>
+
+    <M-MEDIA-RENDER NAME="VideoDecoder" TYPE="UI_SUPPORT" LAYER="2" ORDER="16" STATUS="planned">
+      <contract>
+        <purpose>MediaCodec async decode of DecodableFrame to a Surface; decoder catalog (HW AVC/HEVC); explicit no-decoder outcome</purpose>
+        <inputs>
+          <param name="frame" type="DecodableFrame" />
+          <param name="surface" type="android.view.Surface" />
+        </inputs>
+        <outputs>
+          <param name="rendered frames" type="Surface output + first-render event" />
+        </outputs>
+        <errors>
+          <error code="NO_DECODER" NOTE="no hardware decoder for the codec; explicit outcome, not a crash" />
+        </errors>
+      </contract>
+      <interface>
+        <export-VideoDecoder PURPOSE="DecodableFrameSink that feeds MediaCodec in async mode; resets on csd change" />
+        <export-DecoderPolicy PURPOSE="Pick a decoder name for a mime from the catalog" />
+        <export-DecoderCatalog PURPOSE="Query MediaCodecList for AVC / HEVC decoders (hw flag)" />
+      </interface>
+      <depends>M-STREAM-CORE</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/media/DecoderCatalog.kt</source>
+        <source>app/src/main/java/com/yicamalt/media/DecoderPolicy.kt</source>
+        <source>app/src/main/java/com/yicamalt/media/VideoDecoder.kt</source>
+        <tests>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Media]</log-prefix>
+        <critical-block>BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET, BLOCK_QUERY_DECODERS</critical-block>
+      </observability>
+      <verification-ref>V-M-MEDIA-RENDER</verification-ref>
+    </M-MEDIA-RENDER>
+
+    <M-UI-LIVE-PROBE NAME="LiveProbeScreen" TYPE="UI" LAYER="3" ORDER="17" STATUS="planned">
+      <contract>
+        <purpose>Debug live screen for Phase 2 checkpoints: open from camera list, Connect / force-relay / Stop, SurfaceView, mode / codec / decoder / fps / decryptOk status line, close on leave</purpose>
+        <inputs>
+          <param name="deviceId" type="String (navigation argument from the camera list)" />
+        </inputs>
+        <outputs>
+          <param name="status line" type="value-free text: mode, codec, decoder, fps, decryptOk" />
+        </outputs>
+        <errors>
+          <error code="LinkErrorKind" NOTE="shown as text; no auto-retry" />
+        </errors>
+      </contract>
+      <interface>
+        <export-LiveProbeScreen PURPOSE="Compose screen with SurfaceView, Connect / force-relay / Stop buttons and status line" />
+        <export-LiveProbeViewModel PURPOSE="Owns one CameraLink per press; closes it on leave / background" />
+      </interface>
+      <depends>M-TNP-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/ui/live/LiveProbeViewModel.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/live/LiveProbeScreen.kt</source>
+        <tests>app/src/test/java/com/yicamalt/ui/live/LiveProbeViewModelTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[LiveProbe]</log-prefix>
+        <critical-block>BLOCK_OPEN_PROBE, BLOCK_CONNECT_PRESSED, BLOCK_CLOSE_PROBE</critical-block>
+      </observability>
+      <verification-ref>V-M-UI-LIVE-PROBE</verification-ref>
+    </M-UI-LIVE-PROBE>
+
+    <M-TUTK-LINK NAME="TutkCameraLink" TYPE="CORE_LOGIC" LAYER="1" ORDER="18" STATUS="planned">
+      <contract>
+        <purpose>TUTK/Kalay adapter behind CameraLink (only if a camera resolves to TUTK after the vendor transport rule; plans 02-10/02-11, gated by device check 02-06)</purpose>
+        <inputs>
+          <param name="credentials" type="P2pCredentials (TUTK)" />
+        </inputs>
+        <outputs>
+          <param name="CameraLink" type="CameraLink" />
+        </outputs>
+      </contract>
+      <interface>
+        <export-TutkCameraLink PURPOSE="CameraLink implementation over IOTC/AV sessions" />
+        <export-TransportLinkFactory PURPOSE="Routes open() to the TNP or TUTK factory by transport" />
+      </interface>
+      <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/p2p/tutk/TutkNative.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/tutk/AndroidTutkNative.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/tutk/TutkRuntime.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/tutk/TutkCameraLink.kt</source>
+        <source>app/src/main/java/com/yicamalt/p2p/TransportLinkFactory.kt</source>
+        <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkShimContractTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkRuntimeTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkCameraLinkTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/TransportLinkFactoryTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[P2P]</log-prefix>
+      </observability>
+      <verification-ref>V-M-TUTK-LINK</verification-ref>
+      <notes>
+        <note-1>conditional: may be closed as not-needed when no camera resolves to TUTK (device check 02-06).</note-1>
+      </notes>
+    </M-TUTK-LINK>
+
   </Modules>
 
   <DataFlow>
@@ -870,14 +1121,15 @@
       <evidence>V-M-CAMERA-LIST scenario-1 (success), log markers [Camera][getCameraList][BLOCK_FETCH_SOURCE], [Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS], [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</evidence>
     </DF-CAMERA-LIST>
 
-    <DF-LIVE-STREAM NAME="LiveViewConnection" TRIGGER="User taps camera thumbnail">
-      <step-1>M-UI-LIVEVIEW requests stream from M-STREAM-LIVE</step-1>
-      <step-2>M-STREAM-LIVE resolves stream URL via M-CAMERA-LIST.getLiveStreamUrl()</step-2>
-      <step-3>M-STREAM-LIVE performs handshake via M-STREAM-DECODE to get AES key</step-3>
-      <step-4>M-STREAM-DECODE creates decrypted MediaSource for ExoPlayer</step-4>
-      <step-5>ExoPlayer initializes, video renders on surface</step-5>
-      <step-6>Stream state reported back to UI (playing / error / reconnecting)</step-6>
-      <evidence>V-M-STREAM-LIVE scenario-1 (full connect), log markers [Stream][startStream][BLOCK_CONNECT_STREAM], [Decode][handshake][BLOCK_HANDSHAKE]</evidence>
+    <DF-LIVE-STREAM NAME="LiveViewConnection" TRIGGER="User presses Connect on the live probe">
+      <step-1>Camera list (M-UI-SHELL / M-CAMERA-LIST) opens LiveProbe (M-UI-LIVE-PROBE) for one device id</step-1>
+      <step-2>LiveProbe calls CameraLinkFactory.open(P2pCredentials) (M-STREAM-CORE port) on an explicit Connect press</step-2>
+      <step-3>TnpCameraLink (M-TNP-LINK) connects through PpppNative (M-P2P-NATIVE) and emits VideoUnit</step-3>
+      <step-4>FramePipeline (M-STREAM-CORE) turns VideoUnit into DecodableFrame (I-frame decrypt, Annex-B, csd)</step-4>
+      <step-5>VideoDecoder (M-MEDIA-RENDER) decodes DecodableFrame to the Surface</step-5>
+      <step-6>Link state (Connecting / Connected / Streaming / Failed / Closed) reported back to the probe status line</step-6>
+      <evidence>V-M-TNP-LINK, V-M-STREAM-CORE, V-M-MEDIA-RENDER; log markers [P2P][tnp][BLOCK_CHECK_SESSION], [Stream][pipeline][BLOCK_FIRST_KEYFRAME], [Media][decoder][BLOCK_FIRST_RENDER]</evidence>
+      <note>2026-10-12: replaces the cloud-stream flow through M-STREAM-LIVE / M-STREAM-DECODE (superseded, GSD Phase 2).</note>
     </DF-LIVE-STREAM>
 
     <DF-EVENT-LIST NAME="EventTimelineLoad" TRIGGER="User navigates to Events tab">
@@ -947,14 +1199,21 @@
 
     <Phase-3 name="Streaming Core" status="in-progress">
       <goal>Live stream and event playback working — the most critical and risky phase.</goal>
-      <step-1 module="M-STREAM-DECODE" status="pending" verification="V-M-STREAM-DECODE">Implement AES decryption handshake</step-1>
-      <step-2 module="M-STREAM-LIVE" status="pending" verification="V-M-STREAM-LIVE">Implement live stream lifecycle</step-2>
+      <step-1 module="M-STREAM-DECODE" status="superseded" verification="V-M-STREAM-DECODE">Implement AES decryption handshake (superseded 2026-10-12, GSD Phase 2: no cloud handshake)</step-1>
+      <step-2 module="M-STREAM-LIVE" status="superseded" verification="V-M-STREAM-LIVE">Implement live stream lifecycle (superseded 2026-10-12, GSD Phase 2: P2P via vendor libs)</step-2>
       <step-3 module="M-UI-LIVEVIEW" status="pending" verification="V-M-UI-LIVEVIEW">Build live view screen with video + controls</step-3>
       <step-4 module="M-EVENT" status="done" verification="V-M-EVENT">Implement event timeline API</step-4>
       <step-5 module="M-EVENT-PLAYBACK" status="pending" verification="V-M-EVENT-PLAYBACK">Implement event playback pipeline</step-5>
       <step-6 module="M-UI-EVENTS" status="pending" verification="V-M-UI-EVENTS">Build events timeline screen</step-6>
       <step-7 module="M-UI-EVENTPLAYBACK" status="pending" verification="V-M-UI-EVENTPLAYBACK">Build playback screen</step-7>
+      <step-8 module="M-P2P-NATIVE" status="pending" verification="V-M-P2P-NATIVE">Vendor PPPP library: extraction, JNI shim, runtime init</step-8>
+      <step-9 module="M-STREAM-CORE" status="pending" verification="V-M-STREAM-CORE">Port types, auth, codecs, I-frame decrypt, frame pipeline</step-9>
+      <step-10 module="M-TNP-LINK" status="pending" verification="V-M-TNP-LINK">TNP session over PpppNative</step-10>
+      <step-11 module="M-MEDIA-RENDER" status="pending" verification="V-M-MEDIA-RENDER">MediaCodec decode to Surface</step-11>
+      <step-12 module="M-UI-LIVE-PROBE" status="pending" verification="V-M-UI-LIVE-PROBE">Debug live probe screen</step-12>
+      <step-13 module="M-TUTK-LINK" status="pending" verification="V-M-TUTK-LINK">TUTK adapter (conditional on device check 02-06)</step-13>
       <phase-note>2026-09-28: M-EVENT done (23 unit tests; suite 91/91 green; assembleDebug OK). Endpoint paths and request signing are PROVISIONAL — they are isolated in EventPaths/EventSigner so a live capture only needs constants edited, not restructuring. Exports getLocalTimeline and EventTimelinePort were added beyond the planned contract because syncEventsToDb/getLocalEventCount were otherwise write-only. Errors Unauthorized and NotFound were added alongside the planned EVENT_FETCH_FAILED/EVENT_NO_RECORDING. Remaining steps stay blocked on the stream protocol capture.</phase-note>
+      <phase-note>2026-10-12: GSD Phase 2 (02-p2p) replaces the cloud-stream design: steps 1-2 superseded by steps 8-13 (P2P via the vendor PPPP/TUTK libraries).</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">
