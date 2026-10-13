@@ -18,7 +18,7 @@ package com.yicamalt.camera
 
 // START_CHANGE_SUMMARY
 //   LAST_CHANGE: v0.2.0 - GSD plan 02-01: vendor transport rule (02-RESEARCH.md Pattern 5). The device-list type/did no
-//     longer decide transport; mismatch removed (it compared the display did with a TNP regex and meant nothing).
+//     longer decide transport; the type-vs-id disagreement flag is removed (it compared the display did with a TNP regex and meant nothing).
 //     transportVerified marks a decision backed by a device_info answer.
 //   PREVIOUS: v0.1.0 - GSD plan 01-12 (CAM-03, SEC-04): created.
 //     INVARIANT: toString() never prints a secret. P2pCredentials must never be written to Room or to a log line;
@@ -93,22 +93,5 @@ object TransportResolver {
         val transport = if (cloudUid.lowercase() == cloudUid) TransportType.LANGTAO else TransportType.TUTK
         return Resolution(transport, cloudUid, Source.UID_SHAPE)
         // END_BLOCK_RESOLVE_TRANSPORT
-    }
-
-    @Deprecated("GSD 02-01 Task 1 shim, removed in Task 2")
-    data class LegacyResolution(val transport: TransportType, val mismatch: Boolean)
-
-    @Deprecated("GSD 02-01 Task 1 shim, removed in Task 2")
-    fun resolve(type: Int?, p2pId: String?): LegacyResolution {
-        val id = p2pId?.trim().orEmpty()
-        val looksTnp = id.isNotEmpty() && isTnpDid(id)
-        @Suppress("DEPRECATION")
-        return when (type) {
-            2 -> LegacyResolution(TransportType.TNP, mismatch = id.isNotEmpty() && !looksTnp)
-            0 -> LegacyResolution(TransportType.TUTK, mismatch = looksTnp)
-            1 -> LegacyResolution(TransportType.LANGTAO, mismatch = looksTnp)
-            null -> LegacyResolution(if (looksTnp) TransportType.TNP else TransportType.UNKNOWN, mismatch = false)
-            else -> LegacyResolution(TransportType.UNKNOWN, mismatch = false)
-        }
     }
 }

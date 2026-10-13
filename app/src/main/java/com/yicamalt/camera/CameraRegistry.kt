@@ -1,16 +1,18 @@
 // FILE: CameraRegistry.kt
-// VERSION: 0.6.0
+// VERSION: 0.7.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Fetch the user's Yi cameras from the probe-proven device-list source, keep an atomic Room cache of
 //     the secret-free fields, and report distinct outcomes (no cameras / rejected / unreachable / unauthorized).
 //   SCOPE: getCameraList (signed list fetch on the session region, dedupe, P2P credential resolution into the
-//     encrypted store, Room replaceAll), cachedCameras (Room only), getCredentials, clearSignedOutData (logout),
+//     encrypted store, Room replaceAll), cachedCameras (Room only), getCredentials, credentialsFor
+//     (implements P2pCredentialsSource, M-STREAM-CORE port), clearSignedOutData (logout),
 //     purgeIfSignedOut (start-up),
 //     getCameraById, cacheCameraList, updateCameraStatus, getLiveStreamUrl; trace markers
 //     BLOCK_FETCH_SOURCE / BLOCK_FETCH_CAMERA_LIST / BLOCK_RESOLVE_P2P_CREDENTIALS / BLOCK_CLEAR_CAMERA_DATA /
 //     BLOCK_RESOLVE_STREAM_URL.
 //   DEPENDS: M-HTTP (YiCloudDeviceApi, YiRequestSigner), M-LOCAL-DB (CameraDao), M-AUTH (SessionSource),
-//     M-P2P-CREDS (P2pCredentialStore, TransportResolver), M-CONFIG (region is the one kept by login)
+//     M-P2P-CREDS (P2pCredentialStore, TransportResolver), M-CONFIG (region is the one kept by login),
+//     M-STREAM-CORE (implements P2pCredentialsSource)
 //   LINKS: M-CAMERA-LIST, M-UI-SHELL, V-M-CAMERA-LIST
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -40,13 +42,17 @@ import javax.inject.Singleton
 //   CameraListPort - getCameraList (network refresh) + cachedCameras (Room only) for the UI.
 //   CameraRegistry - facade over the cloud device API, the Room cache and the P2P credential store.
 //   CameraRegistry.dedupeRecords - one record per cloud uid, first (owned) occurrence wins.
-//   CameraRegistry.getCredentials - Phase 2 entry point: stored P2pCredentials of one camera.
+//   CameraRegistry.getCredentials - stored P2pCredentials of one camera.
+//   CameraRegistry.credentialsFor - P2pCredentialsSource port (live screen); same value as getCredentials.
 //   CameraRegistry.clearSignedOutData - LogoutCleanup: synchronous wipe of Room cache + P2P store (logout).
 //   CameraRegistry.purgeIfSignedOut - start-up wipe when there is no session.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.6.0 - SEC-04 fail-closed cleanup (security review: the logout wipe ran in a UI coroutine
+//   LAST_CHANGE: v0.7.0 - GSD plan 02-01: vendor transport rule; /v4/tnp/device_info for every camera not yet
+//     verified (was: only list type 2); reuse only verified records; type-vs-id disagreement flag removed; implements
+//     P2pCredentialsSource. Network failure -> stored verified record or UNKNOWN (never a guess).
+//   PREV_CHANGE: v0.6.0 - SEC-04 fail-closed cleanup (security review: the logout wipe ran in a UI coroutine
 //     and could be cancelled or skipped). clearAll replaced by LogoutCleanup.clearSignedOutData, called
 //     synchronously from AuthRepository.logout; purgeIfSignedOut wipes at start when there is no session;
 //     writes take writeLock and are dropped when a wipe happened during the refresh (wipeGeneration).
@@ -159,7 +165,9 @@ class CameraRegistry @Inject constructor(
             Timber.d(
                 "[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=${cameras.size} " +
                     "shared=${cameras.count { it.shared }} tnp=${cameras.count { it.transport == TransportType.TNP }} " +
-                    "tutk=${cameras.count { it.transport == TransportType.TUTK }}",
+                    "tutk=${cameras.count { it.transport == TransportType.TUTK }} " +
+                    "langtao=${cameras.count { it.transport == TransportType.LANGTAO }} " +
+                    "unknown=${cameras.count { it.transport == TransportType.UNKNOWN }}",
             )
             cameras
             // END_BLOCK_FETCH_CAMERA_LIST
@@ -214,87 +222,149 @@ class CameraRegistry @Inject constructor(
     }
 
     // START_CONTRACT: resolveCredentials
-    //   PURPOSE: Build P2pCredentials for every record (CAM-03): transport, decrypted password, and for TNP
-    //     cameras DID + InitString + license key from /v4/tnp/device_info.
+    //   PURPOSE: Build P2pCredentials for every record (CAM-03) with the vendor transport rule (02-RESEARCH.md
+    //     Pattern 5): a TNP-shaped device_info DID makes the camera TNP (dialled with that DID, plus InitString and
+    //     license key); otherwise the cloud uid is the P2P id and its case decides (lower -> LANGTAO, else TUTK).
+    //     The list `type` / `did` never decide; the type is logged as a hint only.
     //   INPUTS: { s: AuthSession - signing material; records: List<DeviceRecord> - deduped list rows }
-    //   OUTPUTS: { List<P2pCredentials> - same order and size as records }
-    //   SIDE_EFFECTS: at most one GET /v4/tnp/device_info per TNP camera whose license is not stored for the
-    //     same DID (0 on later refreshes); failures give null InitString/license, never an exception.
+    //   OUTPUTS: { List<P2pCredentials> - same order and size as records; transportVerified = backed by an answer }
+    //   SIDE_EFFECTS: at most one GET /v4/tnp/device_info per camera whose stored record is not transportVerified
+    //     (0 in steady state); no retry, no timer. A network failure never yields a guessed transport: the stored
+    //     verified record is kept, otherwise the camera is UNKNOWN and unverified (asked again next refresh).
     //     Never calls the PIN password endpoint. Logs flags only.
-    //   LINKS: M-P2P-CREDS, V-M-P2P-CREDS, V-M-CAMERA-LIST
+    //   LINKS: M-P2P-CREDS, V-M-P2P-CREDS, V-M-CAMERA-LIST, M-STREAM-CORE
     // END_CONTRACT: resolveCredentials
     private suspend fun resolveCredentials(s: AuthSession, records: List<DeviceRecord>): List<P2pCredentials> {
         // START_BLOCK_RESOLVE_P2P_CREDENTIALS
         val all = records.map { record ->
-            val res = TransportResolver.resolve(record.type, record.p2pId)
             val password = if (record.hasPincode) null else CameraPasswordCipher.decrypt(record.passwordHex, record.cloudUid)
-            var p2pId = record.p2pId.orEmpty()
-            var initString: String? = null
-            var licenseKey: String? = null
-            var tnpInfo = "n/a"
-            if (res.transport == TransportType.TNP) {
-                // The parser puts the cloud uid into p2pId when the row has no did: that is "no list DID".
-                val listDid = record.p2pId?.takeIf { it != record.cloudUid }
-                val known = credentialStore.get(record.cloudUid)
-                if (known?.licenseKey != null && (listDid.isNullOrBlank() || listDid == known.p2pId)) {
-                    p2pId = known.p2pId
-                    initString = known.initString
-                    licenseKey = known.licenseKey
-                    tnpInfo = "reused"
-                } else {
-                    val info = fetchTnpInfo(s, record.cloudUid)
-                    // The TNP DID comes from device_info (measured source), not from the list row.
-                    p2pId = info?.did ?: record.p2pId.orEmpty()
-                    initString = info?.initString
-                    licenseKey = info?.licenseKey
-                    tnpInfo = if (info != null) "ok" else "failed"
+            val known = credentialStore.get(record.cloudUid)
+            val knownVerified = known != null && known.transportVerified
+            val decision: Decision = if (
+                known != null && known.transportVerified &&
+                (known.transport != TransportType.TNP || known.licenseKey != null)
+            ) {
+                Decision.keep(known, tnpInfo = "reused")
+            } else {
+                when (val lookup = fetchTnpInfo(s, record.cloudUid)) {
+                    is TnpLookup.Answer -> {
+                        val info = lookup.info
+                        when {
+                            info != null && TransportResolver.isTnpDid(info.did) -> {
+                                val r = TransportResolver.decide(info.did, record.cloudUid)
+                                Decision(r.transport, r.p2pId, info.initString, info.licenseKey, true, "deviceInfo", "ok")
+                            }
+                            TransportResolver.isTnpDid(lookup.rawDid) ->
+                                if (knownVerified) {
+                                    Decision.keep(known!!, tnpInfo = "incomplete")
+                                } else {
+                                    // TNP DID without InitString / License: not dialable; asked again next refresh.
+                                    Decision(TransportType.TNP, lookup.rawDid!!, null, null, false, "deviceInfo", "incomplete")
+                                }
+                            else -> Decision.byUid(record.cloudUid, tnpInfo = "notTnp")
+                        }
+                    }
+                    is TnpLookup.Rejected -> Decision.byUid(record.cloudUid, tnpInfo = "rejected")
+                    TnpLookup.Failed ->
+                        if (knownVerified) {
+                            Decision.keep(known!!, tnpInfo = "failed")
+                        } else {
+                            // Never keep a guess (e.g. a Phase 1 "TUTK by list type") after a network error.
+                            Decision(TransportType.UNKNOWN, record.cloudUid, null, null, false, "none", "failed")
+                        }
                 }
             }
             Timber.d(
-                "[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=${res.transport} mismatch=${res.mismatch} " +
-                    "hasPassword=${password != null} tnpInfo=$tnpInfo needsPincode=${record.hasPincode}",
+                "[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=${decision.transport} via=${decision.via} " +
+                    "listType=${record.type ?: "-"} tnpInfo=${decision.tnpInfo} hasPassword=${password != null} " +
+                    "needsPincode=${record.hasPincode}",
             )
             P2pCredentials(
                 deviceId = record.cloudUid,
-                p2pId = p2pId,
-                transport = res.transport,
+                p2pId = decision.p2pId,
+                transport = decision.transport,
                 password = password,
-                initString = initString,
-                licenseKey = licenseKey,
+                initString = decision.initString,
+                licenseKey = decision.licenseKey,
                 p2pEncrypt = record.p2pEncrypt,
                 wakeup = record.wakeup,
                 needsPincode = record.hasPincode,
+                transportVerified = decision.verified,
             )
         }
         Timber.d(
             "[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] stored=${all.size} " +
-                "withLicense=${all.count { it.licenseKey != null }} withPassword=${all.count { it.password != null }}",
+                "withLicense=${all.count { it.licenseKey != null }} withPassword=${all.count { it.password != null }} " +
+                "verified=${all.count { it.transportVerified }}",
         )
         return all
         // END_BLOCK_RESOLVE_P2P_CREDENTIALS
     }
 
-    /** One signed GET /v4/tnp/device_info; null on any failure (no retry). */
-    private suspend fun fetchTnpInfo(s: AuthSession, cloudUid: String): TnpDeviceInfo? {
+    /** Transport decision of one camera; values are secrets, toString prints flags only. */
+    private class Decision(
+        val transport: TransportType,
+        val p2pId: String,
+        val initString: String?,
+        val licenseKey: String?,
+        val verified: Boolean,
+        val via: String,
+        val tnpInfo: String,
+    ) {
+        override fun toString() = "Decision(transport=$transport, verified=$verified, via=$via, tnpInfo=$tnpInfo)"
+
+        companion object {
+            fun keep(known: P2pCredentials, tnpInfo: String) = Decision(
+                known.transport, known.p2pId, known.initString, known.licenseKey, known.transportVerified,
+                via = if (known.transport == TransportType.TNP) "deviceInfo" else "uid", tnpInfo = tnpInfo,
+            )
+
+            fun byUid(cloudUid: String, tnpInfo: String): Decision {
+                val r = TransportResolver.decide(null, cloudUid)
+                return Decision(r.transport, r.p2pId, null, null, true, "uid", tnpInfo)
+            }
+        }
+    }
+
+    /** Outcome of one /v4/tnp/device_info call. */
+    private sealed interface TnpLookup {
+        /** Success code; [rawDid] read even when InitString/License are missing; [info] null when incomplete. */
+        class Answer(val rawDid: String?, val info: TnpDeviceInfo?, val code: String) : TnpLookup {
+            override fun toString() = "Answer(hasDid=${rawDid != null}, complete=${info != null}, code=$code)"
+        }
+
+        /** Non-success code: the server answered for this camera. */
+        data class Rejected(val code: String) : TnpLookup
+
+        /** IOException / HttpException / SerializationException. */
+        object Failed : TnpLookup
+    }
+
+    /** One signed GET /v4/tnp/device_info; never throws, no retry. */
+    private suspend fun fetchTnpInfo(s: AuthSession, cloudUid: String): TnpLookup {
         val hmac = YiRequestSigner.sign(s.accessToken, s.refreshToken, s.userId, extra = listOf("uid" to cloudUid))
         val envelope = try {
             api.tnpDeviceInfo(userId = s.userId, uid = cloudUid, hmac = hmac)
         } catch (e: IOException) {
-            return null
+            return TnpLookup.Failed
         } catch (e: HttpException) {
-            return null
+            return TnpLookup.Failed
         } catch (e: SerializationException) {
-            return null
+            return TnpLookup.Failed
         }
         if (envelope.code !in SUCCESS_CODES) {
             Timber.d("[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] tnpCode=${envelope.code} result=rejected")
-            return null
+            return TnpLookup.Rejected(envelope.code)
         }
-        return DeviceRecordParser.parseTnpInfo(envelope.data)
+        return TnpLookup.Answer(
+            rawDid = DeviceRecordParser.parseTnpDid(envelope.data),
+            info = DeviceRecordParser.parseTnpInfo(envelope.data),
+            code = envelope.code,
+        )
     }
 
     // START_CONTRACT: getCredentials
-    //   PURPOSE: Phase 2 entry point: P2P credentials of one camera from the encrypted store.
+    //   PURPOSE: P2P credentials of one camera from the encrypted store.
     //   INPUTS: { deviceId: String - cloud uid }
     //   OUTPUTS: { P2pCredentials? - null when unknown }
     //   SIDE_EFFECTS: none
@@ -310,7 +380,7 @@ class CameraRegistry @Inject constructor(
     //   SIDE_EFFECTS: none
     //   LINKS: M-STREAM-CORE, M-P2P-CREDS
     // END_CONTRACT: credentialsFor
-    override fun credentialsFor(deviceId: String): P2pCredentials? = TODO()
+    override fun credentialsFor(deviceId: String): P2pCredentials? = credentialStore.get(deviceId)
 
     // START_CONTRACT: clearSignedOutData
     //   PURPOSE: Logout cleanup (SEC-04), called synchronously by AuthRepository.logout.

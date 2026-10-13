@@ -329,11 +329,11 @@
         <scenario-2 kind="success" evidence-type="deterministic">Code 20200 / empty data = no cameras: one request, Room and the P2P store cleared</scenario-2>
         <scenario-3 kind="success" evidence-type="integration">Atomic Room replaceAll; cachedCameras reads Room only and never throws; concurrent refreshes serialised</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">401 / 20201 / 20202 / 20203 -> Unauthorized; IO / 5xx / non-JSON -> FetchFailed; other code -> ServerRejected; cache and store untouched</scenario-4>
-        <scenario-5 kind="success" evidence-type="deterministic">P2P credentials: one signed tnp device_info per TNP camera (none for TUTK), DID/InitString/license stored, password decrypted, reused on the next refresh (also when the list has no did), refetched when the did changes; tnp failure keeps the list</scenario-5>
+        <scenario-5 kind="success" evidence-type="deterministic">P2P credentials (plan 02-01, vendor rule): one signed /v4/tnp/device_info per camera whose stored record is not transportVerified, whatever the list type (2 on a fresh 2-camera store, 0 in steady state, Phase 1 records asked exactly once); TNP DID -> TNP with DID/InitString/license, otherwise uid rule with p2pId = cloud uid; swapped list types change nothing; list did changes never trigger a request; rejected code -> uid rule, verified; TNP DID without InitString/License -> incomplete, unverified, asked again; credentialsFor == getCredentials (CameraRegistryCredentialsTest creds_1..8, CameraRegistryModuleTest scenario_10/13/13b)</scenario-5>
         <scenario-6 kind="success" evidence-type="deterministic">hasPincode -> password null, needsPincode, no PIN endpoint; logout (AuthRepository -> LogoutCleanup) wipes Room and the store even from a cancelled coroutine; a refresh in flight writes nothing after logout; start-up purge without a session</scenario-6>
         <scenario-7 kind="failure" evidence-type="trace">Full refresh through the production HttpClientModule logs no uid, DID, password, InitString, License, hmac, token or user id (RedactionScanner)</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">DeviceRecordParser: bare array, wrapped array, string-JSON, absent data (20200) = empty; ipcParam object or string; p2pId = did, falls back to uid; ownership from category then share; tnp info DID/InitString/License with licenseKey before the first colon; value-free toString; DevicePaths has no deviceshare path (DeviceRecordParserTest 14)</scenario-8>
-        <scenario-9 kind="failure" evidence-type="deterministic">Non-JSON list body = FetchFailed (result=malformed), cache untouched (scenario_5d); tnp device_info failure keeps the list (tnpInfo=failed)</scenario-9>
+        <scenario-9 kind="failure" evidence-type="deterministic">Non-JSON list body = FetchFailed (result=malformed), cache untouched (scenario_5d); device_info network failure keeps the list (tnpInfo=failed) and never leaves a guessed transport: stored verified record kept, otherwise UNKNOWN / via=none / unverified, also over a Phase 1 TUTK-by-type record (creds_5..5c)</scenario-9>
       </scenarios>
       <required-log-markers>
         <marker-1>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</marker-1>
@@ -346,9 +346,9 @@
       </required-log-markers>
       <device-log-markers>
         <marker-1>[Camera][getCameraList][BLOCK_FETCH_SOURCE] source=LABEL code=C count=N</marker-1>
-        <marker-2>[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=T mismatch=B hasPassword=B tnpInfo=ok|reused|failed|n/a needsPincode=B, then stored=N withLicense=N withPassword=N</marker-2>
+        <marker-2>[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=T via=deviceInfo|uid|none listType=N|- tnpInfo=ok|incomplete|notTnp|rejected|failed|reused hasPassword=B needsPincode=B, then stored=N withLicense=N withPassword=N verified=N (plan 02-01)</marker-2>
         <marker-3>[P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS] count=N</marker-3>
-        <marker-4>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=N shared=N tnp=N tutk=N</marker-4>
+        <marker-4>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices=N shared=N tnp=N tutk=N langtao=N unknown=N</marker-4>
         <marker-5>[Cameras][load][BLOCK_LOAD_CAMERAS] source=cache count=N</marker-5>
         <marker-6>[App][init][BLOCK_INIT_APP] diagLog=internal legacyPurged=N</marker-6>
       </device-log-markers>
@@ -440,10 +440,10 @@
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">Transport matrix: type 2 TNP, 0 TUTK, 1 LANGTAO, missing type falls back to the DID shape, unknown code UNKNOWN; type/shape conflict sets mismatch and type wins; blank id never mismatches; fromStorage tolerates garbage (P2pCredentialsTest)</scenario-1>
+        <scenario-1 kind="success" evidence-type="deterministic">Vendor transport rule (plan 02-01): isTnpDid accepts TNP prefix + exactly 3 parts, rejects 2/4 parts, lower-case prefix, null/empty; decide: TNP DID -> TNP via DEVICE_INFO with that DID, else uid case (lower LANGTAO, else TUTK) via UID_SHAPE; transportVerified defaults false; fromStorage tolerates garbage (P2pCredentialsTest)</scenario-1>
         <scenario-2 kind="success" evidence-type="deterministic">Camera password round trip with key = first 16 chars of the cloud uid; pinned synthetic vector (openssl); empty field = factory default 888888; uppercase hex accepted (CameraPasswordCipherTest)</scenario-2>
         <scenario-3 kind="failure" evidence-type="deterministic">Invalid inputs yield null without exception or log: malformed hex, missing/short uid, ciphertext from another key</scenario-3>
-        <scenario-4 kind="success" evidence-type="deterministic">Codec round trip with all and with null optional fields, every transport by name; garbage and incomplete records rejected (P2pCredentialStoreTest)</scenario-4>
+        <scenario-4 kind="success" evidence-type="deterministic">Codec round trip with all and with null optional fields, every transport by name, transportVerified kept; a v0.1.0 record without transportVerified decodes as unverified; garbage and incomplete records rejected (P2pCredentialStoreTest)</scenario-4>
         <scenario-5 kind="success" evidence-type="deterministic">InMemoryP2pCredentialStore replaceAll / second replaceAll drops stale records / clear / unknown id = null</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">toString prints flags only: no synthetic secret value appears, absent secrets reported as flags</scenario-6>
       </scenarios>

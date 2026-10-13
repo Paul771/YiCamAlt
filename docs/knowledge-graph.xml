@@ -396,10 +396,10 @@
       <depends>M-HTTP</depends>
       <verification-ref>V-M-P2P-CREDS</verification-ref>
       <annotations>
-        <export-TransportResolver PURPOSE="resolve(type, p2pId): 2 TNP, 0 TUTK, 1 LANGTAO, else UNKNOWN; missing type falls back to the TNP DID shape; conflict sets mismatch (BLOCK_RESOLVE_TRANSPORT, code anchor, no log)" />
+        <export-TransportResolver PURPOSE="decide(deviceInfoDid, cloudUid): vendor rule (02-RESEARCH.md Pattern 5) - TNP-shaped device_info DID (isTnpDid: TNP prefix, exactly 3 dash parts) gives TNP dialled with that DID, else the cloud uid is the id and its case decides (all lower-case LANGTAO, else TUTK); the list type/did never decide; no mismatch flag (BLOCK_RESOLVE_TRANSPORT, code anchor, no log)" />
         <export-CameraPasswordCipher PURPOSE="decrypt(passwordHex, cloudUid): AES/ECB key = first 16 chars of the cloud uid; blank = factory default; failure = null; never logs (BLOCK_DECRYPT_CAMERA_PASSWORD, code anchor)" />
         <export-P2pCredentialStore PURPOSE="get / replaceAll / clear; EncryptedP2pCredentialStore (EncryptedSharedPreferences file yicamalt_p2p, Hilt bindP2pCredentialStore), InMemoryP2pCredentialStore; never Room; logs [P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS] count=N" />
-        <type-P2pCredentials PURPOSE="deviceId, p2pId, transport, password, initString, licenseKey, p2pEncrypt, wakeup, needsPincode; toString prints flags only" />
+        <type-P2pCredentials PURPOSE="deviceId, p2pId, transport, password, initString, licenseKey, p2pEncrypt, wakeup, needsPincode, transportVerified; toString prints flags only" />
         <type-TransportType PURPOSE="TNP | TUTK | LANGTAO | UNKNOWN" />
         <class-P2pCredentialsCodec PURPOSE="JSON codec for one stored entry (internal)" />
       </annotations>
@@ -551,6 +551,7 @@
     <CrossLink from="M-UI-SETTINGS" to="M-DEBUG-PROBE" relation="debug-only trigger" />
     <CrossLink from="M-P2P-CREDS" to="M-HTTP" relation="signed tnp device info" />
     <CrossLink from="M-CAMERA-LIST" to="M-P2P-CREDS" relation="resolves and stores P2P credentials" />
+    <CrossLink from="M-CAMERA-LIST" to="M-STREAM-CORE" relation="CameraRegistry implements P2pCredentialsSource (Hilt bindP2pCredentialsSource, plan 02-01)" />
     <CrossLink from="M-AUTH" to="M-CAMERA-LIST" relation="logout runs LogoutCleanup (camera cache + P2P store wipe)" />
     <CrossLink from="M-CAMERA-LIST" to="M-CONFIG" relation="uses the region kept by login discovery (no registry region fallback)" />
     <CrossLink from="M-UI-SHELL" to="M-CAMERA-LIST" relation="cache-first camera list" />

@@ -830,10 +830,10 @@
         <error-policy>No exceptions: an unknown transport is TransportType.UNKNOWN, a password that cannot be recovered is null, a missing tnp device info is null.</error-policy>
       </contract>
       <interface>
-        <export-TransportResolver PURPOSE="resolve(type, p2pId): 2 -> TNP, 0 -> TUTK, 1 -> LANGTAO, other -> UNKNOWN; a missing type falls back to the TNP DID shape; a type/shape conflict sets mismatch, type wins" />
+        <export-TransportResolver PURPOSE="decide(deviceInfoDid, cloudUid): vendor rule (02-RESEARCH.md Pattern 5) - TNP-shaped device_info DID (isTnpDid: TNP prefix, exactly 3 dash parts) gives TNP dialled with that DID, else the cloud uid is the id and its case decides (all lower-case LANGTAO, else TUTK); the list type/did never decide; no mismatch flag (plan 02-01)" />
         <export-CameraPasswordCipher PURPOSE="decrypt(passwordHex, cloudUid): AES/ECB/PKCS5 with key = first 16 chars of the cloud uid; blank field -> factory default; any failure -> null, never logs" />
         <export-P2pCredentialStore PURPOSE="get / replaceAll / clear; EncryptedP2pCredentialStore (EncryptedSharedPreferences file yicamalt_p2p, bound in Hilt) and InMemoryP2pCredentialStore; never Room" />
-        <type-P2pCredentials PURPOSE="Per-camera transport, p2p id, password, InitString, license, needsPincode; toString prints flags only" />
+        <type-P2pCredentials PURPOSE="Per-camera transport, p2p id, password, InitString, license, needsPincode, transportVerified (decision backed by a device_info answer; persisted, default false); toString prints flags only" />
         <type-TransportType PURPOSE="TNP | TUTK | LANGTAO | UNKNOWN (fromStorage maps unknown names to UNKNOWN)" />
       </interface>
       <depends>M-HTTP</depends>
