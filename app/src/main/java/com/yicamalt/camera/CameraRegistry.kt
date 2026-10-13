@@ -90,7 +90,7 @@ class CameraRegistry @Inject constructor(
     private val cameraDao: CameraDao,
     private val session: SessionSource,
     private val credentialStore: P2pCredentialStore,
-) : CameraListPort, LogoutCleanup {
+) : CameraListPort, LogoutCleanup, com.yicamalt.stream.P2pCredentialsSource {
 
     private val refreshMutex = Mutex()
 
@@ -302,6 +302,15 @@ class CameraRegistry @Inject constructor(
     // END_CONTRACT: getCredentials
     /** Phase 2 entry point: the P2P credentials stored for [deviceId], or null. */
     fun getCredentials(deviceId: String): P2pCredentials? = credentialStore.get(deviceId)
+
+    // START_CONTRACT: credentialsFor
+    //   PURPOSE: P2pCredentialsSource port (M-STREAM-CORE): the live screen reads one camera's credentials.
+    //   INPUTS: { deviceId: String - cloud uid }
+    //   OUTPUTS: { P2pCredentials? - same as getCredentials; null when unknown }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-STREAM-CORE, M-P2P-CREDS
+    // END_CONTRACT: credentialsFor
+    override fun credentialsFor(deviceId: String): P2pCredentials? = TODO()
 
     // START_CONTRACT: clearSignedOutData
     //   PURPOSE: Logout cleanup (SEC-04), called synchronously by AuthRepository.logout.

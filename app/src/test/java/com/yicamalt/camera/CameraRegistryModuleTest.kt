@@ -1,5 +1,5 @@
 // FILE: CameraRegistryModuleTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify M-CAMERA-LIST against MockWebServer: probe-driven source, parse, atomic cache, distinct outcomes.
 //   SCOPE: success + failure scenarios for V-M-CAMERA-LIST; trace marker assertions; synthetic fixtures only.
@@ -13,11 +13,16 @@ package com.yicamalt.camera
 // START_MODULE_MAP
 //   FakeCameraDao - in-memory CameraDao (no Room); can be told to throw on reads.
 //   FakeSession / NoSession - SessionSource fakes.
-//   CameraRegistryModuleTest - scenario_1..scenario_13.
+//   CameraRegistryModuleTest - scenario_1..scenario_13b (13/13b: device_info bound per refresh, swapped types).
+//   listRequests / deviceInfoRequests / allRequests - per-kind request counters kept by the dispatcher.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - plan 01-09: path pinned to DeviceSourcePlan.OWNED_PATHS.first(); streamUrl is
+//   LAST_CHANGE: v0.3.0 - plan 02-01: device_info is now asked for every unverified camera, so request counts are
+//     split (listRequests / deviceInfoRequests / allRequests) instead of server.requestCount; device_info answered
+//     per uid (CLOUD_UID -> TNP_INFO, TUTK_UID -> TNP_INFO_NOT_TNP, else TNP_INFO_REJECTED); scenario_10 restated
+//     under the vendor rule; scenario_13 pins 2 device_info requests on the first refresh and 0 on the second.
+//   PREV_CHANGE: v0.2.0 - plan 01-09: path pinned to DeviceSourcePlan.OWNED_PATHS.first(); streamUrl is
 //     null after a refresh (the list has none); 20200/empty clears cache + credential store; IO -> FetchFailed,
 //     non-success code -> ServerRejected (both leave cache + store untouched); shared rows and dedupe;
 //     transport mapping; cachedCameras; concurrent refreshes. List responses come from a queue, tnp
@@ -98,6 +103,8 @@ class CameraRegistryModuleTest {
 
     private val listQueue = java.util.concurrent.LinkedBlockingQueue<MockResponse>()
     private val listRequests = java.util.concurrent.atomic.AtomicInteger(0)
+    private val deviceInfoRequests = java.util.concurrent.atomic.AtomicInteger(0)
+    private val allRequests = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** Queues a device-list response; tnp device_info is answered by path so it never consumes the queue. */
     private fun enqueue(response: MockResponse) { listQueue.add(response) }
@@ -106,8 +113,16 @@ class CameraRegistryModuleTest {
     fun setUp() {
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
-                if (request.requestUrl!!.encodedPath.endsWith(DevicePaths.TNP_DEVICE_INFO)) {
-                    return MockResponse().setBody(DeviceListFixtures.TNP_INFO)
+                allRequests.incrementAndGet()
+                val url = request.requestUrl!!
+                if (url.encodedPath.endsWith(DevicePaths.TNP_DEVICE_INFO)) {
+                    deviceInfoRequests.incrementAndGet()
+                    val body = when (url.queryParameter("uid")) {
+                        RedactionFixtures.CLOUD_UID -> DeviceListFixtures.TNP_INFO
+                        RedactionFixtures.TUTK_UID -> DeviceListFixtures.TNP_INFO_NOT_TNP
+                        else -> DeviceListFixtures.TNP_INFO_REJECTED
+                    }
+                    return MockResponse().setBody(body)
                 }
                 listRequests.incrementAndGet()
                 return listQueue.poll() ?: MockResponse().setResponseCode(599).setBody("SYNTH no scripted response")
@@ -167,7 +182,7 @@ class CameraRegistryModuleTest {
     fun `scenario_1c signed request goes to the probe-proven path with seq userid and hmac`() {
         enqueue(MockResponse().setBody(deviceListBody()))
         runBlocking { registry.getCameraList() }
-        assertEquals(1, server.requestCount, "data on the first path: no further list request")
+        assertEquals(1, listRequests.get(), "data on the first path: no further list request")
         val q = server.takeRequest().requestUrl!!
         assertEquals(DeviceSourcePlan.OWNED_PATHS.first(), q.encodedPath)
         assertEquals("/v5/devices/list", q.encodedPath)
@@ -188,7 +203,7 @@ class CameraRegistryModuleTest {
             runBlocking { registry.getCameraList() }
         }
         assertTrue(err.message!!.contains("CAMERA_UNAUTHORIZED"))
-        assertEquals(0, server.requestCount)
+        assertEquals(0, allRequests.get())
     }
 
     @Test
@@ -224,7 +239,7 @@ class CameraRegistryModuleTest {
         enqueue(MockResponse().setBody(DeviceListFixtures.EMPTY_20200))
         val cameras = runBlocking { registry.getCameraList() }
         assertTrue(cameras.isEmpty())
-        assertEquals(1, server.requestCount, "no fallback path, no other region")
+        assertEquals(1, listRequests.get(), "no fallback path, no other region")
         assertEquals(0, dao.count())
         assertNull(store.get("old-cam"))
     }
@@ -262,7 +277,7 @@ class CameraRegistryModuleTest {
             }
             assertPreviousStateUntouched()
         }
-        assertEquals(3, server.requestCount, "one request per refresh, no retry")
+        assertEquals(3, listRequests.get(), "one request per refresh, no retry")
     }
 
     @Test
@@ -304,7 +319,7 @@ class CameraRegistryModuleTest {
             runBlocking { registry.getCameraList() }
         }
         assertPreviousStateUntouched()
-        assertEquals(1, server.requestCount)
+        assertEquals(1, listRequests.get())
     }
 
     @Test
@@ -316,7 +331,7 @@ class CameraRegistryModuleTest {
         }
         assertTrue(err.message!!.contains("CAMERA_SERVER_ERROR"))
         assertPreviousStateUntouched()
-        assertEquals(1, server.requestCount)
+        assertEquals(1, listRequests.get())
     }
 
     @Test
@@ -364,7 +379,7 @@ class CameraRegistryModuleTest {
     }
 
     @Test
-    fun `scenario_10 transport from the probe-shaped fixture and the row without id dropped`() {
+    fun `scenario_10 vendor rule on the probe-shaped fixture and the row without id dropped`() {
         enqueue(MockResponse().setBody(DeviceListFixtures.V4_LIST))
         val cameras = runBlocking { registry.getCameraList() }
         assertEquals(2, cameras.size)
@@ -372,7 +387,12 @@ class CameraRegistryModuleTest {
         assertEquals(TransportType.TUTK, cameras.single { it.deviceId == RedactionFixtures.TUTK_UID }.transport)
         assertEquals("TNP", dao.getById(RedactionFixtures.CLOUD_UID)!!.transport)
         assertEquals("TUTK", dao.getById(RedactionFixtures.TUTK_UID)!!.transport)
-        assertTrue(recorder.bufferText().contains("devices=2 shared=0 tnp=1 tutk=1"))
+        assertTrue(recorder.bufferText().contains("devices=2 shared=0 tnp=1 tutk=1 langtao=0 unknown=0"))
+        // TNP camera decided by its device_info DID, the other by its mixed-case cloud uid.
+        assertTrue(recorder.bufferText().contains("transport=TNP via=deviceInfo"))
+        assertTrue(recorder.bufferText().contains("transport=TUTK via=uid"))
+        assertEquals(RedactionFixtures.DID, store.get(RedactionFixtures.CLOUD_UID)!!.p2pId)
+        assertEquals(RedactionFixtures.TUTK_UID, store.get(RedactionFixtures.TUTK_UID)!!.p2pId)
     }
 
     @Test
@@ -380,11 +400,11 @@ class CameraRegistryModuleTest {
         assertTrue(runBlocking { registry.cachedCameras() }.isEmpty(), "fresh DAO")
         enqueue(MockResponse().setBody(DeviceListFixtures.V4_LIST))
         runBlocking { registry.getCameraList() }
-        val requestsAfterRefresh = server.requestCount
+        val requestsAfterRefresh = allRequests.get()
         val cached = runBlocking { registry.cachedCameras() }
         assertEquals(2, cached.size)
         assertEquals(TransportType.TNP, cached.single { it.deviceId == RedactionFixtures.CLOUD_UID }.transport)
-        assertEquals(requestsAfterRefresh, server.requestCount, "no network")
+        assertEquals(requestsAfterRefresh, allRequests.get(), "no network")
         dao.failReads = true
         assertTrue(runBlocking { registry.cachedCameras() }.isEmpty())
     }
@@ -398,5 +418,23 @@ class CameraRegistryModuleTest {
         assertTrue(results.all { it.size == 2 })
         assertEquals(2, dao.count())
         assertEquals(2, listRequests.get())
+    }
+
+    @Test
+    fun `scenario_13 two-camera refresh asks device_info twice, then never`() {
+        repeat(2) { enqueue(MockResponse().setBody(DeviceListFixtures.V4_LIST)) }
+        runBlocking { registry.getCameraList() }
+        assertEquals(2, deviceInfoRequests.get(), "one device_info per camera on the first refresh")
+        runBlocking { registry.getCameraList() }
+        assertEquals(2, deviceInfoRequests.get(), "zero device_info requests on the second refresh")
+        assertEquals(2, listRequests.get())
+    }
+
+    @Test
+    fun `scenario_13b swapped list types change nothing`() {
+        enqueue(MockResponse().setBody(DeviceListFixtures.V4_LIST_TYPES_SWAPPED))
+        val cameras = runBlocking { registry.getCameraList() }
+        assertEquals(TransportType.TNP, cameras.single { it.deviceId == RedactionFixtures.CLOUD_UID }.transport)
+        assertEquals(TransportType.TUTK, cameras.single { it.deviceId == RedactionFixtures.TUTK_UID }.transport)
     }
 }

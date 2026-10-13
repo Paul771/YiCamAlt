@@ -140,6 +140,16 @@ internal object DeviceRecordParser {
         // END_BLOCK_PARSE_TNP_INFO
     }
 
+    // START_CONTRACT: parseTnpDid
+    //   PURPOSE: Raw DID of a /v4/tnp/device_info answer, even when InitString / License are missing (the vendor
+    //     transport rule looks at the DID alone).
+    //   INPUTS: { element: JsonElement? - envelope data: object or JSON-encoded string of an object }
+    //   OUTPUTS: { String? - DID (key DID/did, case-insensitive), null when absent or blank }
+    //   SIDE_EFFECTS: none (the value is a secret and is never logged)
+    //   LINKS: M-P2P-CREDS
+    // END_CONTRACT: parseTnpDid
+    fun parseTnpDid(element: JsonElement?): String? = TODO()
+
     // START_BLOCK_FIELD_HELPERS
     /** ipcParam as an object, whether it arrived as an object or as a JSON-encoded string. */
     private fun ipcObject(obj: JsonObject): JsonObject? {
