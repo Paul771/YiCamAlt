@@ -24,7 +24,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   RuntimeState - NotStarted | Unavailable | InitFailed(code) | Ready(apiVersion, apiHex).
+//   RuntimeState - NotStarted | Unavailable | InitFailed(code) | Ready(apiVersion, initCode 0 or -3002, apiHex).
 //   PpppRuntime - ensureInitialized(), state; THREAD_NAME, MAX_SESSIONS, INIT_TIMEOUT_MS.
 // END_MODULE_MAP
 
@@ -43,7 +43,7 @@ sealed interface RuntimeState {
 
     data class InitFailed(val code: Int) : RuntimeState
 
-    data class Ready(val apiVersion: Int) : RuntimeState {
+    data class Ready(val apiVersion: Int, val initCode: Int = PpppCodes.OK) : RuntimeState {
         val apiHex: String get() = "0x%08X".format(apiVersion)
     }
 }
@@ -109,7 +109,7 @@ class PpppRuntime @Inject constructor(
             return RuntimeState.InitFailed(init)
         }
         native.configDebug(0, 4194311)
-        val ready = RuntimeState.Ready(native.apiVersion())
+        val ready = RuntimeState.Ready(native.apiVersion(), init)
         Timber.d("[P2P][runtime][BLOCK_INIT_PPPP] init=%d api=%s debug=off", init, ready.apiHex)
         return ready
     }

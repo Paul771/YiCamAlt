@@ -12,7 +12,9 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.p2p
 
+import com.yicamalt.media.DecoderChoice
 import com.yicamalt.test.RedactionFixtures
+import com.yicamalt.ui.settings.formatNativeCheck
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
 import org.junit.jupiter.api.AfterEach
@@ -31,10 +33,11 @@ import kotlin.concurrent.thread
 //   NativeLibs tests - loaded / missing / error / cached / TUTK order and aggregation.
 //   PpppRuntime tests - unavailable, call order, -3002, failure, once-only, concurrency, apiHex, trace hygiene.
 //   isPrivateIpv4 tests - five synthetic addresses (never printed).
+//   native check line test - formatNativeCheck shape for ready / missing / failed inputs.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-03: created.
+//   LAST_CHANGE: v0.1.0 - GSD plan 02-03: created; Ready carries initCode; Settings check line pinned.
 // END_CHANGE_SUMMARY
 
 class PpppRuntimeTest {
@@ -133,7 +136,10 @@ class PpppRuntimeTest {
     @Test
     fun `already initialized counts as ready`() {
         val fake = FakePpppNative().apply { initResult = PpppCodes.ALREADY_INITIALIZED }
-        assertTrue(runtime(fake).ensureInitialized() is RuntimeState.Ready)
+        assertEquals(
+            RuntimeState.Ready(0xA2050401.toInt(), PpppCodes.ALREADY_INITIALIZED),
+            runtime(fake).ensureInitialized(),
+        )
     }
 
     @Test
@@ -196,4 +202,34 @@ class PpppRuntimeTest {
         assertFalse(AndroidPpppNative.isPrivateIpv4(ByteArray(16)))
     }
     // END_BLOCK_PRIVATE_ADDRESS_TESTS
+
+    // START_BLOCK_NATIVE_CHECK_LINE_TESTS
+    @Test
+    fun `settings native check line has the documented shape`() {
+        val ready = formatNativeCheck(
+            LoadState.Loaded, "arm64-v8a", RuntimeState.Ready(0xA2050401.toInt()), LoadState.Loaded,
+            DecoderChoice("video/avc", "c2.qti.avc.decoder", true, true),
+            DecoderChoice("video/hevc", "c2.android.hevc.decoder", false, false),
+        )
+        assertEquals(
+            "libs=OK abi=arm64-v8a ppppApi=0xA2050401 init=0 tutkLibs=OK " +
+                "avc=c2.qti.avc.decoder(hw) hevc=c2.android.hevc.decoder(sw)",
+            ready,
+        )
+        val missing = formatNativeCheck(
+            LoadState.Missing, "jvm", RuntimeState.Unavailable, LoadState.Error("SecurityException"),
+            DecoderChoice("video/avc", null, false, false), DecoderChoice("video/hevc", null, false, false),
+        )
+        assertEquals(
+            "libs=MISSING abi=jvm ppppApi=- init=- tutkLibs=ERROR avc=none(sw) hevc=none(sw) hevcNote=no-decoder",
+            missing,
+        )
+        val failed = formatNativeCheck(
+            LoadState.Loaded, "jvm", RuntimeState.InitFailed(-3005), LoadState.Loaded,
+            DecoderChoice("video/avc", null, false, false), DecoderChoice("video/hevc", "x", true, false),
+        )
+        assertTrue(failed.contains("ppppApi=- init=-3005"), failed)
+        RedactionScanner().assertClean(listOf(ready, missing, failed).joinToString("\n"), RedactionFixtures.ALL_SECRETS)
+    }
+    // END_BLOCK_NATIVE_CHECK_LINE_TESTS
 }

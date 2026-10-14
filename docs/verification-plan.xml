@@ -645,6 +645,8 @@
       <required-log-markers>
         <marker-1>[P2P][native][BLOCK_LOAD_NATIVE]</marker-1>
         <marker-2>[P2P][runtime][BLOCK_INIT_PPPP] init=&lt;code&gt; api=&lt;hex&gt; debug=off</marker-2>
+        <marker-3>[Media][catalog][BLOCK_QUERY_DECODERS] avc=&lt;name|none&gt; avcHw=&lt;b&gt; hevc=&lt;name|none&gt; hevcHw=&lt;b&gt;</marker-3>
+        <marker-4>[Settings][nativeCheck][BLOCK_NATIVE_CHECK] libs=&lt;OK|MISSING|ERROR&gt; abi=&lt;abi&gt; ppppApi=&lt;0xHEX|-&gt; init=&lt;code|-&gt; tutkLibs=&lt;OK|MISSING|ERROR&gt; avc=&lt;name|none&gt;(hw|sw) hevc=&lt;name|none&gt;(hw|sw) [hevcNote=no-decoder]</marker-4>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -652,6 +654,7 @@
       <notes>
         <note-1>Device evidence (library load, init code, API version) comes from the Phase 2 device checkpoints.</note-1>
         <note-2>2026-10-13 plan 02-00: PpppContractTest (13 tests) green against FakePpppNative.</note-2>
+        <note-3>2026-10-14 plan 02-03: ShimContractTest (5) and PpppRuntimeTest (16) green; Settings "Проверить P2P" (debug) produces the BLOCK_NATIVE_CHECK line read at checkpoint 02-06.</note-3>
       </notes>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-P2P-NATIVE>

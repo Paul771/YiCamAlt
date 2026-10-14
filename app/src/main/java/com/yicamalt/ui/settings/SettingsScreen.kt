@@ -1,5 +1,5 @@
 // FILE: SettingsScreen.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Compose settings screen: edit the runtime API base URL override; debug-only endpoint probe button.
 //   SCOPE: stateless rendering driven by SettingsViewModel; save + back callbacks; probe lines (debug builds only).
@@ -38,16 +38,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
 // START_MODULE_MAP
-//   SettingsScreen - Compose surface to edit the API base URL; debug probe button (BuildConfig.DEBUG only).
+//   SettingsScreen - Compose surface to edit the API base URL; debug probe button and "Проверить P2P" button
+//     with a selectable monospace result line (BuildConfig.DEBUG only).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Scrollable column (Arrangement.Top); sign-probe button replaced by the debug-only
+//   LAST_CHANGE: v0.3.0 - GSD plan 02-03: debug-only "Проверить P2P" button (M-P2P-NATIVE check line).
+//   PREV_CHANGE: v0.2.0 - Scrollable column (Arrangement.Top); sign-probe button replaced by the debug-only
 //     "Проба эндпоинтов (debug)" button (M-DEBUG-PROBE), hidden in release builds.
 // END_CHANGE_SUMMARY
 
@@ -60,6 +64,8 @@ fun SettingsScreen(
     val baseUrl by viewModel.baseUrl.collectAsState()
     val probeResults by viewModel.probeResults.collectAsState()
     val probeRunning by viewModel.probeRunning.collectAsState()
+    val nativeCheck by viewModel.nativeCheck.collectAsState()
+    val nativeCheckRunning by viewModel.nativeCheckRunning.collectAsState()
     var text by remember { mutableStateOf(baseUrl) }
 
     Scaffold(
@@ -114,6 +120,25 @@ fun SettingsScreen(
                 }
             }
             // END_BLOCK_DEBUG_PROBE_BUTTON
+            // START_BLOCK_DEBUG_NATIVE_CHECK
+            if (BuildConfig.DEBUG) {
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = { viewModel.runNativeCheck() },
+                    enabled = !nativeCheckRunning,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Проверить P2P") }
+                nativeCheck?.let { line ->
+                    SelectionContainer {
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+            // END_BLOCK_DEBUG_NATIVE_CHECK
         }
     }
 }
