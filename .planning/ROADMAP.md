@@ -70,7 +70,7 @@ Plans:
 - [x] 02-01-PLAN.md — Вендорское правило транспорта: /v4/tnp/device_info для каждой камеры, TNP по форме DID, иначе по регистру uid; P2pCredentialsSource (wave 1)
 - [x] 02-02-PLAN.md — Gradle-извлечение вендорских .so из локального APK + SHA-256 манифест, abiFilters, R8 keep, HANDOFF (wave 1)
 - [x] 02-03-PLAN.md — Java JNI-шим с вендорскими FQCN, NativeLibs, PpppRuntime, AndroidPpppNative, DecoderCatalog, «Проверить P2P» в настройках (wave 1)
-- [ ] 02-04-PLAN.md — TDD: YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec на эталонных векторах (wave 1)
+- [x] 02-04-PLAN.md — TDD: YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec на эталонных векторах (wave 1)
 - [ ] 02-05-PLAN.md — TDD: IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline (wave 1)
 - [ ] 02-06-PLAN.md — Проверка на телефоне №1: загрузка libPPPP_API, PPPP_GetAPIVersion, транспорт обеих камер, HEVC-декодер, гейт 2B (wave 2, checkpoint)
 - [ ] 02-07-PLAN.md — TnpCameraLink + фабрика (одна сессия на камеру, порядок вызовов вендора, без повторов) (wave 3)
