@@ -4,6 +4,12 @@
   @kotlinx.serialization.SerialName <fields>;
 }
 -keep,includedescriptorclasses class **$$serializer { *; }
+# Tink (via androidx.security:security-crypto) references Error Prone annotations that exist only at
+# compile time; R8 fails release minification with "Missing class" without these (AGP missing_rules.txt).
+-dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
+-dontwarn com.google.errorprone.annotations.CheckReturnValue
+-dontwarn com.google.errorprone.annotations.Immutable
+-dontwarn com.google.errorprone.annotations.RestrictedApi
 # JNI shim for the vendor libraries (GSD Phase 2, M-P2P-NATIVE). libPPPP_API.so JNI_OnLoad looks up
 # com/p2p/pppp_api/PPPP_APIs and its callbacks; PPPP_Check writes st_PPPP_Session fields by name.
 -keep class com.p2p.pppp_api.** { *; }
