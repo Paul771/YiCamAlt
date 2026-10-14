@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-10-14T04:55:14.276Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-10-14T05:03:46.207Z"
 last_activity: 2026-10-14
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 26
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 02 (p2p) — EXECUTING
-Plan: 6 of 13
+Plan: 7 of 13
 Status: Ready to execute
 Last activity: 2026-10-14
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P02 | 20min | 2 tasks | 4 files |
 | Phase 02-p2p P03 | 30min | 3 tasks | 12 files |
 | Phase 02-p2p P04 | 15min | 2 tasks | 8 files |
+| Phase 02-p2p P05 | 20min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: Debug P2P check line: libs/abi/ppppApi/init/tutkLibs/avc/hevc (Settings, BLOCK_NATIVE_CHECK)
 - [Phase 02-p2p]: AuthOutcome is a sealed interface so Unknown keeps the raw authResult; validateHead order bad-channel, bad-iotype, zero-size, too-large
 - [Phase 02-p2p]: Pinned TNP vector: hmacPassword(SYNTHpw1, SYNTHAAbcdefgh1) = C5KKYDqrtOxn15T (JDK, synthetic)
+- [Phase 02-p2p]: FramePipeline is fail-open: wrong-password I-frames are forwarded, stats().decryptOk reports the check
+- [Phase 02-p2p]: FrameAssembler pending overflow drops the earliest-buffered P; an I-frame clears pending
 
 ### Pending Todos
 
@@ -93,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-14T04:55:14.269Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-10-14T05:03:46.201Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None

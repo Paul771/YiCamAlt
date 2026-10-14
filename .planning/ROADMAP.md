@@ -63,7 +63,7 @@ Plans:
   3. Пользователь на мобильном интернете (Wi-Fi выключен) открывает ту же камеру и видит видео через P2P или relay; режим соединения виден в отладочной информации
   4. Камера с H.265 показывает видео так же, как камера с H.264 (или явно сообщает об отсутствии аппаратного декодера)
   5. Чистое Kotlin-ядро (`YiP2pAuth`, `TnpCodec`, `IFrameDecryptor`, `NalUtils`) покрыто JVM-тестами на эталонных векторах; устаревшие контракты `M-STREAM-LIVE` / `M-STREAM-DECODE` заменены в GRACE-документах
-**Plans:** 3/13 plans executed
+**Plans:** 6/13 plans executed
 
 Plans:
 - [x] 02-00-PLAN.md — Wave 0: базовая линия, контракты портов (CameraLink, PpppNative, StreamTypes), FakePpppNative, формы секретов в RedactionScanner, GRACE-узлы (M-STREAM-LIVE/DECODE → superseded)
@@ -71,7 +71,7 @@ Plans:
 - [x] 02-02-PLAN.md — Gradle-извлечение вендорских .so из локального APK + SHA-256 манифест, abiFilters, R8 keep, HANDOFF (wave 1)
 - [x] 02-03-PLAN.md — Java JNI-шим с вендорскими FQCN, NativeLibs, PpppRuntime, AndroidPpppNative, DecoderCatalog, «Проверить P2P» в настройках (wave 1)
 - [x] 02-04-PLAN.md — TDD: YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec на эталонных векторах (wave 1)
-- [ ] 02-05-PLAN.md — TDD: IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline (wave 1)
+- [x] 02-05-PLAN.md — TDD: IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline (wave 1)
 - [ ] 02-06-PLAN.md — Проверка на телефоне №1: загрузка libPPPP_API, PPPP_GetAPIVersion, транспорт обеих камер, HEVC-декодер, гейт 2B (wave 2, checkpoint)
 - [ ] 02-07-PLAN.md — TnpCameraLink + фабрика (одна сессия на камеру, порядок вызовов вендора, без повторов) (wave 3)
 - [ ] 02-08-PLAN.md — VideoDecoder (MediaCodec async → Surface) + DecoderPolicy (wave 3)
@@ -140,7 +140,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
-| 2. Нативный P2P и первый кадр | 3/13 | In Progress|  |
+| 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Not started | - |
 | 4. Архив SD-карты | 0/TBD | Not started | - |
 | 5. Лента событий | 0/TBD | Not started | - |
