@@ -969,7 +969,7 @@
         <export-FrameHeadCodec PURPOSE="Parse the 24-byte frame head (TNP big-endian, TUTK little-endian)" />
         <export-IFrameDecryptor PURPOSE="AES I-frame decryption with key = camera password + '0'" />
         <export-NalUtils PURPOSE="Annex-B NAL split, csd extraction" />
-        <export-FrameAssembler PURPOSE="Reassemble units into access units" />
+        <export-FrameAssembler PURPOSE="Keyframe gate, P-frame sequence reorder (MAX_PENDING 100), useCount generation filter" />
         <export-FramePipeline PURPOSE="VideoUnitSink -> DecodableFrameSink; waits for the first key frame" />
       </interface>
       <depends>M-P2P-CREDS</depends>
