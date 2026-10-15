@@ -1,5 +1,5 @@
 // FILE: FakePpppNative.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scripted JVM fake of the vendor PPPP surface so TNP link logic is testable without native code.
 //   SCOPE: scripted init/connect/check results, blocking connect released by connectBreak, per-channel byte queues
@@ -11,6 +11,8 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.p2p
 
+import com.yicamalt.stream.TnpCodec
+import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -20,15 +22,20 @@ import java.util.concurrent.TimeUnit
 // START_MODULE_MAP
 //   FakePpppNative - PpppNative implementation driven by public scripting vars.
 //   initResult / apiVersionValue / connectResult / connectBlocks / checkResult / writeResult - scripted outcomes.
-//   enqueue(channel, bytes) - bytes the camera "sends" on a channel.
+//   enqueue(channel, bytes) / enqueueUnit(channel, bytes) - bytes the camera "sends" on a channel.
+//   replyIoCtrl(type, authResult, payload, version) - enqueue a ch0 TNPHead + IOCtrlHead reply (authResult s32 at offset 8).
+//   checkBlocks - check() waits until forceClose/connectBreak, then returns -3014.
 //   injectRemoteClose(channel) - reads on that channel return -3012 from now on.
-//   calls - value-free call trace ("connect flag=0x49 wakeup=false", "write ch=0 bytes=56", "read ch=2").
+//   calls - value-free call trace ("connect flag=0x49 wakeup=false", "write ch=0 bytes=56", "read ch=2"); a read that
+//     returned bytes is followed by "data ch=<n> bytes=<k>".
 //   written - every write as (channel, copied bytes).
 //   MAX_READ_WAIT_MS - cap on how long a read waits for data (keeps tests fast).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-00: created with the PpppNative contract.
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-07: enqueueUnit, replyIoCtrl, checkBlocks; "data ch=<n> bytes=<k>" trace entry
+//     after a read that returned bytes (lets TnpCameraLinkTest prove no ch0 data was consumed inside the burst).
+//   PREVIOUS: v0.1.0 - GSD plan 02-00: created with the PpppNative contract.
 // END_CHANGE_SUMMARY
 
 class FakePpppNative : PpppNative {
@@ -37,6 +44,7 @@ class FakePpppNative : PpppNative {
     var apiVersionValue = 0xA2050401.toInt()
     var connectResult = 0
     @Volatile var connectBlocks = false
+    @Volatile var checkBlocks = false
     var checkResult = PpppCheck(0, 0, 500, true)
     var writeResult: (Int, ByteArray) -> Int = { _, b -> b.size }
 
@@ -47,12 +55,22 @@ class FakePpppNative : PpppNative {
     private val remoteClosed: MutableSet<Int> = ConcurrentHashMap.newKeySet()
     private val closedHandles: MutableSet<Int> = ConcurrentHashMap.newKeySet()
     @Volatile private var connectGate = CountDownLatch(1)
+    private val checkGate = CountDownLatch(1)
 
     private fun queue(channel: Int) = queues.getOrPut(channel) { LinkedBlockingDeque() }
 
     fun enqueue(channel: Int, bytes: ByteArray) {
         val q = queue(channel)
         bytes.forEach { q.put(it) }
+    }
+
+    fun enqueueUnit(channel: Int, bytes: ByteArray) = enqueue(channel, bytes)
+
+    // ch0 reply as the camera sends it: TNPHead(version, 3, 40 + payload) + IOCtrlHead(type, number 1, 0, size,
+    // authResult s32 BE at offset 8, zero rest) + payload.
+    fun replyIoCtrl(type: Int, authResult: Int, payload: ByteArray = ByteArray(0), version: Int = 2) {
+        val auth = ByteBuffer.allocate(TnpCodec.AUTH_SIZE).putInt(authResult).array()
+        enqueue(TnpCodec.CH_COMMAND, TnpCodec.commandUnit(version, type, 1, auth, payload))
     }
 
     fun injectRemoteClose(channel: Int) {
@@ -88,12 +106,17 @@ class FakePpppNative : PpppNative {
     override fun connectBreak(did: String): Int {
         calls += "connectBreak"
         connectGate.countDown()
+        checkGate.countDown()
         return 0
     }
     // END_BLOCK_FAKE_CONNECT
 
     override fun check(handle: Int): PpppCheck {
         calls += "check"
+        if (checkBlocks) {
+            checkGate.await()
+            return PpppCheck(PpppCodes.SESSION_CLOSED_CALLED, 0, 0, false)
+        }
         return checkResult
     }
 
@@ -119,6 +142,7 @@ class FakePpppNative : PpppNative {
             buf[got++] = b
         }
         size[0] = got
+        if (got > 0) calls += "data ch=$channel bytes=$got"
         return if (got == want) PpppCodes.OK else PpppCodes.TIME_OUT
     }
     // END_BLOCK_FAKE_READ
@@ -134,6 +158,7 @@ class FakePpppNative : PpppNative {
     override fun forceClose(handle: Int): Int {
         calls += "forceClose"
         closedHandles += handle
+        checkGate.countDown()
         return 0
     }
 
