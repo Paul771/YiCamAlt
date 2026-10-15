@@ -467,8 +467,10 @@
       <annotations>
         <export-VideoDecoder PURPOSE="DecodableFrameSink over MediaCodec (BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET)" />
         <export-DecoderCatalog PURPOSE="MediaCodecList query (BLOCK_QUERY_DECODERS)" />
-        <export-DecoderPolicy PURPOSE="Decoder choice per mime" />
+        <export-DecoderPolicy PURPOSE="Pure rules: FrameQueue (key gate, oldest-first overflow), ResetCounter, CsdBuilder, PtsGuard, DecoderStatus texts" />
       </annotations>
+      <tests>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</tests>
+      <change-summary phase="02-p2p" plan="02-08" verification="jvm-passed">VideoDecoder (MediaCodec async to Surface) and JVM-tested DecoderPolicy; device proof in plan 02-12.</change-summary>
     </M-MEDIA-RENDER>
 
     <M-UI-LIVE-PROBE NAME="LiveProbeScreen" TYPE="UI" STATUS="planned">

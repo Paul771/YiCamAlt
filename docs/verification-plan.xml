@@ -752,13 +752,16 @@
         <scenario-2 kind="success" evidence-type="trace">First render after the first key frame (device)</scenario-2>
         <scenario-3 kind="failure" evidence-type="deterministic">No decoder for the codec is an explicit outcome</scenario-3>
         <scenario-4 kind="failure" evidence-type="trace">csd change resets the decoder</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic">FrameQueue rejects P-frames before a key frame; the 9th frame drops the oldest and closes the gate (DecoderPolicyTest)</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">3 codec errors without a render exhaust ResetCounter (status Failed, no loop)</scenario-6>
+        <scenario-7 kind="success" evidence-type="deterministic">csd map AVC csd-0/csd-1, HEVC csd-0; PtsGuard strictly increasing; NoDecoder text "H.265: на этом телефоне нет декодера"</scenario-7>
       </scenarios>
       <required-log-markers>
         <marker-1>[Media][catalog][BLOCK_QUERY_DECODERS]</marker-1>
         <marker-2>[Media][decoder][BLOCK_CREATE_DECODER] mime=&lt;mime&gt; name=&lt;decoder&gt; hw=&lt;bool&gt;</marker-2>
-        <marker-3>[Media][decoder][BLOCK_FIRST_RENDER]</marker-3>
-        <marker-4>[Media][decoder][BLOCK_DECODER_RESET]</marker-4>
-        <marker-5>[Media][decoder][BLOCK_NO_DECODER]</marker-5>
+        <marker-3>[Media][decoder][BLOCK_FIRST_RENDER] ms=&lt;n since create&gt;</marker-3>
+        <marker-4>[Media][decoder][BLOCK_DECODER_RESET] reason=&lt;codec-error|surface-lost|queue-overflow|format-change|oversize-frame&gt; resets=&lt;n&gt;</marker-4>
+        <marker-5>[Media][decoder][BLOCK_NO_DECODER] mime=&lt;mime&gt;</marker-5>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
