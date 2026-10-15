@@ -783,6 +783,10 @@
         <scenario-3 kind="success" evidence-type="deterministic">Leaving the screen or backgrounding closes the link</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Missing credentials show NO_CREDENTIALS without a connect</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">Failed link stays failed until the next press (no auto-retry)</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">close() while factory.open is still blocking: the late link is closed once and start is never called</scenario-6>
+        <scenario-7 kind="success" evidence-type="deterministic">factory.open and HevcProbe.describe run off Main; a 1 s blocking factory does not block connect(); a second press while in flight is ignored</scenario-7>
+        <scenario-8 kind="success" evidence-type="deterministic">Decoder resetEvents re-arm the FramePipeline key-frame gate</scenario-8>
+        <scenario-9 kind="failure" evidence-type="deterministic">Every LinkErrorKind and decoder NoDecoder map to explicit Russian texts (TUTK, Langtao, unknown transport, offline, wrong password, native libs, kicked)</scenario-9>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE]</marker-1>

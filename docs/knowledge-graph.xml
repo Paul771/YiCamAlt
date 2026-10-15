@@ -481,7 +481,13 @@
       <annotations>
         <export-LiveProbeScreen PURPOSE="Compose debug screen" />
         <export-LiveProbeViewModel PURPOSE="One CameraLink per press (BLOCK_OPEN_PROBE, BLOCK_CONNECT_PRESSED, BLOCK_CLOSE_PROBE)" />
+        <export-VideoSinkPort PURPOSE="Decoder seam (VideoDecoderAdapter in production, fake in tests)" />
+        <export-VideoSinkProvider PURPOSE="Injectable decoder factory" />
+        <export-HevcProbe PURPOSE="Injectable HEVC decoder description" />
+        <export-linkErrorMessage PURPOSE="LinkErrorKind to Russian text" />
+        <export-LiveProbeTexts PURPOSE="Fixed Russian refusal texts" />
       </annotations>
+      <change-summary>2026-10-15 GSD plan 02-09: LiveProbeViewModel.kt + LiveProbeScreen.kt implemented; opened from CameraListScreen row tap via AppShellScreen (onOpenCamera). STATUS stays planned until the device checkpoint (02-12).</change-summary>
     </M-UI-LIVE-PROBE>
 
     <M-TUTK-LINK NAME="TutkCameraLink" TYPE="CORE_LOGIC" STATUS="planned">
@@ -557,5 +563,6 @@
     <CrossLink from="M-AUTH" to="M-CAMERA-LIST" relation="logout runs LogoutCleanup (camera cache + P2P store wipe)" />
     <CrossLink from="M-CAMERA-LIST" to="M-CONFIG" relation="uses the region kept by login discovery (no registry region fallback)" />
     <CrossLink from="M-UI-SHELL" to="M-CAMERA-LIST" relation="cache-first camera list" />
+    <CrossLink from="M-UI-SHELL" to="M-UI-LIVE-PROBE" relation="camera row tap opens the debug live screen" />
   </Project>
 </KnowledgeGraph>

@@ -1053,6 +1053,11 @@
       <interface>
         <export-LiveProbeScreen PURPOSE="Compose screen with SurfaceView, Connect / force-relay / Stop buttons and status line" />
         <export-LiveProbeViewModel PURPOSE="Owns one CameraLink per press; closes it on leave / background" />
+        <export-VideoSinkPort PURPOSE="Decoder seam used by the VM (status, resetEvents, surface attach/detach, release, frames)" />
+        <export-VideoSinkProvider PURPOSE="Injectable factory: VideoDecoderAdapter over a new VideoDecoder per Connect press" />
+        <export-HevcProbe PURPOSE="Injectable HEVC decoder description from DecoderCatalog, called off Main" />
+        <export-linkErrorMessage PURPOSE="Russian text for every LinkErrorKind; UNSUPPORTED_TRANSPORT text depends on the transport" />
+        <export-LiveProbeTexts PURPOSE="Fixed Russian refusal texts shared with tests and the device checkpoint" />
       </interface>
       <depends>M-TNP-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST</depends>
       <target>
