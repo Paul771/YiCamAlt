@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-10-15T16:09:12.633Z"
+stopped_at: Completed 02-07-PLAN.md
+last_updated: "2026-10-15T16:27:44.588Z"
 last_activity: 2026-10-15
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 26
-  completed_plans: 20
+  completed_plans: 21
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 02 (p2p) — EXECUTING
-Plan: 8 of 13
+Plan: 9 of 13
 Status: Ready to execute
 Last activity: 2026-10-15
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P04 | 15min | 2 tasks | 8 files |
 | Phase 02-p2p P05 | 20min | 2 tasks | 9 files |
 | Phase 02 P06 | 1d | 3 tasks | 2 files |
+| Phase 02-p2p P07 | 40min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,9 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: FrameAssembler pending overflow drops the earliest-buffered P; an I-frame clears pending
 - [Phase 02]: GATE_2B: needed — real account has 1 TNP (via=deviceInfo) + 1 TUTK (via=uid) camera, verified=2; plan 02-10 required
 - [Phase 02]: Device check 1: PPPP api=0xA2050401 init=0 on arm64; HW AVC+HEVC (OMX.qcom)
+- [Phase 02-p2p]: TnpCameraLink teardown runs on p2p-<n>-close; external callers wait (bounded), link threads never wait
+- [Phase 02-p2p]: Burst waits until all 5 readers made their first read (bounded); connect timeout covers connect+check
+- [Phase 02-p2p]: Header version adopted only for 1..3; unknown authResult fails like 4 (PROTOCOL -9000, no retry)
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-15T16:09:12.627Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-10-15T16:27:44.582Z
+Stopped at: Completed 02-07-PLAN.md
 Resume file: None
