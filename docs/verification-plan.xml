@@ -677,6 +677,9 @@
         <scenario-6 kind="failure" evidence-type="deterministic">Received 9033 is a terminal kicked state; 9033 is never sent</scenario-6>
         <scenario-7 kind="failure" evidence-type="deterministic">Connect timeout (30 s) aborts with connectBreak</scenario-7>
         <scenario-8 kind="failure" evidence-type="deterministic">Second open for the same camera is ALREADY_OPEN</scenario-8>
+        <scenario-9 kind="success" evidence-type="deterministic">First ch0 reply with another TNPHead.version: version adopted, only 4881 re-sent once (same useCount, resolution)</scenario-9>
+        <scenario-10 kind="failure" evidence-type="deterministic">Dirty head (zero-size / too-large) ends in Failed(PROTOCOL, -9000)</scenario-10>
+        <scenario-11 kind="failure" evidence-type="deterministic">No video 20 s after the burst ends in Failed(TIMEOUT, 0)</scenario-11>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -687,11 +690,14 @@
         <marker-6>[P2P][tnp][BLOCK_READ_LOOP]</marker-6>
         <marker-7>[P2P][tnp][BLOCK_FIRST_VIDEO]</marker-7>
         <marker-8>[P2P][tnp][BLOCK_CLOSE] reason=&lt;reason&gt;</marker-8>
+        <marker-9>[P2P][tnp][BLOCK_HEADER_VERSION] version=&lt;n&gt; resent=4881</marker-9>
+        <marker-10>[P2P][tnp][BLOCK_KICKED] code=&lt;NAME&gt;</marker-10>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
       </required-trace-assertions>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
+      <note-1>2026-10-15 GSD plan 02-07: JVM evidence over FakePpppNative (TnpCameraLinkTest 18, TnpLinkFactoryTest 5); STATUS stays planned until the device checkpoint of plan 02-12.</note-1>
     </V-M-TNP-LINK>
 
     <V-M-STREAM-CORE MODULE="M-STREAM-CORE" PRIORITY="high" STATUS="planned">
