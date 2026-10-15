@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-07-PLAN.md
-last_updated: "2026-10-15T16:27:44.588Z"
+stopped_at: Completed 02-08-PLAN.md
+last_updated: "2026-10-15T16:33:59.566Z"
 last_activity: 2026-10-15
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 26
-  completed_plans: 21
+  completed_plans: 22
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 02 (p2p) — EXECUTING
-Plan: 9 of 13
+Plan: 10 of 13
 Status: Ready to execute
 Last activity: 2026-10-15
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P05 | 20min | 2 tasks | 9 files |
 | Phase 02 P06 | 1d | 3 tasks | 2 files |
 | Phase 02-p2p P07 | 40min | 2 tasks | 7 files |
+| Phase 02-p2p P08 | 25min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,7 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: TnpCameraLink teardown runs on p2p-<n>-close; external callers wait (bounded), link threads never wait
 - [Phase 02-p2p]: Burst waits until all 5 readers made their first read (bounded); connect timeout covers connect+check
 - [Phase 02-p2p]: Header version adopted only for 1..3; unknown authResult fails like 4 (PROTOCOL -9000, no retry)
+- [Phase 02-p2p]: VideoDecoder: all MediaCodec work on one HandlerThread; key frame with new mime/size/csd recreates the codec (format-change)
 
 ### Pending Todos
 
@@ -103,6 +105,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-15T16:27:44.582Z
-Stopped at: Completed 02-07-PLAN.md
+Last session: 2026-10-15T16:33:59.560Z
+Stopped at: Completed 02-08-PLAN.md
 Resume file: None
