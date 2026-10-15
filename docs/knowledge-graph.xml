@@ -498,7 +498,14 @@
       <annotations>
         <export-TutkCameraLink PURPOSE="CameraLink over IOTC/AV sessions" />
         <export-TransportLinkFactory PURPOSE="Routes open() by transport" />
+        <export-TutkNative PURPOSE="Seam over IOTC/AV natives in the vendor client order (TutkNative.kt); JVM fake FakeTutkNative" />
+        <export-TutkCodes PURPOSE="IOTC_ER_* / AV_ER_* names and classify to LinkErrorKind (-20009 WRONG_PASSWORD; -20015/-20016/-20010 REMOTE_CLOSED)" />
+        <export-AndroidTutkNative PURPOSE="TutkNative over the com.tutk.IOTC shim; St_SInfoEx reduced to mode + private flag, UID/addresses zero-filled" />
+        <export-TutkRuntime PURPOSE="ensureInitialized(): load libs, IOTC_Initialize2(0), avInitialize(32), versions once per process on tutk-runtime (BLOCK_INIT_TUTK)" />
+        <export-TutkRuntimeModule PURPOSE="Hilt: @Binds TutkNative to AndroidTutkNative" />
+        <class-IOTCAPIs PURPOSE="JNI shim com.tutk.IOTC.IOTCAPIs (7 natives) + AVAPIs (8 natives, 7 av*Fn interfaces), St_SInfoEx, Region, st_LanSearchInfo/2, st_SearchDeviceInfo, St_AvIdentity" />
       </annotations>
+      <change-summary>2026-10-15 GSD plan 02-10: GATE_2B needed (02-DEVICE-CHECK-1); TUTK shim, TutkNative seam, AndroidTutkNative, TutkRuntime implemented with JVM tests. TutkCameraLink follows in 02-11. STATUS stays planned until the device checkpoint.</change-summary>
     </M-TUTK-LINK>
 
     <!-- CrossLinks: module dependencies -->

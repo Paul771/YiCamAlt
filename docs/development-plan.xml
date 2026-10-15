@@ -1088,6 +1088,14 @@
       </interface>
       <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
       <target>
+        <source>app/src/main/java/com/tutk/IOTC/IOTCAPIs.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/AVAPIs.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/St_SInfoEx.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/Region.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/st_LanSearchInfo.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/st_LanSearchInfo2.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/st_SearchDeviceInfo.java</source>
+        <source>app/src/main/java/com/tutk/IOTC/St_AvIdentity.java</source>
         <source>app/src/main/java/com/yicamalt/p2p/tutk/TutkNative.kt</source>
         <source>app/src/main/java/com/yicamalt/p2p/tutk/AndroidTutkNative.kt</source>
         <source>app/src/main/java/com/yicamalt/p2p/tutk/TutkRuntime.kt</source>
@@ -1095,6 +1103,7 @@
         <source>app/src/main/java/com/yicamalt/p2p/TransportLinkFactory.kt</source>
         <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkShimContractTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkRuntimeTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/p2p/tutk/FakeTutkNative.kt</tests>
         <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkCameraLinkTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/p2p/TransportLinkFactoryTest.kt</tests>
       </target>
@@ -1104,6 +1113,7 @@
       <verification-ref>V-M-TUTK-LINK</verification-ref>
       <notes>
         <note-1>conditional: may be closed as not-needed when no camera resolves to TUTK (device check 02-06).</note-1>
+        <note-2>02-DEVICE-CHECK-1: GATE_2B needed. Plan 02-10 done: JNI shim at com.tutk.IOTC (names from the .so strings), TutkNative seam + TutkCodes, AndroidTutkNative, TutkRuntime (tutk-runtime thread, once per process), TutkRuntimeModule binding. Plan 02-11: TutkCameraLink + TransportLinkFactory.</note-2>
       </notes>
     </M-TUTK-LINK>
 
