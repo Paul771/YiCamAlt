@@ -72,7 +72,7 @@ Plans:
 - [x] 02-03-PLAN.md — Java JNI-шим с вендорскими FQCN, NativeLibs, PpppRuntime, AndroidPpppNative, DecoderCatalog, «Проверить P2P» в настройках (wave 1)
 - [x] 02-04-PLAN.md — TDD: YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec на эталонных векторах (wave 1)
 - [x] 02-05-PLAN.md — TDD: IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline (wave 1)
-- [ ] 02-06-PLAN.md — Проверка на телефоне №1: загрузка libPPPP_API, PPPP_GetAPIVersion, транспорт обеих камер, HEVC-декодер, гейт 2B (wave 2, checkpoint)
+- [x] 02-06-PLAN.md — Проверка на телефоне №1: загрузка libPPPP_API, PPPP_GetAPIVersion, транспорт обеих камер, HEVC-декодер, гейт 2B (wave 2, checkpoint)
 - [ ] 02-07-PLAN.md — TnpCameraLink + фабрика (одна сессия на камеру, порядок вызовов вендора, без повторов) (wave 3)
 - [ ] 02-08-PLAN.md — VideoDecoder (MediaCodec async → Surface) + DecoderPolicy (wave 3)
 - [ ] 02-09-PLAN.md — Отладочный экран live из списка камер: режим, кодек, декодер, fps, decryptOk (wave 4)
