@@ -75,7 +75,7 @@ Plans:
 - [x] 02-06-PLAN.md — Проверка на телефоне №1: загрузка libPPPP_API, PPPP_GetAPIVersion, транспорт обеих камер, HEVC-декодер, гейт 2B (wave 2, checkpoint)
 - [x] 02-07-PLAN.md — TnpCameraLink + фабрика (одна сессия на камеру, порядок вызовов вендора, без повторов) (wave 3)
 - [x] 02-08-PLAN.md — VideoDecoder (MediaCodec async → Surface) + DecoderPolicy (wave 3)
-- [ ] 02-09-PLAN.md — Отладочный экран live из списка камер: режим, кодек, декодер, fps, decryptOk (wave 4)
+- [x] 02-09-PLAN.md — Отладочный экран live из списка камер: режим, кодек, декодер, fps, decryptOk (wave 4)
 - [ ] 02-10-PLAN.md — 2B часть A: гейт; при TUTK-камере — TUTK-шим, TutkNative, TutkRuntime, иначе задокументированный пропуск (wave 5)
 - [ ] 02-11-PLAN.md — 2B часть B: TutkCameraLink + диспетчер фабрик по транспорту, или пропуск (wave 6)
 - [ ] 02-12-PLAN.md — Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, передача сессии официальному приложению (wave 7, checkpoint)
