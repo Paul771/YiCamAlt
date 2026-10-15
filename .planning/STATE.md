@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-09-PLAN.md
-last_updated: "2026-10-15T16:55:27.688Z"
+stopped_at: Completed 02-10-PLAN.md
+last_updated: "2026-10-15T17:11:59.668Z"
 last_activity: 2026-10-15
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 26
-  completed_plans: 23
+  completed_plans: 24
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 02 (p2p) — EXECUTING
-Plan: 11 of 13
+Plan: 12 of 13
 Status: Ready to execute
 Last activity: 2026-10-15
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P07 | 40min | 2 tasks | 7 files |
 | Phase 02-p2p P08 | 25min | 2 tasks | 5 files |
 | Phase 02-p2p P09 | 35min | 2 tasks | 8 files |
+| Phase 02-p2p P10 | 35min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: VideoDecoder: all MediaCodec work on one HandlerThread; key frame with new mime/size/csd recreates the codec (format-change)
 - [Phase 02-p2p]: LiveProbe: per-press Session (decoder+pipeline+link); late factory result closed, never started; link close on live-probe-close thread
 - [Phase 02-p2p]: LiveProbe: ON_STOP closes the session, not the VM; Connect re-enabled, no auto-reconnect
+- [Phase 02-p2p]: TUTK init: IOTC_Initialize2 >=0 or -3 and avInitialize >=0 or -20031 are Ready; 10 s bound gives InitFailed(-13), late result adopted
+- [Phase 02-p2p]: TUTK shim omits DeInitialize natives; names pinned from .so strings (12 classes/interfaces)
 
 ### Pending Todos
 
@@ -108,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-15T16:55:27.682Z
-Stopped at: Completed 02-09-PLAN.md
+Last session: 2026-10-15T17:11:59.662Z
+Stopped at: Completed 02-10-PLAN.md
 Resume file: None
