@@ -334,6 +334,7 @@
         <scenario-7 kind="failure" evidence-type="trace">Full refresh through the production HttpClientModule logs no uid, DID, password, InitString, License, hmac, token or user id (RedactionScanner)</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">DeviceRecordParser: bare array, wrapped array, string-JSON, absent data (20200) = empty; ipcParam object or string; p2pId = did, falls back to uid; ownership from category then share; tnp info DID/InitString/License with licenseKey before the first colon; value-free toString; DevicePaths has no deviceshare path (DeviceRecordParserTest 14)</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">Non-JSON list body = FetchFailed (result=malformed), cache untouched (scenario_5d); device_info network failure keeps the list (tnpInfo=failed) and never leaves a guessed transport: stored verified record kept, otherwise UNKNOWN / via=none / unverified, also over a Phase 1 TUTK-by-type record (creds_5..5c)</scenario-9>
+        <scenario-10 kind="success" evidence-type="deterministic">refreshCredentials (P2pCredentialsSource, Phase 2 review MED-4): one list refresh then the stored value; a failed refresh (non-JSON) returns the stored value without throwing; unknown id = null; BLOCK_REFRESH_CREDENTIALS result=ok|FetchFailed found= is value-free (creds_13)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST]</marker-1>
@@ -690,16 +691,20 @@
         <scenario-1 kind="success" evidence-type="trace">Connect, check session, startup burst, first video unit</scenario-1>
         <scenario-2 kind="success" evidence-type="deterministic">Auth reply sent once with the authInfo shape</scenario-2>
         <scenario-3 kind="success" evidence-type="deterministic">close() is idempotent and bounded</scenario-3>
-        <scenario-4 kind="failure" evidence-type="deterministic">Connect error codes map to LinkErrorKind (no retry)</scenario-4>
+        <scenario-4 kind="failure" evidence-type="deterministic">Connect error codes map to LinkErrorKind (no retry inside the link; the only retry is the live screen's single WRONG_PASSWORD retry, V-M-UI-LIVE-PROBE)</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">Remote close (-3012) ends in a terminal state</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">Received 9033 is a terminal kicked state; 9033 is never sent</scenario-6>
         <scenario-7 kind="failure" evidence-type="deterministic">Connect timeout (30 s) aborts with connectBreak</scenario-7>
         <scenario-8 kind="failure" evidence-type="deterministic">Second open for the same camera is ALREADY_OPEN</scenario-8>
-        <scenario-9 kind="success" evidence-type="deterministic">First ch0 reply with another TNPHead.version: version adopted, only 4881 re-sent once (same useCount, resolution)</scenario-9>
+        <scenario-9 kind="success" evidence-type="deterministic">First ch0 reply with another TNPHead.version (camera answers 1 or 3): version adopted, the WHOLE start sequence 4881 / 9029 / 768 re-sent once with it (same useCounts and resolution, command numbers 4..6), the mismatched reply skipped unparsed (its authResult 1 does not fail), streaming starts; a later version change resends nothing; same version resends nothing (Phase 2 review HIGH-2; replaces "only 4881 re-sent")</scenario-9>
         <scenario-10 kind="failure" evidence-type="deterministic">Dirty head (zero-size / too-large) ends in Failed(PROTOCOL, -9000)</scenario-10>
         <scenario-11 kind="failure" evidence-type="deterministic">No video 20 s after the burst ends in Failed(TIMEOUT, 0)</scenario-11>
         <scenario-12 kind="success" evidence-type="deterministic">Auth reply (rx0) racing the first video unit (rx2) always ends in Streaming(authOk=true), 15 rounds (plan 02-12 fix, TnpCameraLink v0.1.1)</scenario-12>
         <scenario-13 kind="success" evidence-type="trace">Device: the TNP camera on Wi-Fi and on mobile data reaches state=STREAMING with mode shown; codec / decoder recorded (02-DEVICE-VERIFICATION.md)</scenario-13>
+        <scenario-14 kind="failure" evidence-type="deterministic">authResult is checked on every ch0 reply: 1|2 on a non-4882 reply -> Failed(WRONG_PASSWORD, -20009); an unknown authResult drops that reply without failing and is logged once (outcome=UNKNOWN) (Phase 2 review MED-3)</scenario-14>
+        <scenario-15 kind="failure" evidence-type="deterministic">Thread guard: a sink throwing an Error and an empty encrypted password end in Failed(INTERNAL, 0) with ForceClose and onClosed, never an uncaught thread death; TnpLinkFactory refuses an empty encrypted password as NO_CREDENTIALS (Phase 2 review MED-7)</scenario-15>
+        <scenario-16 kind="success" evidence-type="deterministic">A connect thread that ignores Connect_Break keeps the registry entry (onClosed deferred, registry=deferred) until it exits, while close() still returns within joinMs with Closed (Phase 2 review LOW-8)</scenario-16>
+        <scenario-17 kind="success" evidence-type="deterministic">ForceClose runs with no PPPP_Read in flight and no read after it; order STOP -> Connect_Break -> ForceClose kept (5 rounds; Phase 2 review LOW-9)</scenario-17>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -710,8 +715,9 @@
         <marker-6>[P2P][tnp][BLOCK_READ_LOOP]</marker-6>
         <marker-7>[P2P][tnp][BLOCK_FIRST_VIDEO]</marker-7>
         <marker-8>[P2P][tnp][BLOCK_CLOSE] reason=&lt;reason&gt;</marker-8>
-        <marker-9>[P2P][tnp][BLOCK_HEADER_VERSION] version=&lt;n&gt; resent=4881</marker-9>
+        <marker-9>[P2P][tnp][BLOCK_HEADER_VERSION] version=&lt;n&gt; resent=4881,9029,768 reply=skipped</marker-9>
         <marker-10>[P2P][tnp][BLOCK_KICKED] code=&lt;NAME&gt;</marker-10>
+        <marker-11>[P2P][tnp][BLOCK_THREAD_GUARD] thread=&lt;suffix&gt; error=&lt;ExceptionClass&gt;</marker-11>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -720,14 +726,16 @@
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK] cam=&lt;n&gt; transport=&lt;T&gt; result=&lt;started|NAME&gt;</marker-1>
         <marker-2>[P2P][tnp][BLOCK_CONNECT] cam=&lt;n&gt; relayForced=&lt;b&gt; wakeup=&lt;b&gt; result=&lt;ok|NAME&gt; ms=&lt;n&gt;</marker-2>
         <marker-3>[P2P][tnp][BLOCK_CHECK_SESSION] cam=&lt;n&gt; mode=&lt;MODE&gt; lan=&lt;b&gt; connectMs=&lt;n&gt;</marker-3>
-        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY|UNKNOWN&gt; version=&lt;n&gt;</marker-4>
+        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; type=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY&gt; version=&lt;n&gt; | cam=&lt;n&gt; outcome=UNKNOWN action=ignored (once)</marker-4>
         <marker-5>[P2P][tnp][BLOCK_FIRST_VIDEO] cam=&lt;n&gt; ch=&lt;n&gt; codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt;</marker-5>
         <marker-6>[P2P][tnp][BLOCK_READ_LOOP] cam=&lt;n&gt; ch=&lt;n&gt; exit=&lt;closed|error|dirty&gt; code=&lt;NAME&gt; units=&lt;n&gt;</marker-6>
-        <marker-7>[P2P][tnp][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;reason&gt; units=&lt;n&gt; joinMs=&lt;n&gt;</marker-7>
+        <marker-7>[P2P][tnp][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;reason&gt; units=&lt;n&gt; joinMs=&lt;n&gt; registry=&lt;now|deferred&gt;</marker-7>
+        <marker-8>[P2P][tnp][BLOCK_HEADER_VERSION] cam=&lt;n&gt; version=&lt;n&gt; resent=4881,9029,768 reply=skipped</marker-8>
       </device-log-markers>
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TnpCameraLinkTest 19, TnpLinkFactoryTest 5</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+        <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); TnpCameraLinkTest 27, TnpLinkFactoryTest 5</evidence-3>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
       <note-1>2026-10-15 GSD plan 02-07: JVM evidence over FakePpppNative (TnpCameraLinkTest 18, TnpLinkFactoryTest 5); STATUS stays planned until the device checkpoint of plan 02-12.</note-1>
@@ -753,10 +761,10 @@
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">Port types: VideoCodec wire ids, FrameInfo key flag, value-free toString (PpppContractTest)</scenario-1>
         <scenario-2 kind="success" evidence-type="deterministic">YiP2pAuthTest: RFC 2202 HmacSHA1 vectors, frozen synthetic pass15 vector, 32-byte authInfo layout (nonce + HMAC, admin form)</scenario-2>
-        <scenario-3 kind="success" evidence-type="deterministic">TnpCodecTest + IoCtrlMessagesTest: byte-exact 56 / 52 / 56-byte command units for 4881 / 9029 / 768, TNPHead / IOCtrlHead round trip, per-channel head validation, reply parsing, authOutcome / kickCode / ResolutionPolicy</scenario-3>
+        <scenario-3 kind="success" evidence-type="deterministic">TnpCodecTest + IoCtrlMessagesTest: byte-exact 56 / 52 / 56-byte command units for 4881 / 9029 / 768, TNPHead / IOCtrlHead round trip, per-channel head validation, reply parsing, authOutcome (Unknown not fatal, appCode 0) / kickCode (reason = payload[0], 1 -> -3101; Phase 2 review LOW-11) / ResolutionPolicy</scenario-3>
         <scenario-4 kind="success" evidence-type="deterministic">FrameHeadCodecTest: 24-byte frame head, big-endian (TNP) and little-endian (TUTK)</scenario-4>
         <scenario-5 kind="success" evidence-type="deterministic">IFrameDecryptorTest: FIPS-197 C.1 through our cipher path; blocks [4,20) and [20,36) decrypted independently, key = password + '0'</scenario-5>
-        <scenario-6 kind="success" evidence-type="deterministic">NalUtilsTest + FrameAssemblerTest + FramePipelineTest: Annex-B / length-prefixed framing, AVC and HEVC NAL types and parameter sets, keyframe gate, u16 P reorder across the wrap, MAX_PENDING 100, useCount generation filter, csd caching, transport buffer never modified</scenario-6>
+        <scenario-6 kind="success" evidence-type="deterministic">NalUtilsTest + FrameAssemblerTest + FramePipelineTest: Annex-B / length-prefixed framing, AVC and HEVC NAL types and parameter sets, keyframe gate, u16 P reorder across the wrap, MAX_PENDING 100, useCount generation filter, csd caching, transport buffer never modified; P frames that overtake their I frame (separate ch2 / ch3 readers) wait and are drained after it, only stale pending (seq &lt;= I, other generation) is dropped, also before the first I and across the u16 wrap (Phase 2 review HIGH-1)</scenario-6>
         <scenario-7 kind="failure" evidence-type="deterministic">Unsupported codec reported via onUnsupportedCodec once per id (FramePipelineTest)</scenario-7>
         <scenario-8 kind="failure" evidence-type="deterministic">Truncated frame head / short reply rejected (FrameHeadCodecTest, TnpCodecTest)</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">Wrong key yields decryptOk=false, no crash, frame still forwarded (fail-open; IFrameDecryptorTest, FramePipelineTest)</scenario-9>
@@ -775,6 +783,7 @@
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; YiP2pAuthTest 8, TnpCodecTest 11, IoCtrlMessagesTest 5, FrameHeadCodecTest 5, IFrameDecryptorTest 6, NalUtilsTest 10, FrameAssemblerTest 9, FramePipelineTest 10</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+        <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); FrameAssemblerTest 13, IoCtrlMessagesTest 5</evidence-3>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-STREAM-CORE>
@@ -830,25 +839,32 @@
         <scenario-2 kind="success" evidence-type="deterministic">Status line shows mode / codec / decoder / fps / decryptOk</scenario-2>
         <scenario-3 kind="success" evidence-type="deterministic">Leaving the screen or backgrounding closes the link</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Missing credentials show NO_CREDENTIALS without a connect</scenario-4>
-        <scenario-5 kind="failure" evidence-type="deterministic">Failed link stays failed until the next press (no auto-retry)</scenario-5>
+        <scenario-5 kind="failure" evidence-type="deterministic">Failed link stays failed until the next press; the ONLY automatic retry is one per press after WRONG_PASSWORD (scenario-11); other errors never retry</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">close() while factory.open is still blocking: the late link is closed once and start is never called</scenario-6>
         <scenario-7 kind="success" evidence-type="deterministic">factory.open and HevcProbe.describe run off Main; a 1 s blocking factory does not block connect(); a second press while in flight is ignored</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">Decoder resetEvents re-arm the FramePipeline key-frame gate</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">Every LinkErrorKind and decoder NoDecoder map to explicit Russian texts (TUTK, Langtao, unknown transport, offline, wrong password, native libs, kicked)</scenario-9>
         <scenario-10 kind="success" evidence-type="trace">Device: camera row tap -> live screen -> "Подключить" shows moving video with state=STREAMING and mode= on Wi-Fi and on mobile data, for every camera of the account (02-DEVICE-VERIFICATION.md)</scenario-10>
+        <scenario-11 kind="success" evidence-type="deterministic">WRONG_PASSWORD on the first session: message "Повторная попытка…", state CONNECTING, Stop enabled, Connect disabled; nothing before 2 s (virtual time); then one refreshCredentials and a second factory.open with the refreshed password; streaming clears the message (Phase 2 review MED-4)</scenario-11>
+        <scenario-12 kind="failure" evidence-type="deterministic">A second WRONG_PASSWORD is final: "Неверный пароль камеры", auth=fail, exactly 2 factory.open and 1 refresh after 60 s; TIMEOUT / PROTOCOL / REMOTE_CLOSED never retry; Stop during the retry pause cancels it (no second open, no refresh); a user Stop of a streaming session never retries (Phase 2 review MED-4)</scenario-12>
+        <scenario-13 kind="success" evidence-type="deterministic">After Stop, Connect stays disabled until the closed link reports Closed / Failed, then one press opens again (Phase 2 review LOW-8)</scenario-13>
+        <scenario-14 kind="success" evidence-type="deterministic">Status auth= is "-" before streaming, "pending" while Streaming(authOk=false), "ok" / "fail" only when known; TUTK codes named from TutkCodes (error=AV_ER_SESSION_CLOSE_BY_REMOTE, INTERNAL text with IOTC names) (Phase 2 review LOW-10)</scenario-14>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE]</marker-1>
         <marker-2>[LiveProbe][vm][BLOCK_CONNECT_PRESSED]</marker-2>
         <marker-3>[LiveProbe][vm][BLOCK_STATUS]</marker-3>
         <marker-4>[LiveProbe][vm][BLOCK_CLOSE_PROBE]</marker-4>
+        <marker-5>[LiveProbe][vm][BLOCK_RETRY]</marker-5>
       </required-log-markers>
       <device-log-markers>
         <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE] transport=&lt;T&gt; verified=&lt;b&gt; hasCreds=&lt;b&gt;</marker-1>
-        <marker-2>[LiveProbe][vm][BLOCK_CONNECT_PRESSED] relayForced=&lt;b&gt; press=&lt;n&gt;</marker-2>
+        <marker-2>[LiveProbe][vm][BLOCK_CONNECT_PRESSED] relayForced=&lt;b&gt; press=&lt;n&gt; attempt=&lt;1|2&gt;</marker-2>
         <marker-3>[LiveProbe][vm][BLOCK_STATUS] transport= state= mode= lan= relayForced= codec= decoder= hw= fps= frames= keyFrames= decryptOk= auth= error=</marker-3>
         <marker-4>[LiveProbe][vm][BLOCK_CLOSE_PROBE] reason=&lt;user|screen-left|background&gt; frames=&lt;n&gt;</marker-4>
         <marker-5>[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live</marker-5>
+        <marker-6>[LiveProbe][vm][BLOCK_RETRY] press=&lt;n&gt; attempt=2 delayMs=2000, then press=&lt;n&gt; refreshed=&lt;b&gt;</marker-6>
+        <marker-7>[Camera][refreshCredentials][BLOCK_REFRESH_CREDENTIALS] result=&lt;ok|ErrorClass&gt; found=&lt;b&gt;</marker-7>
       </device-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -856,6 +872,7 @@
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; LiveProbeViewModelTest 17, CameraListViewModelTest 17; app-debug.apk built for the phone check</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+        <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); LiveProbeViewModelTest 25</evidence-3>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-UI-LIVE-PROBE>
@@ -875,7 +892,7 @@
       <scenarios>
         <scenario-1 kind="success" evidence-type="trace">IOTC connect, AV client start, first video unit</scenario-1>
         <scenario-2 kind="success" evidence-type="deterministic">TransportLinkFactory routes by transport</scenario-2>
-        <scenario-3 kind="failure" evidence-type="deterministic">IOTC / AV error codes map to LinkErrorKind (no retry)</scenario-3>
+        <scenario-3 kind="failure" evidence-type="deterministic">IOTC / AV error codes map to LinkErrorKind (no retry inside the link; the only retry is the live screen's single WRONG_PASSWORD retry, V-M-UI-LIVE-PROBE)</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Unsupported transport is UNSUPPORTED_TRANSPORT</scenario-4>
         <scenario-5 kind="success" evidence-type="deterministic">TUTK shim declares every com/tutk/IOTC name found in the libIOTCAPIs.so / libAVAPIs.so strings, with the vendor native signatures, struct fields and callback JNI descriptors (TutkShimContractTest, plan 02-10)</scenario-5>
         <scenario-6 kind="success" evidence-type="trace">TutkRuntime initialises IOTC then AV(32) then versions once per process on tutk-runtime, also from two threads; -3 / -20031 count as initialised (TutkRuntimeTest, plan 02-10)</scenario-6>
@@ -884,6 +901,10 @@
         <scenario-9 kind="failure" evidence-type="deterministic">clientStart -20009 WRONG_PASSWORD; negative connect / sessionId / check / sendIoCtrl classified; -20015 mid-stream REMOTE_CLOSED; 300 consecutive -20012 TIMEOUT(-20012); -20013 / -20014 drop to the next key frame staying Streaming; no reconnect; connect 30 s TIMEOUT(-13), first frame 20 s TIMEOUT(0) (TutkCameraLinkTest, plan 02-11)</scenario-9>
         <scenario-10 kind="success" evidence-type="deterministic">close during connect -> connectStop(sid0) + stop(-1, sid0) once; during clientStart -> stop(-1, sid) aborts it; while streaming -> stop(av, sid) once; idempotent; tutk-&lt;n&gt;-* threads gone within 2 s; TutkLinkFactory refusals and ALREADY_OPEN (TutkCameraLinkTest, plan 02-11)</scenario-10>
         <scenario-11 kind="success" evidence-type="trace">Device: the TUTK camera of the account streams through TransportLinkFactory -> TutkCameraLink on Wi-Fi and on mobile data (02-DEVICE-VERIFICATION.md)</scenario-11>
+        <scenario-12 kind="failure" evidence-type="deterministic">avRecvFrameData2 ends the session only on the vendor fatal list -20015, -20016, -20010, -20000, -20018, -20019, -20025, -20026; other negative codes (e.g. -20017, -20011) are logged once per code (skip=NAME) and streaming continues; -20001 grows the buffer once to 1000000 and drops to the next key frame (Phase 2 review MED-5)</scenario-12>
+        <scenario-13 kind="success" evidence-type="deterministic">avClientStart2 that returns an AV channel after close() already released the session: stop(-1, sid) then stop(av, -1), avClientStop exactly once (Phase 2 review MED-6)</scenario-13>
+        <scenario-14 kind="failure" evidence-type="deterministic">Thread guard: a sink throwing an Error -> Failed(INTERNAL, 0) with the vendor stop; empty encrypted password -> Failed(INTERNAL, 0) without clientStart; the factory refuses it as NO_CREDENTIALS (Phase 2 review MED-7)</scenario-14>
+        <scenario-15 kind="success" evidence-type="deterministic">A connect that ignores connectStop keeps the registry entry until it returns (registry=deferred); the vendor stop runs with no avRecvFrameData2 in flight and none after it (Phase 2 review LOW-8 / LOW-9)</scenario-15>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -893,14 +914,15 @@
         <marker-5>[P2P][tutk][BLOCK_CLOSE]</marker-5>
         <marker-6>[P2P][tutk][BLOCK_INIT_TUTK]</marker-6>
         <marker-7>[P2P][factory][BLOCK_DISPATCH_LINK]</marker-7>
+        <marker-8>[P2P][tutk][BLOCK_THREAD_GUARD]</marker-8>
       </required-log-markers>
       <device-log-markers>
         <marker-1>[P2P][tutk][BLOCK_INIT_TUTK] iotc=&lt;code&gt; av=&lt;code&gt; iotcVer=0x&lt;HEX&gt; avVer=0x&lt;HEX&gt; result=ready</marker-1>
         <marker-2>[P2P][tutk][BLOCK_CONNECT] cam=&lt;n&gt; step=sessionId|connect result=ok|&lt;NAME&gt; ms=&lt;n&gt;</marker-2>
         <marker-3>[P2P][tutk][BLOCK_CHECK_SESSION] cam=&lt;n&gt; mode=&lt;MODE&gt; lan=&lt;b&gt; connectMs=&lt;n&gt;</marker-3>
         <marker-4>[P2P][tutk][BLOCK_CLIENT_START] cam=&lt;n&gt; encrypted=&lt;b&gt; result=ok|&lt;NAME&gt;, then cmd=8190|511 result=ok|&lt;NAME&gt;</marker-4>
-        <marker-5>[P2P][tutk][BLOCK_READ_LOOP] cam=&lt;n&gt; first=video codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt; | exit=closed|error|no-data code=&lt;NAME&gt; units=&lt;n&gt; dropped=&lt;n&gt;</marker-5>
-        <marker-6>[P2P][tutk][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;r&gt; units=&lt;n&gt; joinMs=&lt;n&gt;</marker-6>
+        <marker-5>[P2P][tutk][BLOCK_READ_LOOP] cam=&lt;n&gt; first=video codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt; | skip=&lt;NAME&gt; buf=&lt;n&gt; (once per code) | exit=closed|error|no-data code=&lt;NAME&gt; units=&lt;n&gt; dropped=&lt;n&gt;</marker-5>
+        <marker-6>[P2P][tutk][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;r&gt; units=&lt;n&gt; joinMs=&lt;n&gt; registry=&lt;now|deferred&gt;</marker-6>
       </device-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -914,6 +936,7 @@
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TutkShimContractTest 6, TutkRuntimeTest 14, TutkCameraLinkTest 20, TransportLinkFactoryTest 3</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+        <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); TutkCameraLinkTest 28</evidence-3>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-TUTK-LINK>
@@ -1254,7 +1277,7 @@
     <module id="M-STREAM-DECODE" rating="superseded" reason="superseded 2026-10-12, GSD Phase 2: no cloud AES handshake; see M-STREAM-CORE / M-MEDIA-RENDER" />
     <module id="M-STREAM-LIVE" rating="superseded" reason="superseded 2026-10-12, GSD Phase 2: P2P via vendor libs; see M-TNP-LINK" />
     <module id="M-P2P-NATIVE" rating="conditional" reason="vendor native bring-up; device checkpoints required" />
-    <module id="M-TNP-LINK" rating="conditional" reason="account safety rules (one connect per press, no retry); device checkpoints required" />
+    <module id="M-TNP-LINK" rating="conditional" reason="account safety rules (one connect per link, no retry inside the link, at most one live-screen retry after WRONG_PASSWORD); device checkpoints required" />
     <module id="M-STREAM-CORE" rating="ready" reason="pure Kotlin with known-answer vectors" />
     <module id="M-MEDIA-RENDER" rating="conditional" reason="MediaCodec behaviour is device-verified" />
     <module id="M-UI-LIVE-PROBE" rating="conditional" requires="device" />
