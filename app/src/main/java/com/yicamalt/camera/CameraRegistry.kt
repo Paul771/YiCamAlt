@@ -44,12 +44,15 @@ import javax.inject.Singleton
 //   CameraRegistry.dedupeRecords - one record per cloud uid, first (owned) occurrence wins.
 //   CameraRegistry.getCredentials - stored P2pCredentials of one camera.
 //   CameraRegistry.credentialsFor - P2pCredentialsSource port (live screen); same value as getCredentials.
+//   CameraRegistry.refreshCredentials - P2pCredentialsSource port: one getCameraList refresh, then credentialsFor.
 //   CameraRegistry.clearSignedOutData - LogoutCleanup: synchronous wipe of Room cache + P2P store (logout).
 //   CameraRegistry.purgeIfSignedOut - start-up wipe when there is no session.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.7.0 - GSD plan 02-01: vendor transport rule; /v4/tnp/device_info for every camera not yet
+//   LAST_CHANGE: v0.8.0 - Phase 2 review MED-4: refreshCredentials (one list refresh, errors swallowed and logged
+//     by class name only, stored value returned) for the single WRONG_PASSWORD retry of the live screen.
+//   PREV_CHANGE: v0.7.0 - GSD plan 02-01: vendor transport rule; /v4/tnp/device_info for every camera not yet
 //     verified (was: only list type 2); reuse only verified records; type-vs-id disagreement flag removed; implements
 //     P2pCredentialsSource. Network failure -> stored verified record or UNKNOWN (never a guess).
 //   PREV_CHANGE: v0.6.0 - SEC-04 fail-closed cleanup (security review: the logout wipe ran in a UI coroutine
@@ -381,6 +384,32 @@ class CameraRegistry @Inject constructor(
     //   LINKS: M-STREAM-CORE, M-P2P-CREDS
     // END_CONTRACT: credentialsFor
     override fun credentialsFor(deviceId: String): P2pCredentials? = credentialStore.get(deviceId)
+
+    // START_CONTRACT: refreshCredentials
+    //   PURPOSE: P2pCredentialsSource port: re-fetch the camera's P2P data (password included) from the cloud once.
+    //   INPUTS: { deviceId: String - cloud uid }
+    //   OUTPUTS: { P2pCredentials? - the stored value after the refresh; on any refresh error the stored value as is }
+    //   SIDE_EFFECTS: one getCameraList (network, Room, credential store); one BLOCK_REFRESH_CREDENTIALS log line
+    //     with the outcome class name only
+    //   LINKS: M-STREAM-CORE, M-P2P-CREDS, getCameraList
+    // END_CONTRACT: refreshCredentials
+    override suspend fun refreshCredentials(deviceId: String): P2pCredentials? {
+        // START_BLOCK_REFRESH_CREDENTIALS
+        val result = try {
+            getCameraList()
+            "ok"
+        } catch (e: CameraError) {
+            e.javaClass.simpleName
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.javaClass.simpleName
+        }
+        val c = credentialsFor(deviceId)
+        Timber.d("[Camera][refreshCredentials][BLOCK_REFRESH_CREDENTIALS] result=%s found=%b", result, c != null)
+        return c
+        // END_BLOCK_REFRESH_CREDENTIALS
+    }
 
     // START_CONTRACT: clearSignedOutData
     //   PURPOSE: Logout cleanup (SEC-04), called synchronously by AuthRepository.logout.

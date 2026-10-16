@@ -1,5 +1,5 @@
 // FILE: LiveProbeViewModelTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify the debug live-probe orchestration: refusals, one factory.open per press off Main, no start after
 //     close during an in-flight open, status line and Russian messages, close on leave, decoder reset -> pipeline reset.
@@ -12,15 +12,21 @@
 // END_MODULE_CONTRACT
 
 // START_MODULE_MAP
-//   FakeLink - CameraLink with a controllable state flow; counts start / close and captures the sink.
+//   FakeLink - CameraLink with a controllable state flow; counts start / close and captures the sink; close()
+//     publishes Closed(reason) like a real link unless holdClose (teardown still running).
+//   CountingSource - P2pCredentialsSource counting refreshCredentials calls; refreshed value configurable.
 //   FakeFactory - CameraLinkFactory recording calls, thread names and options; optional latch gate.
 //   FakeDecoder - VideoSinkPort with a controllable status, reset events, frame and release counters.
 //   FakeProvider / FakeHevc - injectable seams replaced by subclasses.
-//   LiveProbeViewModelTest - one test per behaviour of plan 02-09 Task 1.
+//   LiveProbeViewModelTest - one test per behaviour of plan 02-09 Task 1 plus the Phase 2 review fixes (single
+//     WRONG_PASSWORD retry, Connect disabled while the link drains, auth pending, transport code names).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-09: initial tests.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review MED-4 / LOW-8 / LOW-10: retry once then success, retry once then final
+//     failure (exactly 2 opens), no retry on other errors or after Stop, Connect disabled until the link is closed,
+//     auth=pending, TUTK code names.
+//   PREVIOUS: v0.1.0 - GSD plan 02-09: initial tests.
 // END_CHANGE_SUMMARY
 package com.yicamalt.ui.live
 
@@ -39,6 +45,7 @@ import com.yicamalt.stream.LinkInfo
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
+import com.yicamalt.stream.P2pCredentialsSource
 import com.yicamalt.stream.VideoUnit
 import com.yicamalt.stream.VideoUnitSink
 import com.yicamalt.test.RedactionFixtures
@@ -48,6 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -90,6 +98,7 @@ private fun creds(transport: TransportType = TransportType.TNP, encrypt: Boolean
 
 private class FakeLink(override val deviceId: String, initial: LinkState) : CameraLink {
     val flow = MutableStateFlow(initial)
+    @Volatile var holdClose = false
     override val state = flow
     val startCalls = AtomicInteger()
     val closeCalls = AtomicInteger()
@@ -104,6 +113,17 @@ private class FakeLink(override val deviceId: String, initial: LinkState) : Came
     override fun close(reason: String) {
         closeCalls.incrementAndGet()
         closeReasons += reason
+        if (!holdClose) flow.update { if (it is LinkState.Failed || it is LinkState.Closed) it else LinkState.Closed(reason) }
+    }
+}
+
+private class CountingSource(@Volatile var stored: P2pCredentials?) : P2pCredentialsSource {
+    val refreshCalls = AtomicInteger()
+    @Volatile var refreshed: P2pCredentials? = null
+    override fun credentialsFor(deviceId: String): P2pCredentials? = if (deviceId == DEVICE_ID) stored else null
+    override suspend fun refreshCredentials(deviceId: String): P2pCredentials? {
+        refreshCalls.incrementAndGet()
+        return refreshed ?: credentialsFor(deviceId)
     }
 }
 
@@ -114,13 +134,19 @@ private class FakeFactory : CameraLinkFactory {
     val links = CopyOnWriteArrayList<FakeLink>()
     @Volatile var gate: CountDownLatch? = null
     @Volatile var initial: LinkState = LinkState.Idle
+    @Volatile var holdClose = false
+    val passwords = CopyOnWriteArrayList<String?>()
 
     override fun open(credentials: P2pCredentials, options: LinkOptions): CameraLink {
         calls.incrementAndGet()
         threads += Thread.currentThread().name
         this.options += options
+        passwords += credentials.password
         gate?.await(5, TimeUnit.SECONDS)
-        return FakeLink(credentials.deviceId, initial).also { links += it }
+        return FakeLink(credentials.deviceId, initial).also {
+            it.holdClose = holdClose
+            links += it
+        }
     }
 }
 
@@ -182,8 +208,12 @@ class LiveProbeViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun newVm(source: P2pCredentials?): LiveProbeViewModel =
-        LiveProbeViewModel({ id -> if (id == DEVICE_ID) source else null }, factory, provider, hevc).also { vm = it }
+    private var source = CountingSource(null)
+
+    private fun newVm(c: P2pCredentials?): LiveProbeViewModel {
+        source = CountingSource(c)
+        return LiveProbeViewModel(source, factory, provider, hevc).also { vm = it }
+    }
 
     private fun LiveProbeViewModel.snap(): LiveProbeUi =
         ui.value.also { seenUi += "${it.statusLine} | ${it.message} | ${it.hevcInfo} | ${it.title}" }
@@ -406,6 +436,11 @@ class LiveProbeViewModelTest {
     @Test
     fun `wrong password, native libs, kicked map to explicit texts`() = runTest(dispatcher) {
         val (v1, _) = failWith(LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -20009)))
+        assertEquals(LiveProbeTexts.RETRYING, v1.snap().message)
+        advanceTimeBy(LiveProbeViewModel.RETRY_DELAY_MS)
+        awaitCond("retry start") { factory.links.size == 2 && factory.links[1].startCalls.get() == 1 }
+        factory.links[1].flow.value = LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -20009))
+        runCurrent()
         assertEquals("Неверный пароль камеры", v1.snap().message)
         assertTrue(v1.snap().statusLine.contains("auth=fail"))
         v1.close("screen-left")
@@ -431,6 +466,166 @@ class LiveProbeViewModelTest {
         assertTrue(v.snap().statusLine.contains("codec=H265 decoder=none"), v.snap().statusLine)
     }
     // END_BLOCK_CONNECT_AND_STATUS
+
+    // START_BLOCK_RETRY_TESTS
+    private fun TestScope.firstFailsWrongPassword(): LiveProbeViewModel {
+        val (v, link) = connectedVm()
+        link.flow.value = LinkState.Connected(tnpP2pLan)
+        runCurrent()
+        link.flow.value = LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -20009))
+        runCurrent()
+        return v
+    }
+
+    @Test
+    fun `wrong password retries once after 2 s with refreshed credentials and streams`() = runTest(dispatcher) {
+        val v = firstFailsWrongPassword()
+        source.refreshed = creds().copy(password = "SYNTHpw2")
+        val ui = v.snap()
+        assertEquals(LiveProbeTexts.RETRYING, ui.message)
+        assertTrue(ui.statusLine.contains("state=CONNECTING"), ui.statusLine)
+        assertFalse(ui.canConnect)
+        assertTrue(ui.canStop)
+        assertEquals(1, provider.created.single().releaseCalls.get())
+        advanceTimeBy(LiveProbeViewModel.RETRY_DELAY_MS - 1)
+        runCurrent()
+        Thread.sleep(50)
+        runCurrent()
+        assertEquals(1, factory.calls.get())
+        assertEquals(0, source.refreshCalls.get())
+        advanceTimeBy(1)
+        awaitCond("retry start") { factory.links.size == 2 && factory.links[1].startCalls.get() == 1 }
+        assertEquals(1, source.refreshCalls.get())
+        assertEquals(listOf<String?>(SYNTH_PW, "SYNTHpw2"), factory.passwords.toList())
+        factory.links[1].flow.value = LinkState.Streaming(tnpP2pLan, authOk = true)
+        runCurrent()
+        assertNull(v.snap().message)
+        assertTrue(v.snap().statusLine.contains("state=STREAMING"))
+        assertEquals(2, provider.created.size)
+        recorder.assertMarkerAppeared("BLOCK_RETRY")
+        scanner.assertClean(recorder.bufferText(), extraLiterals = listOf("SYNTHpw2"))
+    }
+
+    @Test
+    fun `second wrong password is final - exactly two factory opens`() = runTest(dispatcher) {
+        val v = firstFailsWrongPassword()
+        advanceTimeBy(LiveProbeViewModel.RETRY_DELAY_MS)
+        awaitCond("retry start") { factory.links.size == 2 && factory.links[1].startCalls.get() == 1 }
+        factory.links[1].flow.value = LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -20009))
+        runCurrent()
+        assertEquals("Неверный пароль камеры", v.snap().message)
+        assertTrue(v.snap().canConnect)
+        assertFalse(v.snap().canStop)
+        advanceTimeBy(60_000)
+        runCurrent()
+        Thread.sleep(100)
+        runCurrent()
+        assertEquals(2, factory.calls.get())
+        assertEquals(1, source.refreshCalls.get())
+    }
+
+    @Test
+    fun `other errors never retry`() = runTest(dispatcher) {
+        listOf(
+            LinkError(LinkErrorKind.TIMEOUT, 0),
+            LinkError(LinkErrorKind.PROTOCOL, -9000),
+            LinkError(LinkErrorKind.REMOTE_CLOSED, -3012),
+        ).forEach { err ->
+            factory.links.clear()
+            factory.calls.set(0)
+            val (v, _) = failWith(LinkState.Failed(err))
+            assertNotEquals(LiveProbeTexts.RETRYING, v.snap().message)
+            advanceTimeBy(10_000)
+            runCurrent()
+            Thread.sleep(50)
+            runCurrent()
+            assertEquals(1, factory.calls.get(), err.toString())
+            v.close("screen-left")
+        }
+        assertEquals(0, source.refreshCalls.get())
+    }
+
+    @Test
+    fun `stop during the retry pause cancels the retry`() = runTest(dispatcher) {
+        val v = firstFailsWrongPassword()
+        v.stop()
+        val ui = v.snap()
+        assertTrue(ui.statusLine.contains("state=CLOSED"), ui.statusLine)
+        assertNull(ui.message)
+        assertTrue(ui.canConnect)
+        advanceTimeBy(10_000)
+        runCurrent()
+        Thread.sleep(100)
+        runCurrent()
+        assertEquals(1, factory.calls.get())
+        assertEquals(0, source.refreshCalls.get())
+    }
+
+    @Test
+    fun `user stop of a streaming session never retries`() = runTest(dispatcher) {
+        val (v, link) = connectedVm()
+        link.flow.value = LinkState.Streaming(tnpP2pLan, authOk = true)
+        runCurrent()
+        v.stop()
+        awaitCond("close") { link.closeCalls.get() == 1 }
+        link.flow.value = LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -20009))
+        advanceTimeBy(10_000)
+        runCurrent()
+        Thread.sleep(50)
+        runCurrent()
+        assertEquals(1, factory.calls.get())
+    }
+    // END_BLOCK_RETRY_TESTS
+
+    // START_BLOCK_DRAIN_AND_STATUS_TESTS
+    @Test
+    fun `Connect stays disabled until the closed link reports Closed`() = runTest(dispatcher) {
+        factory.holdClose = true
+        val (v, link) = connectedVm()
+        link.flow.value = LinkState.Streaming(tnpP2pLan, authOk = true)
+        runCurrent()
+        v.stop()
+        awaitCond("close") { link.closeCalls.get() == 1 }
+        assertFalse(v.snap().canConnect)
+        assertFalse(v.snap().canStop)
+        v.connect()
+        runCurrent()
+        assertEquals(1, factory.calls.get())
+        link.flow.value = LinkState.Closed("user")
+        runCurrent()
+        assertTrue(v.snap().canConnect)
+        v.connect()
+        awaitCond("second open") { factory.calls.get() == 2 }
+    }
+
+    @Test
+    fun `auth is pending while streaming without an auth answer`() = runTest(dispatcher) {
+        val (v, link) = connectedVm()
+        link.flow.value = LinkState.Connected(tnpP2pLan)
+        runCurrent()
+        assertTrue(v.snap().statusLine.contains("auth=- "), v.snap().statusLine)
+        link.flow.value = LinkState.Streaming(tnpP2pLan, authOk = false)
+        runCurrent()
+        assertTrue(v.snap().statusLine.contains("auth=pending"), v.snap().statusLine)
+        link.flow.value = LinkState.Streaming(tnpP2pLan, authOk = true)
+        runCurrent()
+        assertTrue(v.snap().statusLine.contains("auth=ok"), v.snap().statusLine)
+    }
+
+    @Test
+    fun `TUTK error codes use the TUTK name table`() = runTest(dispatcher) {
+        val (v, link) = connectedVm(creds(TransportType.TUTK))
+        link.flow.value = LinkState.Failed(LinkError(LinkErrorKind.REMOTE_CLOSED, -20015))
+        runCurrent()
+        assertTrue(v.snap().statusLine.contains("error=AV_ER_SESSION_CLOSE_BY_REMOTE"), v.snap().statusLine)
+        assertEquals(
+            "Внутренняя ошибка P2P (код IOTC_ER_TIMEOUT)",
+            linkErrorMessage(LinkError(LinkErrorKind.INTERNAL, -13), TransportType.TUTK),
+        )
+        assertEquals("AV_ER_WRONG_VIEWACCorPWD", codeName(-20009, TransportType.TUTK))
+        assertEquals("TIME_OUT", codeName(-3003, TransportType.TNP))
+    }
+    // END_BLOCK_DRAIN_AND_STATUS_TESTS
 
     // START_BLOCK_CLOSE_ON_LEAVE
     @Test

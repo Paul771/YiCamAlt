@@ -1,5 +1,5 @@
 // FILE: CameraRegistryCredentialsTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify P2P credential resolution in CameraRegistry: vendor transport rule (device_info for every
 //     unverified camera), request bounds, stored values, reuse rules, failure tolerance, logout wipe and the
@@ -24,7 +24,9 @@ package com.yicamalt.camera
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 02-01: vendor transport rule. device_info is asked for EVERY unverified camera
+//   LAST_CHANGE: v0.4.0 - Phase 2 review MED-4: creds_13 refreshCredentials refreshes once and falls back to the
+//     stored value on a failed refresh.
+//   PREV_CHANGE: v0.3.0 - GSD plan 02-01: vendor transport rule. device_info is asked for EVERY unverified camera
 //     (creds_1 now expects two requests); list type/did never decide (creds_2b/2c); rejected / incomplete /
 //     network-failure outcomes (creds_4..4c, creds_5..5c); verified records reused (creds_6, creds_8);
 //     Phase 1 records asked exactly once (creds_7b); credentialsFor port (creds_3); via=/listType= markers.
@@ -251,6 +253,25 @@ class CameraRegistryCredentialsTest {
         assertEquals(registry.getCredentials(F.TUTK_UID), registry.credentialsFor(F.TUTK_UID))
         assertNull(registry.getCredentials("unknown-SYNTH"))
         assertNull(registry.credentialsFor("unknown-SYNTH"))
+    }
+
+    @Test
+    fun `creds_13 refreshCredentials refreshes the list once and falls back to the stored value`() {
+        refresh()
+        val before = script.paths.count { it.endsWith(DevicePaths.LIST_V5) }
+        val fresh = runBlocking { registry.refreshCredentials(F.CLOUD_UID) }
+        assertEquals(before + 1, script.paths.count { it.endsWith(DevicePaths.LIST_V5) })
+        assertEquals(store.get(F.CLOUD_UID), fresh)
+        assertEquals("synthpw1", fresh!!.password)
+
+        script.listBody = "not json SYNTH"
+        val stale = runBlocking { registry.refreshCredentials(F.CLOUD_UID) }
+        assertEquals(fresh, stale)
+        assertNull(runBlocking { registry.refreshCredentials("unknown-SYNTH") })
+        val text = recorder.bufferText()
+        assertTrue(text.contains("[BLOCK_REFRESH_CREDENTIALS] result=ok found=true"), text)
+        assertTrue(text.contains("[BLOCK_REFRESH_CREDENTIALS] result=FetchFailed found=true"), text)
+        RedactionScanner().assertClean(text)
     }
 
     @Test

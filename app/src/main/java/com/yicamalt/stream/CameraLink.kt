@@ -1,5 +1,5 @@
 // FILE: CameraLink.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Transport-neutral port for one live P2P session to one camera (TNP now, TUTK conditionally).
 //   SCOPE: CameraLink / CameraLinkFactory / P2pCredentialsSource ports and the LinkState, LinkInfo, LinkMode,
@@ -24,11 +24,15 @@ import kotlinx.coroutines.flow.StateFlow
 //   LinkOptions - per-press options (forceRelay).
 //   CameraLink - one session: deviceId, state flow, start(sink), close(reason).
 //   CameraLinkFactory - open(credentials, options); one session per camera.
-//   P2pCredentialsSource - credentialsFor(deviceId) -> P2pCredentials?.
+//   P2pCredentialsSource - credentialsFor(deviceId) -> P2pCredentials?; refreshCredentials(deviceId) (suspend, one
+//     cloud refresh then the stored value; default = credentialsFor).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-00: contract-first port types for Phase 2. Doc comments use // only (no block comments).
+//   LAST_CHANGE: v0.2.0 - Phase 2 review MED-4: P2pCredentialsSource.refreshCredentials, used by the single automatic
+//     retry after WRONG_PASSWORD (vendor re-fetches the password before reconnecting). Links themselves still never
+//     retry or reconnect; Failed / Closed stay terminal for a link.
+//   PREVIOUS: v0.1.0 - GSD plan 02-00: contract-first port types for Phase 2. Doc comments use // only (no block comments).
 //     INVARIANTS: no automatic reconnect (Failed / Closed are terminal); one session per camera; close() is
 //     idempotent and bounded (~2 s).
 // END_CHANGE_SUMMARY
@@ -56,7 +60,7 @@ sealed interface LinkState {
     // First video unit received.
     data class Streaming(val info: LinkInfo, val authOk: Boolean) : LinkState
 
-    // Terminal; no auto-retry.
+    // Terminal for this link; the link never retries (one retry on WRONG_PASSWORD may open a NEW link above it).
     data class Failed(val error: LinkError) : LinkState
 
     // Terminal; reason in {user, kicked, screen-left, background, error, timeout}. error and timeout normally end
@@ -84,4 +88,8 @@ interface CameraLinkFactory {
 
 fun interface P2pCredentialsSource {
     fun credentialsFor(deviceId: String): P2pCredentials?
+
+    // One cloud refresh of the camera's P2P data, then the stored value (null when unknown). Never throws for
+    // network or server errors: the stored value is returned instead. Default: no refresh.
+    suspend fun refreshCredentials(deviceId: String): P2pCredentials? = credentialsFor(deviceId)
 }
