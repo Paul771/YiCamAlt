@@ -1,5 +1,5 @@
 // FILE: LiveProbeScreen.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Minimal debug live screen for one camera: SurfaceView video, Connect / Stop, "relay only" toggle,
 //     HEVC decoder info, explicit message and the value-free status line (full live view is GSD Phase 3).
@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -30,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -51,7 +53,9 @@ import androidx.lifecycle.LifecycleEventObserver
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-09: initial debug live screen opened from the camera list.
+//   LAST_CHANGE: v0.1.1 - fix invisible UI on a dark phone theme: the screen is shown outside the Scaffold, so it now
+//     wraps its content in a themed Surface (background + onBackground) and safeDrawingPadding.
+//   PREV_CHANGE: v0.1.0 - GSD plan 02-09: initial debug live screen opened from the camera list.
 // END_CHANGE_SUMMARY
 
 @Composable
@@ -82,8 +86,15 @@ fun LiveProbeScreen(
 
     // START_BLOCK_RENDER_PROBE
     val ui by viewModel.ui.collectAsState()
+    // The probe replaces the Scaffold-hosted tabs, so it must paint its own themed background and content color;
+    // without a Surface the text keeps the default black and vanishes on a dark window.
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+    ) {
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        modifier = Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(ui.title, style = MaterialTheme.typography.titleLarge)
@@ -110,6 +121,7 @@ fun LiveProbeScreen(
         SelectionContainer {
             Text(ui.statusLine, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
         }
+    }
     }
     // END_BLOCK_RENDER_PROBE
 }
