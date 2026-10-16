@@ -30,4 +30,22 @@ TUTK camera (account camera of transport TUTK), user away from home, no LAN:
 - A (home Wi-Fi, lan=yes) for both cameras; B relay-only; C parallel use with the official app.
 - Log pull and redaction sweep (SEC-01) for the live sessions.
 
+## Update 2026-10-16 evening (phone attached by USB, at home on Wi-Fi)
+
+TUTK camera on the LAN (log markers, value-free), build with the review fixes and the SurfaceView z-order fix:
+- connect ok 365-1518 ms, check mode=LAN lan=true, client start ok, cmd 8190 ok, first video frame (key, codecId 78) after ~0.9-2.3 s.
+- Decoder created: video/avc, OMX.qcom.video.decoder.avc hw=true, size=640x360; first render 31-67 ms after create.
+- One BLOCK_DECODER_RESET reason=queue-overflow resets=1 right before the decoder is created on every start (frames queued while
+  the codec is created); harmless so far, worth a look in Phase 3.
+- Automatic WRONG_PASSWORD retry observed once on the LAN: first press -> AV_ER_WRONG_VIEWACCorPWD, retry after 2 s with refreshed
+  credentials (refreshed=true) -> auth ok and streaming. Supports "stale stored password" as the cause of the intermittent error.
+- Criterion 2 / LIVE-01: PASS for the TUTK camera on the LAN (user confirmed the picture moves).
+- Mobile-data test was INVALID: the phone had no data service at that moment (mobile data off, operator data out of service,
+  Wi-Fi off); connect timed out with no network. Must be repeated.
+- UI defects found on the phone and fixed: live screen was unreadable (no Surface, dark/black rendering) and the whole window turned black
+  with a default-z-order SurfaceView on this MIUI phone; fixed with a white Surface and SurfaceView.setZOrderOnTop(true) (verified on screen).
+
+Still open: TNP camera on a real camera (never run), relay-only and mobile-data run, parallel use with the official app, H.265 on device,
+log pull + redaction sweep for the final evidence.
+
 RESULT: PARTIAL (pending TNP camera, home Wi-Fi, relay, parallel-use checks and log sweep)
