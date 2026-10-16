@@ -1,5 +1,5 @@
 // FILE: TutkNative.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: The only seam between our code and the vendor TUTK IOTC/AV libraries, plus their error-code table.
 //   SCOPE: TutkNative interface (12 calls in the vendor client order), value-free TutkCheck / ClientStart /
@@ -23,7 +23,8 @@ import com.yicamalt.stream.LinkErrorKind
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-10: created. Android impl: AndroidTutkNative; JVM: FakeTutkNative (tests).
+//   LAST_CHANGE: v0.1.1 - Phase 2 review MED-5: AV_ER_BUFPARA_MAXSIZE_INSUFF (-20001) added to the code table.
+//   PREVIOUS: v0.1.0 - GSD plan 02-10: created. Android impl: AndroidTutkNative; JVM: FakeTutkNative (tests).
 //     IOTC / AV are never de-initialised. The cloud uid passed to connectByUid is a secret: never logged.
 // END_CHANGE_SUMMARY
 
@@ -101,6 +102,7 @@ object TutkCodes {
 
     // AV_ER_*
     const val AV_INVALID_ARG = -20000
+    const val AV_BUFPARA_MAXSIZE_INSUFF = -20001
     const val AV_EXCEED_MAX_CHANNEL = -20002
     const val AV_MEM_INSUFF = -20003
     const val AV_SERV_NO_RESPONSE = -20007
@@ -156,6 +158,7 @@ object TutkCodes {
         IOTC_DEVICE_IS_SLEEP to "IOTC_ER_DEVICE_IS_SLEEP",
         IOTC_DEVICE_OFFLINE to "IOTC_ER_DEVICE_OFFLINE",
         AV_INVALID_ARG to "AV_ER_INVALID_ARG",
+        AV_BUFPARA_MAXSIZE_INSUFF to "AV_ER_BUFPARA_MAXSIZE_INSUFF",
         AV_EXCEED_MAX_CHANNEL to "AV_ER_EXCEED_MAX_CHANNEL",
         AV_MEM_INSUFF to "AV_ER_MEM_INSUFF",
         AV_SERV_NO_RESPONSE to "AV_ER_SERV_NO_RESPONSE",

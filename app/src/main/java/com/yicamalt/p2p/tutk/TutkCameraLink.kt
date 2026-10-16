@@ -1,11 +1,12 @@
 // FILE: TutkCameraLink.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One TUTK IOTC/AV session per camera behind the shared CameraLink port, vendor call order.
 //   SCOPE: TutkCameraLink (IOTC_Get_SessionID -> IOTC_Connect_ByUID_Parallel with the cloud uid -> Session_Check
 //     mode mapping -> avClientStart2 with nonce + HMAC (or admin) -> 8190 / 511 start -> avRecvFrameData2 loop with
-//     little-endian FrameInfo, connect and first-frame timers, bounded idempotent teardown) and TutkLinkFactory
-//     (credential checks, process-once TutkRuntime init, one session per camera).
+//     little-endian FrameInfo and the vendor fatal-code list, connect and first-frame timers, thread guard, bounded
+//     idempotent teardown with separate AV / session release) and TutkLinkFactory (credential checks, process-once
+//     TutkRuntime init, one session per camera).
 //   DEPENDS: M-TUTK-LINK (TutkNative, TutkCodes, TutkRuntime), M-STREAM-CORE (CameraLink, FrameHeadCodec,
 //     IoCtrlMessages, YiP2pAuth), M-P2P-CREDS (P2pCredentials), M-TNP-LINK (FailedLink)
 //   LINKS: M-TUTK-LINK, V-M-TUTK-LINK
@@ -48,19 +49,36 @@ import javax.inject.Singleton
 // START_MODULE_MAP
 //   TutkCameraLink - CameraLink over TutkNative: start(sink) spawns tutk-<n>-watch / -connect (-rx later), close(reason).
 //   TutkCameraLink.Timeouts - connectMs 30000, firstFrameMs 20000, clientStartS 15, noDataSleepMs 30,
-//     maxNoDataPolls 300, joinMs 2000, pollMs 20.
+//     maxNoDataPolls 300, joinMs 2000, pollMs 20, ioJoinMarginMs 200.
 //   TutkCameraLink.modeOf - vendor Session_Check mode 0 P2P, 1 RELAY, 2 LAN, else UNKNOWN.
-//   TutkCameraLink.AV_CHANNEL / FRAME_BUF_SIZE / NONCE_LEN / PLAIN_USER - 0, 300000, 15, "admin".
+//   TutkCameraLink.AV_CHANNEL / FRAME_BUF_SIZE / LARGE_FRAME_BUF_SIZE / NONCE_LEN / PLAIN_USER - 0, 300000, 1000000,
+//     15, "admin".
+//   TutkCameraLink.FATAL_READ_CODES - avRecvFrameData2 codes that end the session (vendor TutkCamera ~1176).
 //   TutkLinkFactory - @Singleton CameraLinkFactory for TUTK cameras; open() applies the checks of its contract.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-11: created from 02-RESEARCH.md Pattern 8, mirroring TnpCameraLink.
-//     INVARIANTS: one connectByUid per start(), no reconnect, no retry; -20012 polls sleep noDataSleepMs and end the
-//     session as TIMEOUT(-20012) after maxNoDataPolls in a row; -20013 / -20014 drop frames until the next key frame
-//     without leaving Streaming; every native call runs on a named thread of this link (tutk-<n>-connect | -rx |
-//     -close); the cloud uid, password, nonce and HMAC never reach logs, LinkError, LinkInfo or toString; cam=<n> is
-//     a per-process counter. LinkOptions.forceRelay has no IOTC equivalent and is ignored.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review fixes.
+//     MED-5: the read loop ends the session only on the vendor fatal codes -20015, -20016, -20010, -20000, -20018,
+//       -20019, -20025, -20026 (FATAL_READ_CODES); any other negative code is logged once per code (symbolic name)
+//       and reading continues after noDataSleepMs; maxNoDataPolls such codes in a row end the session. -20001 (buffer
+//       too small) enlarges the frame buffer once to LARGE_FRAME_BUF_SIZE and drops to the next key frame.
+//     MED-6: the AV channel and the IOTC session are released independently (avReleased / sidReleased), so an
+//       avClientStart2 that returns after close() already released the session still gets avClientStop.
+//     MED-7: every link thread body runs under a guard: an uncaught Throwable ends the link as Failed(INTERNAL, 0)
+//       with full teardown; the factory refuses an empty password when p2pEncrypt is on.
+//     LOW-8: onClosed (registry release) runs only after every link thread has exited (else tutk-<n>-reap waits),
+//       and before the final state is published.
+//     LOW-9: the reader uses a local av copy and re-checks the stop flags before each avRecvFrameData2; the vendor
+//       stop (767 -> SendIOCtrlExit -> ClientStop -> ClientExit -> Session_Close) runs after the reader was joined
+//       (bounded by noDataSleepMs + ioJoinMarginMs).
+//     INVARIANTS: one connectByUid per start(), no reconnect and no retry inside the link (the single automatic retry
+//       on WRONG_PASSWORD lives in LiveProbeViewModel); -20012 polls sleep noDataSleepMs and end the session as
+//       TIMEOUT(-20012) after maxNoDataPolls in a row; -20013 / -20014 drop frames until the next key frame without
+//       leaving Streaming; every native call runs on a named thread of this link (tutk-<n>-connect | -rx | -close);
+//       the cloud uid, password, nonce and HMAC never reach logs, LinkError, LinkInfo or toString; cam=<n> is a
+//       per-process counter. LinkOptions.forceRelay has no IOTC equivalent and is ignored.
+//   PREVIOUS: v0.1.0 - GSD plan 02-11: created from 02-RESEARCH.md Pattern 8, mirroring TnpCameraLink.
 // END_CHANGE_SUMMARY
 
 internal class TutkCameraLink(
@@ -82,6 +100,7 @@ internal class TutkCameraLink(
         val maxNoDataPolls: Int = 300,
         val joinMs: Long = 2_000,
         val pollMs: Long = 20,
+        val ioJoinMarginMs: Long = 200,
     )
 
     override val deviceId: String = credentials.deviceId
@@ -91,10 +110,12 @@ internal class TutkCameraLink(
 
     private val started = AtomicBoolean(false)
     private val closing = AtomicBoolean(false)
-    private val released = AtomicBoolean(false)
+    private val avReleased = AtomicBoolean(false)
+    private val sidReleased = AtomicBoolean(false)
     private val videoUnits = AtomicInteger(0)
     private val dropped = AtomicInteger(0)
     private val threadLock = Any()
+    private val releaseLock = Any()
     private val threads = CopyOnWriteArrayList<Thread>()
 
     @Volatile private var stopping = false
@@ -222,6 +243,7 @@ internal class TutkCameraLink(
         }
         av = cs.av
         if (stopping || closing.get()) {
+            // A clientStart that returns after close(): the session may already be gone, the AV channel is not.
             releaseOnce()
             return
         }
@@ -230,6 +252,7 @@ internal class TutkCameraLink(
         val cmd = if (encrypted) IoCtrlMessages.TUTK_START_ENC else IoCtrlMessages.TUTK_START_PLAIN
         startCmdAtMs = now()
         spawn("rx") { readLoop() }
+        if (stopping || closing.get()) return
         val sent = native.sendIoCtrl(cs.av, cmd, IoCtrlMessages.tutkStart(START_USE_COUNT))
         Timber.d(
             "[P2P][tutk][BLOCK_CLIENT_START] cam=%d cmd=%d result=%s",
@@ -245,23 +268,29 @@ internal class TutkCameraLink(
     //   INPUTS: none
     //   OUTPUTS: { Unit - > 0: one VideoUnit (FrameInfo parsed little-endian) to the sink; -20012: sleep
     //     noDataSleepMs, after maxNoDataPolls in a row Failed(TIMEOUT, -20012); -20013 / -20014: drop frames until the
-    //     next key frame; any other negative code: Failed(classify(code)) (e.g. -20015 REMOTE_CLOSED), no reconnect;
-    //     stopping: quiet exit }
-    //   SIDE_EFFECTS: one BLOCK_READ_LOOP log line on exit
+    //     next key frame; -20001: buffer enlarged once to LARGE_FRAME_BUF_SIZE, drop to the next key frame;
+    //     FATAL_READ_CODES: Failed(classify(code)) (e.g. -20015 REMOTE_CLOSED), no reconnect; any other negative code:
+    //     logged once per code, sleep noDataSleepMs, keep reading (maxNoDataPolls in a row -> Failed(classify(code)));
+    //     stopping / released AV channel: quiet exit }
+    //   SIDE_EFFECTS: one BLOCK_READ_LOOP log line on exit; reads only the av captured at start
     //   LINKS: TutkNative.recvFrame, FrameHeadCodec.parse, VideoUnitSink.onVideoUnit
     // END_CONTRACT: readLoop
     private fun readLoop() {
-        val buf = ByteArray(FRAME_BUF_SIZE)
+        val avLocal = av
+        var buf = ByteArray(FRAME_BUF_SIZE)
         val head = ByteArray(FrameHeadCodec.SIZE)
+        val skipped = HashSet<Int>()
         var noData = 0
+        var otherErrors = 0
         var dropping = false
         var exit = EXIT_CLOSED
         var code = 0
-        while (!stopping && !closing.get()) {
-            val r = native.recvFrame(av, buf, head)
+        while (!stopping && !closing.get() && !avReleased.get()) {
+            val r = native.recvFrame(avLocal, buf, head)
             when {
                 r.code > 0 -> {
                     noData = 0
+                    otherErrors = 0
                     val size = r.size.coerceIn(0, buf.size)
                     if (size == 0) continue
                     val frameInfo = FrameHeadCodec.parse(head, 0, bigEndian = false)
@@ -281,21 +310,37 @@ internal class TutkCameraLink(
                         code = r.code
                         break
                     }
-                    try {
-                        Thread.sleep(timeouts.noDataSleepMs)
-                    } catch (e: InterruptedException) {
-                        break
-                    }
+                    if (!pause()) break
                 }
                 r.code == TutkCodes.AV_INCOMPLETE_FRAME || r.code == TutkCodes.AV_LOSED_THIS_FRAME -> {
                     noData = 0
                     dropping = true
                     dropped.incrementAndGet()
                 }
-                else -> {
+                r.code in FATAL_READ_CODES -> {
                     exit = EXIT_ERROR
                     code = r.code
                     break
+                }
+                else -> {
+                    if (r.code == TutkCodes.AV_BUFPARA_MAXSIZE_INSUFF) {
+                        if (buf.size < LARGE_FRAME_BUF_SIZE) buf = ByteArray(LARGE_FRAME_BUF_SIZE)
+                        dropping = true
+                        dropped.incrementAndGet()
+                    }
+                    if (skipped.add(r.code)) {
+                        Timber.d(
+                            "[P2P][tutk][BLOCK_READ_LOOP] cam=%d skip=%s buf=%d",
+                            camIndex, TutkCodes.name(r.code), buf.size,
+                        )
+                    }
+                    otherErrors++
+                    if (otherErrors >= timeouts.maxNoDataPolls) {
+                        exit = EXIT_ERROR
+                        code = r.code
+                        break
+                    }
+                    if (!pause()) break
                 }
             }
         }
@@ -308,6 +353,14 @@ internal class TutkCameraLink(
             EXIT_NO_DATA -> failWith(LinkError(LinkErrorKind.TIMEOUT, code), REASON_TIMEOUT)
             EXIT_ERROR -> failWith(LinkError(TutkCodes.classify(code), code), REASON_ERROR)
         }
+    }
+
+    // The vendor 30 ms pause between polls; false when interrupted.
+    private fun pause(): Boolean = try {
+        Thread.sleep(timeouts.noDataSleepMs)
+        true
+    } catch (e: InterruptedException) {
+        false
     }
 
     private fun onVideo(unit: VideoUnit) {
@@ -358,10 +411,11 @@ internal class TutkCameraLink(
     //   PURPOSE: The single teardown path for close(), failures and timeouts; runs once.
     //   INPUTS: { reason: String - BLOCK_CLOSE reason; final: LinkState - Closed(reason) or Failed(error) }
     //   OUTPUTS: { Unit - external callers wait for tutk-<n>-close up to joinMs; link threads do not wait }
-    //   SIDE_EFFECTS: on tutk-<n>-close: stop flag; connectStop(sid0) while connectByUid is still blocking; stop(av, sid)
-    //     once when a session exists (the vendor stop order incl. 767 and avClientExit, which also aborts a blocking
-    //     clientStart); bounded join; stop(-1, sid0) once when only the pre-allocated session id exists; final state;
-    //     onClosed.
+    //   SIDE_EFFECTS: on tutk-<n>-close: stop flag; connectStop(sid0) while connectByUid is still blocking; join of
+    //     tutk-<n>-rx bounded by noDataSleepMs + ioJoinMarginMs; vendor stop for what exists (AV channel and session
+    //     released independently, each at most once; stop also aborts a blocking clientStart); bounded join (joinMs
+    //     in total); stop(-1, sid0) once when only the pre-allocated session id exists; onClosed once every link
+    //     thread has exited (else deferred to tutk-<n>-reap); final state.
     //   LINKS: TutkNative.connectStop, TutkNative.stop
     // END_CONTRACT: terminate
     private fun terminate(reason: String, final: LinkState) {
@@ -374,31 +428,69 @@ internal class TutkCameraLink(
     private fun teardown(reason: String, final: LinkState) {
         val t0 = System.nanoTime()
         val deadline = t0 + TimeUnit.MILLISECONDS.toNanos(timeouts.joinMs)
-        val snapshot = synchronized(threadLock) {
-            stopping = true
-            threads.toList()
+        var snapshot: List<Thread> = emptyList()
+        var registry = "now"
+        try {
+            snapshot = synchronized(threadLock) {
+                stopping = true
+                threads.toList()
+            }
+            if (connectAttempted && !connectReturned) native.connectStop(sid0)
+            // The reader leaves at its next flag check (<= one no-data sleep); join it before the AV channel goes.
+            val ioDeadline = minOf(
+                deadline,
+                System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeouts.noDataSleepMs + timeouts.ioJoinMarginMs),
+            )
+            joinUntil(snapshot.filter { it.name == "tutk-$camIndex-rx" }, ioDeadline)
+            if (sid >= 0 || av >= 0) releaseOnce()
+            joinUntil(snapshot, deadline)
+            releaseOnce()
+        } catch (e: Throwable) {
+            logGuard("close", e)
+            runCatching { releaseOnce() }
         }
-        if (connectAttempted && !connectReturned) native.connectStop(sid0)
-        if (sid >= 0) releaseOnce()
-        snapshot.forEach { t ->
-            val left = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
-            if (left > 0) t.join(left)
+        val alive = snapshot.filter { it.isAlive }
+        if (alive.isEmpty()) {
+            runCatching { onClosed(this) }
+        } else {
+            registry = "deferred"
+            Thread({
+                alive.forEach { runCatching { it.join() } }
+                runCatching { onClosed(this) }
+                Timber.d("[P2P][tutk][BLOCK_CLOSE] cam=%d registry=released", camIndex)
+            }, "tutk-$camIndex-reap").apply { isDaemon = true }.start()
         }
-        releaseOnce()
         val joinMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0)
         _state.update { if (it is LinkState.Failed || it is LinkState.Closed) it else final }
         Timber.d(
-            "[P2P][tutk][BLOCK_CLOSE] cam=%d reason=%s units=%d joinMs=%d",
-            camIndex, reason, videoUnits.get(), joinMs,
+            "[P2P][tutk][BLOCK_CLOSE] cam=%d reason=%s units=%d joinMs=%d registry=%s",
+            camIndex, reason, videoUnits.get(), joinMs, registry,
         )
-        runCatching { onClosed(this) }
     }
 
-    // Vendor stop for whatever exists: the connected session (with its av channel) or the pre-allocated sid0.
+    private fun joinUntil(list: List<Thread>, deadlineNs: Long) {
+        list.forEach { t ->
+            val left = TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime())
+            if (left > 0) t.join(left)
+        }
+    }
+
+    // START_CONTRACT: releaseOnce
+    //   PURPOSE: Vendor stop for whatever exists, each half at most once: the AV channel (767, SendIOCtrlExit,
+    //     avClientStop) and the session (avClientExit, Session_Close; sid, else the pre-allocated sid0).
+    //   INPUTS: none (av, sid, sid0)
+    //   OUTPUTS: none
+    //   SIDE_EFFECTS: at most one native.stop per call; serialised so the halves never interleave
+    //   LINKS: TutkNative.stop
+    // END_CONTRACT: releaseOnce
     private fun releaseOnce() {
-        val s = if (sid >= 0) sid else sid0
-        if (s < 0 && av < 0) return
-        if (released.compareAndSet(false, true)) native.stop(av, s)
+        synchronized(releaseLock) {
+            val a = av
+            val s = if (sid >= 0) sid else sid0
+            val doAv = a >= 0 && avReleased.compareAndSet(false, true)
+            val doSid = s >= 0 && sidReleased.compareAndSet(false, true)
+            if (doAv || doSid) native.stop(if (doAv) a else -1, if (doSid) s else -1)
+        }
     }
     // END_BLOCK_CLOSE
 
@@ -406,20 +498,43 @@ internal class TutkCameraLink(
         _state.update { if (closing.get() || it is LinkState.Failed || it is LinkState.Closed) it else next }
     }
 
+    // START_BLOCK_THREAD_GUARD
+    // Every link thread body: an escaping Throwable (sink / pipeline bug, bad key material) ends the link as
+    // Failed(INTERNAL, 0) through the normal teardown instead of killing the process with the session open.
     private fun spawn(suffix: String, body: () -> Unit) {
         synchronized(threadLock) {
             if (stopping) return
-            val t = Thread(body, "tutk-$camIndex-$suffix").apply { isDaemon = true }
+            val guarded = Runnable {
+                try {
+                    body()
+                } catch (e: Throwable) {
+                    logGuard(suffix, e)
+                    if (!stopping && !closing.get()) failWith(LinkError(LinkErrorKind.INTERNAL, 0), REASON_ERROR)
+                }
+            }
+            val t = Thread(guarded, "tutk-$camIndex-$suffix").apply { isDaemon = true }
             threads += t
             t.start()
         }
     }
+
+    // Class name only: exception messages may carry key material.
+    private fun logGuard(thread: String, e: Throwable) {
+        runCatching {
+            Timber.w(
+                "[P2P][tutk][BLOCK_THREAD_GUARD] cam=%d thread=%s error=%s",
+                camIndex, thread, e.javaClass.simpleName,
+            )
+        }
+    }
+    // END_BLOCK_THREAD_GUARD
 
     override fun toString(): String = "TutkCameraLink(cam=$camIndex, state=${_state.value::class.simpleName})"
 
     companion object {
         const val AV_CHANNEL = 0
         const val FRAME_BUF_SIZE = 300_000
+        const val LARGE_FRAME_BUF_SIZE = 1_000_000
         const val NONCE_LEN = 15
         const val PLAIN_USER = "admin"
         const val START_USE_COUNT = 1
@@ -428,6 +543,13 @@ internal class TutkCameraLink(
         private const val EXIT_CLOSED = "closed"
         private const val EXIT_ERROR = "error"
         private const val EXIT_NO_DATA = "no-data"
+
+        // Vendor TutkCamera read loop closes the camera only on these avRecvFrameData2 codes.
+        val FATAL_READ_CODES: Set<Int> = setOf(
+            TutkCodes.AV_SESSION_CLOSE_BY_REMOTE, TutkCodes.AV_REMOTE_TIMEOUT_DISCONNECT, TutkCodes.AV_INVALID_SID,
+            TutkCodes.AV_INVALID_ARG, TutkCodes.AV_CLIENT_EXIT, TutkCodes.AV_NOT_INITIALIZED,
+            TutkCodes.AV_IOTC_SESSION_CLOSED, TutkCodes.AV_IOTC_DEINITIALIZED,
+        )
 
         // Vendor Session_Check mode: 0 P2P, 1 Relay, 2 LAN.
         fun modeOf(mode: Int): LinkMode = when (mode) {
@@ -454,9 +576,9 @@ class TutkLinkFactory @Inject constructor(
     //   OUTPUTS: { CameraLink - checks in order:
     //     1. transport != TUTK -> Failed(UNSUPPORTED_TRANSPORT, 0)
     //     2. blank p2pId (the cloud uid) -> Failed(NO_CREDENTIALS, 0)
-    //     3. needsPincode, or p2pEncrypt with no password -> Failed(NO_CREDENTIALS, 0)
+    //     3. needsPincode, or p2pEncrypt with a null or empty password -> Failed(NO_CREDENTIALS, 0)
     //     4. runtime Unavailable -> Failed(NATIVE_UNAVAILABLE, 0); InitFailed(code) -> Failed(NATIVE_UNAVAILABLE, code)
-    //     5. a link for credentials.deviceId still open -> Failed(ALREADY_OPEN, 0)
+    //     5. a link for credentials.deviceId still open (its threads not yet exited) -> Failed(ALREADY_OPEN, 0)
     //     6. else a new idle TutkCameraLink (call start(sink); always close it) }
     //   SIDE_EFFECTS: steps 1-3 make no native call; step 4 may run the process-once TUTK init (blocks up to 10 s on
     //     first use, so call off the main thread); one BLOCK_OPEN_LINK log line per call.
@@ -468,7 +590,7 @@ class TutkLinkFactory @Inject constructor(
         val refusal: LinkError? = when {
             credentials.transport != TransportType.TUTK -> LinkError(LinkErrorKind.UNSUPPORTED_TRANSPORT, 0)
             credentials.p2pId.isBlank() -> LinkError(LinkErrorKind.NO_CREDENTIALS, 0)
-            credentials.needsPincode || (credentials.p2pEncrypt && credentials.password == null) ->
+            credentials.needsPincode || (credentials.p2pEncrypt && credentials.password.isNullOrEmpty()) ->
                 LinkError(LinkErrorKind.NO_CREDENTIALS, 0)
             else -> when (val rt = runtime.ensureInitialized()) {
                 is TutkRuntimeState.Ready -> null

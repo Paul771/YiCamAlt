@@ -1,5 +1,5 @@
 // FILE: TutkCameraLinkTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TutkCameraLink and TutkLinkFactory over FakeTutkNative: vendor call order,
 //     nonce + HMAC auth, start command, LE frame heads, mode mapping, failure codes, frame drop rule, no-data bound,
@@ -54,11 +54,16 @@ import java.util.concurrent.atomic.AtomicLong
 //   cancellation - close during connect / clientStart / streaming, idempotent close, start after close.
 //   timers - connect 30 s and first frame 20 s on an injected clock.
 //   factory tests - transport / credential refusals, runtime unavailable / failed, ALREADY_OPEN, reopen.
+//   review fixes - non-fatal codes skipped (logged once), vendor fatal list, -20001 buffer growth, late av after
+//     close (avClientStop once), thread guard, empty password, deferred registry release, stop after reader left.
 //   log hygiene - markers present; RedactionScanner over every buffer incl. the generated nonce and HMAC.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-11: created.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review: vendor fatal read codes and -20001 buffer growth (MED-5), late
+//     avClientStart2 after close (MED-6), thread guard / empty password (MED-7), deferred registry release (LOW-8),
+//     vendor stop only after the reader left avRecvFrameData2 (LOW-9).
+//   PREVIOUS: v0.1.0 - GSD plan 02-11: created.
 // END_CHANGE_SUMMARY
 
 class TutkCameraLinkTest {
@@ -444,6 +449,140 @@ class TutkCameraLinkTest {
     }
     // END_BLOCK_TIMER_TESTS
 
+    // START_BLOCK_REVIEW_FIX_TESTS
+    @Test
+    fun `non-fatal read codes are skipped, logged once per code, and streaming continues`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        fake.recvQueue += code(TutkCodes.AV_SERVER_EXIT)
+        fake.recvQueue += code(TutkCodes.AV_TIMEOUT)
+        fake.recvQueue += code(TutkCodes.AV_SERVER_EXIT)
+        fake.recvQueue += frame(seq = 2, key = false)
+        val link = newLink(fake, timeouts = TutkCameraLink.Timeouts(pollMs = 5, noDataSleepMs = 1))
+        val sink = RecordingSink()
+        link.start(sink)
+        awaitTrue(what = { sink.units.map { it.info.seq }.toString() }) { sink.units.size == 2 }
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        val text = recorder.bufferText()
+        assertEquals(1, Regex("skip=AV_ER_SERVER_EXIT").findAll(text).count(), text)
+        assertEquals(1, Regex("skip=AV_ER_TIMEOUT").findAll(text).count(), text)
+    }
+
+    @Test
+    fun `every vendor fatal read code ends the session`() {
+        TutkCameraLink.FATAL_READ_CODES.forEach { c ->
+            val fake = fake()
+            fake.recvQueue += frame(seq = 1)
+            fake.recvQueue += code(c)
+            val link = newLink(fake)
+            link.start(RecordingSink())
+            assertEquals(failed(TutkCodes.classify(c), c), awaitState(link) { it is LinkState.Failed }, "code=$c")
+        }
+        assertEquals(
+            setOf(-20015, -20016, -20010, -20000, -20018, -20019, -20025, -20026),
+            TutkCameraLink.FATAL_READ_CODES,
+        )
+    }
+
+    @Test
+    fun `buffer too small grows the buffer once and drops to the next key frame`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        fake.recvQueue += code(TutkCodes.AV_BUFPARA_MAXSIZE_INSUFF)
+        fake.recvQueue += frame(seq = 2, key = false)
+        fake.recvQueue += frame(seq = 3, key = true)
+        fake.recvQueue += code(TutkCodes.AV_BUFPARA_MAXSIZE_INSUFF)
+        fake.recvQueue += frame(seq = 4, key = true)
+        val link = newLink(fake, timeouts = TutkCameraLink.Timeouts(pollMs = 5, noDataSleepMs = 1))
+        val sink = RecordingSink()
+        link.start(sink)
+        awaitTrue(what = { sink.units.map { it.info.seq }.toString() }) { sink.units.size == 3 }
+        assertEquals(listOf(1, 3, 4), sink.units.map { it.info.seq })
+        assertEquals(TutkCameraLink.FRAME_BUF_SIZE, fake.bufSizes.first())
+        assertEquals(TutkCameraLink.LARGE_FRAME_BUF_SIZE, fake.bufSizes.last())
+        assertEquals(setOf(TutkCameraLink.FRAME_BUF_SIZE, TutkCameraLink.LARGE_FRAME_BUF_SIZE), fake.bufSizes.toSet())
+        assertTrue(link.state.value is LinkState.Streaming)
+    }
+
+    @Test
+    fun `avClientStart2 returning after close still gets avClientStop exactly once`() {
+        val fake = fake().apply {
+            clientStartGate = CountDownLatch(1)
+            abortedClientStartResult = ClientStart(0, 0)
+        }
+        val cam = CAM.incrementAndGet()
+        val link = newLink(fake, cam = cam)
+        link.start(RecordingSink())
+        awaitTrue { fake.callCount("clientStart") == 1 }
+        link.close()
+        assertThreadsGone(cam)
+        assertEquals(listOf("stop av=-1 sid=0", "stop av=0 sid=-1"), fake.calls.filter { it.startsWith("stop") })
+        assertEquals(0, fake.callCount("sendIoCtrl"))
+        assertEquals(1, closedCount.get())
+    }
+
+    @Test
+    fun `a sink that throws an Error ends the link as INTERNAL with the vendor stop`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        link.start(object : VideoUnitSink {
+            override fun onVideoUnit(unit: VideoUnit) = throw AssertionError("SYNTH sink failure")
+        })
+        assertEquals(failed(LinkErrorKind.INTERNAL, 0), awaitState(link) { it is LinkState.Failed })
+        awaitTrue { fake.callCount("stop") == 1 }
+        assertEquals(listOf("stop av=0 sid=0"), fake.calls.filter { it.startsWith("stop") })
+        assertTrue(recorder.bufferText().contains("[P2P][tutk][BLOCK_THREAD_GUARD]"))
+    }
+
+    @Test
+    fun `an empty encrypted password fails INTERNAL and releases the session`() {
+        val fake = fake()
+        val link = newLink(fake, creds(password = ""))
+        link.start(RecordingSink())
+        assertEquals(failed(LinkErrorKind.INTERNAL, 0), awaitState(link) { it is LinkState.Failed })
+        awaitTrue { fake.callCount("stop") == 1 }
+        assertEquals(0, fake.callCount("clientStart"))
+    }
+
+    @Test
+    fun `registry entry is released only after a stuck connect thread exits`() {
+        val gate = CountDownLatch(1)
+        val fake = fake().apply {
+            connectGate = gate
+            connectIgnoresStop = true
+        }
+        val link = newLink(fake, timeouts = TutkCameraLink.Timeouts(pollMs = 5, joinMs = 300))
+        link.start(RecordingSink())
+        awaitTrue { fake.callCount("connectByUid") == 1 }
+        link.close()
+        assertEquals(LinkState.Closed("user"), link.state.value)
+        Thread.sleep(100)
+        assertEquals(0, closedCount.get())
+        gate.countDown()
+        awaitTrue { closedCount.get() == 1 }
+        assertTrue(recorder.bufferText().contains("registry=deferred"))
+    }
+
+    @Test
+    fun `vendor stop runs only after the reader left avRecvFrameData2`() {
+        repeat(3) {
+            val fake = fake().apply { recvDelayMs = 15 }
+            fake.recvQueue += frame(seq = 1)
+            // No pause between polls: the reader is almost always inside recvFrame when close() runs.
+            val link = newLink(fake, timeouts = TutkCameraLink.Timeouts(pollMs = 5, noDataSleepMs = 0))
+            link.start(RecordingSink())
+            awaitState(link) { it is LinkState.Streaming }
+            Thread.sleep(20)
+            link.close()
+            assertEquals(0, fake.recvInFlightAtStop)
+            val calls = fake.calls.toList()
+            val stopAt = calls.indexOfFirst { c -> c.startsWith("stop") }
+            assertTrue(calls.subList(stopAt, calls.size).none { c -> c.startsWith("recvFrame") }, calls.toString())
+        }
+    }
+    // END_BLOCK_REVIEW_FIX_TESTS
+
     // START_BLOCK_FACTORY_TESTS
     private class Loader(private val fail: Boolean = false) : (String) -> Unit {
         val loaded = CopyOnWriteArrayList<String>()
@@ -466,7 +605,7 @@ class TutkCameraLinkTest {
         listOf(TransportType.TNP, TransportType.LANGTAO, TransportType.UNKNOWN).forEach {
             assertEquals(failed(LinkErrorKind.UNSUPPORTED_TRANSPORT, 0), f.openTracked(creds(transport = it)).state.value)
         }
-        listOf(creds(p2pId = " "), creds(needsPincode = true), creds(password = null)).forEach {
+        listOf(creds(p2pId = " "), creds(needsPincode = true), creds(password = null), creds(password = "")).forEach {
             assertEquals(failed(LinkErrorKind.NO_CREDENTIALS, 0), f.openTracked(it).state.value, it.toString())
         }
         assertTrue(fake.calls.isEmpty(), fake.calls.toString())
