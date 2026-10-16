@@ -1,5 +1,5 @@
 // FILE: LiveProbeScreen.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Minimal debug live screen for one camera: SurfaceView video, Connect / Stop, "relay only" toggle,
 //     HEVC decoder info, explicit message and the value-free status line (full live view is GSD Phase 3).
@@ -40,6 +40,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -53,9 +54,11 @@ import androidx.lifecycle.LifecycleEventObserver
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - fix invisible UI on a dark phone theme: the screen is shown outside the Scaffold, so it now
+//   LAST_CHANGE: v0.1.2 - the probe background is fixed white with black text regardless of the phone theme (user
+//     request); v0.1.1 had followed the dark theme and turned black.
+//   PREV_CHANGE: v0.1.1 - fix invisible UI on a dark phone theme: the screen is shown outside the Scaffold, so it now
 //     wraps its content in a themed Surface (background + onBackground) and safeDrawingPadding.
-//   PREV_CHANGE: v0.1.0 - GSD plan 02-09: initial debug live screen opened from the camera list.
+//   OLDER_CHANGE: v0.1.0 - GSD plan 02-09: initial debug live screen opened from the camera list.
 // END_CHANGE_SUMMARY
 
 @Composable
@@ -86,12 +89,13 @@ fun LiveProbeScreen(
 
     // START_BLOCK_RENDER_PROBE
     val ui by viewModel.ui.collectAsState()
-    // The probe replaces the Scaffold-hosted tabs, so it must paint its own themed background and content color;
-    // without a Surface the text keeps the default black and vanishes on a dark window.
+    // The probe replaces the Scaffold-hosted tabs, so it must paint its own background and content color. It is
+    // always white with black text (the look the user asked for) whatever the phone theme is; without a Surface
+    // the text keeps the default black and vanishes on a dark window.
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-        contentColor = MaterialTheme.colorScheme.onBackground,
+        color = Color.White,
+        contentColor = Color.Black,
     ) {
     Column(
         modifier = Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(12.dp),
