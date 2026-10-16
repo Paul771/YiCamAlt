@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-10-PLAN.md
-last_updated: "2026-10-15T17:11:59.668Z"
-last_activity: 2026-10-15
+stopped_at: Completed 02-11-PLAN.md
+last_updated: "2026-10-16T05:14:37.203Z"
+last_activity: 2026-10-16
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 26
-  completed_plans: 24
+  completed_plans: 25
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 02 (p2p) — EXECUTING
-Plan: 12 of 13
+Plan: 13 of 13
 Status: Ready to execute
-Last activity: 2026-10-15
+Last activity: 2026-10-16
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P08 | 25min | 2 tasks | 5 files |
 | Phase 02-p2p P09 | 35min | 2 tasks | 8 files |
 | Phase 02-p2p P10 | 35min | 3 tasks | 17 files |
+| Phase 02-p2p P11 | 40min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: LiveProbe: ON_STOP closes the session, not the VM; Connect re-enabled, no auto-reconnect
 - [Phase 02-p2p]: TUTK init: IOTC_Initialize2 >=0 or -3 and avInitialize >=0 or -20031 are Ready; 10 s bound gives InitFailed(-13), late result adopted
 - [Phase 02-p2p]: TUTK shim omits DeInitialize natives; names pinned from .so strings (12 classes/interfaces)
+- [Phase 02-p2p]: 02-11: TransportLinkFactory bound as CameraLinkFactory; TUTK connect timer covers connect+check+clientStart; teardown frees sid0 via stop(-1, sid0) after a failed/aborted connect
+- [Phase 02-p2p]: 02-11: TUTK -20012 polling bounded at 300 x 30 ms -> Failed(TIMEOUT, -20012), no vendor auto-reconnect
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-15T17:11:59.662Z
-Stopped at: Completed 02-10-PLAN.md
+Last session: 2026-10-16T05:14:37.197Z
+Stopped at: Completed 02-11-PLAN.md
 Resume file: None
