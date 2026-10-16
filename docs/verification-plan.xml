@@ -138,12 +138,12 @@
     <row-M-REPO-HYGIENE success="2" failure="4" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
     <row-M-DEBUG-PROBE success="4" failure="4" deterministic="8" trace="1" integration="0" semantic="0" autonomy="ready" />
     <row-M-P2P-CREDS success="3" failure="3" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
-    <row-M-P2P-NATIVE success="3" failure="3" deterministic="5" trace="2" integration="0" semantic="0" autonomy="conditional" STATUS="planned" />
-    <row-M-TNP-LINK success="4" failure="5" deterministic="7" trace="4" integration="0" semantic="0" autonomy="conditional" STATUS="planned" />
-    <row-M-STREAM-CORE success="6" failure="3" deterministic="9" trace="1" integration="0" semantic="0" autonomy="ready" STATUS="planned" />
-    <row-M-MEDIA-RENDER success="2" failure="2" deterministic="3" trace="2" integration="0" semantic="0" autonomy="conditional" STATUS="planned" />
-    <row-M-UI-LIVE-PROBE success="3" failure="2" deterministic="4" trace="2" integration="0" semantic="0" autonomy="conditional" STATUS="planned" />
-    <row-M-TUTK-LINK success="2" failure="2" deterministic="3" trace="2" integration="0" semantic="0" autonomy="conditional" STATUS="planned" />
+    <row-M-P2P-NATIVE success="6" failure="3" deterministic="8" trace="1" integration="0" semantic="0" autonomy="conditional" STATUS="in-progress" />
+    <row-M-TNP-LINK success="6" failure="7" deterministic="12" trace="2" integration="0" semantic="0" autonomy="conditional" STATUS="in-progress" />
+    <row-M-STREAM-CORE success="6" failure="3" deterministic="9" trace="0" integration="0" semantic="0" autonomy="ready" STATUS="in-progress" />
+    <row-M-MEDIA-RENDER success="4" failure="3" deterministic="5" trace="3" integration="0" semantic="0" autonomy="conditional" STATUS="in-progress" />
+    <row-M-UI-LIVE-PROBE success="5" failure="5" deterministic="9" trace="1" integration="0" semantic="0" autonomy="conditional" STATUS="in-progress" />
+    <row-M-TUTK-LINK success="6" failure="5" deterministic="7" trace="4" integration="0" semantic="0" autonomy="conditional" STATUS="in-progress" />
   </VerificationMatrix>
 
   <ModuleVerification>
@@ -358,6 +358,8 @@
       <gate-evidence>
         <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; CameraRegistryModuleTest 20/20, CameraRegistryCredentialsTest 16/16, DeviceRecordParserTest 14/14</evidence-1>
         <evidence-2>Device evidence pending: plan 01-11 Task 2/3 (01-DEVICE-VERIFICATION.md); STATUS stays in-progress until then</evidence-2>
+        <evidence-3>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; CameraRegistryModuleTest 22, CameraRegistryCredentialsTest 23, DeviceRecordParserTest 14 (device_info for every unverified camera, plan 02-01)</evidence-3>
+        <evidence-4>Device check 1 (02-DEVICE-CHECK-1.md): BLOCK_RESOLVE_P2P_CREDENTIALS with via= / listType= / tnpInfo=, summary verified=2 of devices=2; sweep clean</evidence-4>
       </gate-evidence>
       <wave-follow-up>Camera list displayed in shell UI.</wave-follow-up>
       <phase-follow-up>Multi-camera scenario: 3+ cameras with different models.</phase-follow-up>
@@ -462,6 +464,8 @@
       </notes>
       <gate-evidence>
         <evidence-1>2026-10-12 plan 01-11 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 22 suites, 278 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; P2pCredentialsTest 10/10, CameraPasswordCipherTest 7/7, P2pCredentialStoreTest 8/8</evidence-1>
+        <evidence-2>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; P2pCredentialsTest 11, CameraPasswordCipherTest 7, P2pCredentialStoreTest 10 (vendor transport rule, plan 02-01)</evidence-2>
+        <evidence-3>Device check 1 (02-DEVICE-CHECK-1.md): vendor rule on the real account gives TRANSPORTS tnp=1 tutk=1 langtao=0 unknown=0, verified=2 of 2 (camera A via=deviceInfo, camera B via=uid)</evidence-3>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-P2P-CREDS>
@@ -623,16 +627,18 @@
       </stop-conditions>
     </V-M-STREAM-LIVE>
 
-    <V-M-P2P-NATIVE MODULE="M-P2P-NATIVE" PRIORITY="high" STATUS="planned">
+    <V-M-P2P-NATIVE MODULE="M-P2P-NATIVE" PRIORITY="high" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</file>
         <file>app/src/test/java/com/yicamalt/p2p/ShimContractTest.kt</file>
         <file>app/src/test/java/com/yicamalt/p2p/PpppRuntimeTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/p2p/FakePpppNative.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.p2p.*"</check-1>
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
-        <check-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:verifyVendorNatives</check-3>
+        <check-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:extractVendorNatives :app:verifyVendorNatives</check-3>
+        <check-4>git ls-files | grep -Eic '\.(apk|apkm|xapk|so|dex)$' (expect 0)</check-4>
       </module-checks>
       <scenarios>
         <scenario-1 kind="success" evidence-type="deterministic">PpppCodes classify / name table</scenario-1>
@@ -640,12 +646,15 @@
         <scenario-3 kind="success" evidence-type="deterministic">Shim classes at vendor FQCNs with the exact native signatures</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic">Missing vendor library is a NATIVE_UNAVAILABLE state, not a crash</scenario-4>
         <scenario-5 kind="failure" evidence-type="deterministic">Second init is a no-op (once per process); DeInitialize never called</scenario-5>
-        <scenario-6 kind="failure" evidence-type="deterministic">Vendor native SHA-256 mismatch fails the build</scenario-6>
+        <scenario-6 kind="failure" evidence-type="deterministic">Vendor native SHA-256 mismatch fails the build: a fake APK with eight 8-byte entries gives 8 DIFF lines and the -PvendorNativesAccept=true hint, exit 1; manifest unchanged (plan 02-02 simulation 2)</scenario-6>
+        <scenario-7 kind="success" evidence-type="deterministic">Fresh clone without an APK: JVM tests run (status MISSING warning, BUILD SUCCESSFUL); only APK assembly / verifyVendorNatives fails with the HANDOFF.md hint (plan 02-02 simulations 1a / 1b)</scenario-7>
+        <scenario-8 kind="success" evidence-type="deterministic">Real APK: extractVendorNatives + verifyVendorNatives print "vendor natives: OK (8 libs, manifest match)"; assembleDebug depends on verify, testDebugUnitTest does not (plan 02-02, re-run in every plan 02-12 assembleDebug)</scenario-8>
+        <scenario-9 kind="success" evidence-type="trace">Device check 1 (02-DEVICE-CHECK-1.md): vendor PPPP library loads through our shim, init=0, api=0xA2050401 (CRITERION_1_RUNTIME PASS); redaction sweep clean</scenario-9>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][native][BLOCK_LOAD_NATIVE]</marker-1>
         <marker-2>[P2P][runtime][BLOCK_INIT_PPPP] init=&lt;code&gt; api=&lt;hex&gt; debug=off</marker-2>
-        <marker-3>[Media][catalog][BLOCK_QUERY_DECODERS] avc=&lt;name|none&gt; avcHw=&lt;b&gt; hevc=&lt;name|none&gt; hevcHw=&lt;b&gt;</marker-3>
+        <marker-3>[Media][catalog][BLOCK_QUERY_DECODERS] avc=&lt;name|none&gt; avcHw=&lt;b&gt; hevc=&lt;name|none&gt; hevcHw=&lt;b&gt; (device-only; DecoderCatalog.summary() has no caller yet, so the marker is not emitted; BLOCK_NATIVE_CHECK carries the same facts, see 02-DEVICE-CHECK-1)</marker-3>
         <marker-4>[Settings][nativeCheck][BLOCK_NATIVE_CHECK] libs=&lt;OK|MISSING|ERROR&gt; abi=&lt;abi&gt; ppppApi=&lt;0xHEX|-&gt; init=&lt;code|-&gt; tutkLibs=&lt;OK|MISSING|ERROR&gt; avc=&lt;name|none&gt;(hw|sw) hevc=&lt;name|none&gt;(hw|sw) [hevcNote=no-decoder]</marker-4>
       </required-log-markers>
       <required-trace-assertions>
@@ -656,10 +665,19 @@
         <note-2>2026-10-13 plan 02-00: PpppContractTest (13 tests) green against FakePpppNative.</note-2>
         <note-3>2026-10-14 plan 02-03: ShimContractTest (5) and PpppRuntimeTest (16) green; Settings "Проверить P2P" (debug) produces the BLOCK_NATIVE_CHECK line read at checkpoint 02-06.</note-3>
       </notes>
+      <device-log-markers>
+        <marker-1>[P2P][native][BLOCK_LOAD_NATIVE] abi=&lt;abi&gt; pppp=&lt;ok|missing|error|skipped&gt; tutk=&lt;ok|missing|error|skipped&gt;</marker-1>
+        <marker-2>[P2P][runtime][BLOCK_INIT_PPPP] init=&lt;code&gt; api=0x&lt;HEX&gt; debug=off</marker-2>
+      </device-log-markers>
+      <gate-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; PpppContractTest 13, ShimContractTest 5, PpppRuntimeTest 16; "vendor natives: OK (8 libs, manifest match)"</evidence-1>
+        <evidence-2>2026-10-15 device check 1 (02-DEVICE-CHECK-1.md): CRITERION_1_RUNTIME PASS, RESULT PASS, RealLogScanTest sweep skipped=0 failures=0</evidence-2>
+        <evidence-3>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-3>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-P2P-NATIVE>
 
-    <V-M-TNP-LINK MODULE="M-TNP-LINK" PRIORITY="high" STATUS="planned">
+    <V-M-TNP-LINK MODULE="M-TNP-LINK" PRIORITY="high" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/p2p/tnp/TnpCameraLinkTest.kt</file>
         <file>app/src/test/java/com/yicamalt/p2p/tnp/TnpLinkFactoryTest.kt</file>
@@ -680,6 +698,8 @@
         <scenario-9 kind="success" evidence-type="deterministic">First ch0 reply with another TNPHead.version: version adopted, only 4881 re-sent once (same useCount, resolution)</scenario-9>
         <scenario-10 kind="failure" evidence-type="deterministic">Dirty head (zero-size / too-large) ends in Failed(PROTOCOL, -9000)</scenario-10>
         <scenario-11 kind="failure" evidence-type="deterministic">No video 20 s after the burst ends in Failed(TIMEOUT, 0)</scenario-11>
+        <scenario-12 kind="success" evidence-type="deterministic">Auth reply (rx0) racing the first video unit (rx2) always ends in Streaming(authOk=true), 15 rounds (plan 02-12 fix, TnpCameraLink v0.1.1)</scenario-12>
+        <scenario-13 kind="success" evidence-type="trace">Device: the TNP camera on Wi-Fi and on mobile data reaches state=STREAMING with mode shown; codec / decoder recorded (02-DEVICE-VERIFICATION.md)</scenario-13>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -696,11 +716,25 @@
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
       </required-trace-assertions>
+      <device-log-markers>
+        <marker-1>[P2P][factory][BLOCK_OPEN_LINK] cam=&lt;n&gt; transport=&lt;T&gt; result=&lt;started|NAME&gt;</marker-1>
+        <marker-2>[P2P][tnp][BLOCK_CONNECT] cam=&lt;n&gt; relayForced=&lt;b&gt; wakeup=&lt;b&gt; result=&lt;ok|NAME&gt; ms=&lt;n&gt;</marker-2>
+        <marker-3>[P2P][tnp][BLOCK_CHECK_SESSION] cam=&lt;n&gt; mode=&lt;MODE&gt; lan=&lt;b&gt; connectMs=&lt;n&gt;</marker-3>
+        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY|UNKNOWN&gt; version=&lt;n&gt;</marker-4>
+        <marker-5>[P2P][tnp][BLOCK_FIRST_VIDEO] cam=&lt;n&gt; ch=&lt;n&gt; codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt;</marker-5>
+        <marker-6>[P2P][tnp][BLOCK_READ_LOOP] cam=&lt;n&gt; ch=&lt;n&gt; exit=&lt;closed|error|dirty&gt; code=&lt;NAME&gt; units=&lt;n&gt;</marker-6>
+        <marker-7>[P2P][tnp][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;reason&gt; units=&lt;n&gt; joinMs=&lt;n&gt;</marker-7>
+      </device-log-markers>
+      <gate-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TnpCameraLinkTest 19, TnpLinkFactoryTest 5</evidence-1>
+        <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
       <note-1>2026-10-15 GSD plan 02-07: JVM evidence over FakePpppNative (TnpCameraLinkTest 18, TnpLinkFactoryTest 5); STATUS stays planned until the device checkpoint of plan 02-12.</note-1>
+      <note-2>2026-10-16 plan 02-12: STATUS in-progress (implemented, JVM-passed); TnpCameraLinkTest 19 after the auth/video race regression. The race showed once under full-suite load and is not reproducible on demand; scenario-12 is a probabilistic guard.</note-2>
     </V-M-TNP-LINK>
 
-    <V-M-STREAM-CORE MODULE="M-STREAM-CORE" PRIORITY="high" STATUS="planned">
+    <V-M-STREAM-CORE MODULE="M-STREAM-CORE" PRIORITY="high" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</file>
         <file>app/src/test/java/com/yicamalt/stream/YiP2pAuthTest.kt</file>
@@ -717,29 +751,35 @@
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">Port types: VideoCodec wire ids, FrameInfo key flag, value-free toString</scenario-1>
-        <scenario-2 kind="success" evidence-type="deterministic">authInfo known-answer vector (RFC 2202 HMAC)</scenario-2>
-        <scenario-3 kind="success" evidence-type="deterministic">TNP command framing and IOCTRL bodies</scenario-3>
-        <scenario-4 kind="success" evidence-type="deterministic">Frame head parse (big- and little-endian)</scenario-4>
-        <scenario-5 kind="success" evidence-type="deterministic">I-frame AES decrypt known-answer vector (FIPS-197)</scenario-5>
-        <scenario-6 kind="success" evidence-type="deterministic">NAL split, csd extraction, frame assembly, first key frame gate</scenario-6>
-        <scenario-7 kind="failure" evidence-type="deterministic">Unsupported codec reported via onUnsupportedCodec</scenario-7>
-        <scenario-8 kind="failure" evidence-type="deterministic">Truncated frame head rejected</scenario-8>
-        <scenario-9 kind="failure" evidence-type="deterministic">Wrong key yields decryptOk=false, no crash</scenario-9>
+        <scenario-1 kind="success" evidence-type="deterministic">Port types: VideoCodec wire ids, FrameInfo key flag, value-free toString (PpppContractTest)</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">YiP2pAuthTest: RFC 2202 HmacSHA1 vectors, frozen synthetic pass15 vector, 32-byte authInfo layout (nonce + HMAC, admin form)</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">TnpCodecTest + IoCtrlMessagesTest: byte-exact 56 / 52 / 56-byte command units for 4881 / 9029 / 768, TNPHead / IOCtrlHead round trip, per-channel head validation, reply parsing, authOutcome / kickCode / ResolutionPolicy</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">FrameHeadCodecTest: 24-byte frame head, big-endian (TNP) and little-endian (TUTK)</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic">IFrameDecryptorTest: FIPS-197 C.1 through our cipher path; blocks [4,20) and [20,36) decrypted independently, key = password + '0'</scenario-5>
+        <scenario-6 kind="success" evidence-type="deterministic">NalUtilsTest + FrameAssemblerTest + FramePipelineTest: Annex-B / length-prefixed framing, AVC and HEVC NAL types and parameter sets, keyframe gate, u16 P reorder across the wrap, MAX_PENDING 100, useCount generation filter, csd caching, transport buffer never modified</scenario-6>
+        <scenario-7 kind="failure" evidence-type="deterministic">Unsupported codec reported via onUnsupportedCodec once per id (FramePipelineTest)</scenario-7>
+        <scenario-8 kind="failure" evidence-type="deterministic">Truncated frame head / short reply rejected (FrameHeadCodecTest, TnpCodecTest)</scenario-8>
+        <scenario-9 kind="failure" evidence-type="deterministic">Wrong key yields decryptOk=false, no crash, frame still forwarded (fail-open; IFrameDecryptorTest, FramePipelineTest)</scenario-9>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Stream][pipeline][BLOCK_FIRST_KEYFRAME]</marker-1>
+        <marker-1>[Stream][pipeline][BLOCK_FIRST_KEYFRAME] codec=&lt;H264|H265&gt; framing=&lt;annexb|length|unknown&gt; nals=&lt;types&gt; decryptOk=&lt;b&gt; size=&lt;WxH&gt;</marker-1>
+        <marker-2>[Stream][pipeline][BLOCK_MAP_CODEC] unsupported codecId=&lt;n&gt;</marker-2>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
       </required-trace-assertions>
       <notes>
         <note-1>2026-10-13 plan 02-00: port types StreamTypes.kt / CameraLink.kt created and covered by PpppContractTest.</note-1>
+        <note-2>2026-10-16 plan 02-12: protocol core from plans 02-04 / 02-05 (mutation checks as RED evidence); STATUS in-progress until device frames are decoded.</note-2>
       </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; YiP2pAuthTest 8, TnpCodecTest 11, IoCtrlMessagesTest 5, FrameHeadCodecTest 5, IFrameDecryptorTest 6, NalUtilsTest 10, FrameAssemblerTest 9, FramePipelineTest 10</evidence-1>
+        <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-STREAM-CORE>
 
-    <V-M-MEDIA-RENDER MODULE="M-MEDIA-RENDER" PRIORITY="medium" STATUS="planned">
+    <V-M-MEDIA-RENDER MODULE="M-MEDIA-RENDER" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</file>
       </test-files>
@@ -755,6 +795,7 @@
         <scenario-5 kind="success" evidence-type="deterministic">FrameQueue rejects P-frames before a key frame; the 9th frame drops the oldest and closes the gate (DecoderPolicyTest)</scenario-5>
         <scenario-6 kind="failure" evidence-type="deterministic">3 codec errors without a render exhaust ResetCounter (status Failed, no loop)</scenario-6>
         <scenario-7 kind="success" evidence-type="deterministic">csd map AVC csd-0/csd-1, HEVC csd-0; PtsGuard strictly increasing; NoDecoder text "H.265: на этом телефоне нет декодера"</scenario-7>
+        <scenario-8 kind="success" evidence-type="trace">Device: decoder name and hw flag of each camera's codec on the status line match BLOCK_CREATE_DECODER; first render logged (02-DEVICE-VERIFICATION.md)</scenario-8>
       </scenarios>
       <required-log-markers>
         <marker-1>[Media][catalog][BLOCK_QUERY_DECODERS]</marker-1>
@@ -766,10 +807,17 @@
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
       </required-trace-assertions>
+      <notes>
+        <note-1>VideoDecoder and DecoderCatalog are Android-only (MediaCodec); their markers are device evidence. JVM evidence is DecoderPolicyTest. Device check 1 lists hardware AVC and HEVC decoders on the user's phone.</note-1>
+      </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; DecoderPolicyTest 9</evidence-1>
+        <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-MEDIA-RENDER>
 
-    <V-M-UI-LIVE-PROBE MODULE="M-UI-LIVE-PROBE" PRIORITY="medium" STATUS="planned">
+    <V-M-UI-LIVE-PROBE MODULE="M-UI-LIVE-PROBE" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/ui/live/LiveProbeViewModelTest.kt</file>
       </test-files>
@@ -787,6 +835,7 @@
         <scenario-7 kind="success" evidence-type="deterministic">factory.open and HevcProbe.describe run off Main; a 1 s blocking factory does not block connect(); a second press while in flight is ignored</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">Decoder resetEvents re-arm the FramePipeline key-frame gate</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">Every LinkErrorKind and decoder NoDecoder map to explicit Russian texts (TUTK, Langtao, unknown transport, offline, wrong password, native libs, kicked)</scenario-9>
+        <scenario-10 kind="success" evidence-type="trace">Device: camera row tap -> live screen -> "Подключить" shows moving video with state=STREAMING and mode= on Wi-Fi and on mobile data, for every camera of the account (02-DEVICE-VERIFICATION.md)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE]</marker-1>
@@ -794,13 +843,24 @@
         <marker-3>[LiveProbe][vm][BLOCK_STATUS]</marker-3>
         <marker-4>[LiveProbe][vm][BLOCK_CLOSE_PROBE]</marker-4>
       </required-log-markers>
+      <device-log-markers>
+        <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE] transport=&lt;T&gt; verified=&lt;b&gt; hasCreds=&lt;b&gt;</marker-1>
+        <marker-2>[LiveProbe][vm][BLOCK_CONNECT_PRESSED] relayForced=&lt;b&gt; press=&lt;n&gt;</marker-2>
+        <marker-3>[LiveProbe][vm][BLOCK_STATUS] transport= state= mode= lan= relayForced= codec= decoder= hw= fps= frames= keyFrames= decryptOk= auth= error=</marker-3>
+        <marker-4>[LiveProbe][vm][BLOCK_CLOSE_PROBE] reason=&lt;user|screen-left|background&gt; frames=&lt;n&gt;</marker-4>
+        <marker-5>[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live</marker-5>
+      </device-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
       </required-trace-assertions>
+      <gate-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; LiveProbeViewModelTest 17, CameraListViewModelTest 17; app-debug.apk built for the phone check</evidence-1>
+        <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-UI-LIVE-PROBE>
 
-    <V-M-TUTK-LINK MODULE="M-TUTK-LINK" PRIORITY="medium" STATUS="planned">
+    <V-M-TUTK-LINK MODULE="M-TUTK-LINK" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/p2p/tutk/TutkShimContractTest.kt</file>
         <file>app/src/test/java/com/yicamalt/p2p/tutk/TutkRuntimeTest.kt</file>
@@ -823,6 +883,7 @@
         <scenario-8 kind="success" evidence-type="trace">TutkCameraLink vendor order sessionId, connectByUid(cloud uid, sid0), check, clientStart(15-char nonce user, 15-char HMAC pass | admin), sendIoCtrl 8190 | 511 with LE useCount 1, recv loop -> VideoUnit with LE FrameInfo -> Streaming(authOk true); modes 0 P2P / 1 RELAY / 2 LAN (TutkCameraLinkTest, plan 02-11)</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">clientStart -20009 WRONG_PASSWORD; negative connect / sessionId / check / sendIoCtrl classified; -20015 mid-stream REMOTE_CLOSED; 300 consecutive -20012 TIMEOUT(-20012); -20013 / -20014 drop to the next key frame staying Streaming; no reconnect; connect 30 s TIMEOUT(-13), first frame 20 s TIMEOUT(0) (TutkCameraLinkTest, plan 02-11)</scenario-9>
         <scenario-10 kind="success" evidence-type="deterministic">close during connect -> connectStop(sid0) + stop(-1, sid0) once; during clientStart -> stop(-1, sid) aborts it; while streaming -> stop(av, sid) once; idempotent; tutk-&lt;n&gt;-* threads gone within 2 s; TutkLinkFactory refusals and ALREADY_OPEN (TutkCameraLinkTest, plan 02-11)</scenario-10>
+        <scenario-11 kind="success" evidence-type="trace">Device: the TUTK camera of the account streams through TransportLinkFactory -> TutkCameraLink on Wi-Fi and on mobile data (02-DEVICE-VERIFICATION.md)</scenario-11>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -831,7 +892,16 @@
         <marker-4>[P2P][tutk][BLOCK_READ_LOOP]</marker-4>
         <marker-5>[P2P][tutk][BLOCK_CLOSE]</marker-5>
         <marker-6>[P2P][tutk][BLOCK_INIT_TUTK]</marker-6>
+        <marker-7>[P2P][factory][BLOCK_DISPATCH_LINK]</marker-7>
       </required-log-markers>
+      <device-log-markers>
+        <marker-1>[P2P][tutk][BLOCK_INIT_TUTK] iotc=&lt;code&gt; av=&lt;code&gt; iotcVer=0x&lt;HEX&gt; avVer=0x&lt;HEX&gt; result=ready</marker-1>
+        <marker-2>[P2P][tutk][BLOCK_CONNECT] cam=&lt;n&gt; step=sessionId|connect result=ok|&lt;NAME&gt; ms=&lt;n&gt;</marker-2>
+        <marker-3>[P2P][tutk][BLOCK_CHECK_SESSION] cam=&lt;n&gt; mode=&lt;MODE&gt; lan=&lt;b&gt; connectMs=&lt;n&gt;</marker-3>
+        <marker-4>[P2P][tutk][BLOCK_CLIENT_START] cam=&lt;n&gt; encrypted=&lt;b&gt; result=ok|&lt;NAME&gt;, then cmd=8190|511 result=ok|&lt;NAME&gt;</marker-4>
+        <marker-5>[P2P][tutk][BLOCK_READ_LOOP] cam=&lt;n&gt; first=video codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt; | exit=closed|error|no-data code=&lt;NAME&gt; units=&lt;n&gt; dropped=&lt;n&gt;</marker-5>
+        <marker-6>[P2P][tutk][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;r&gt; units=&lt;n&gt; joinMs=&lt;n&gt;</marker-6>
+      </device-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
       </required-trace-assertions>
@@ -839,7 +909,12 @@
         <note-1>Conditional: plans 02-10 / 02-11 run only if device check 02-06 finds a TUTK camera; otherwise this node is closed as not-needed.</note-1>
         <note-2>Device check 1 (02-DEVICE-CHECK-1.md): GATE_2B needed (tnp=1 tutk=1). Plan 02-10 delivered the shim, the TutkNative seam, AndroidTutkNative and TutkRuntime; TutkCameraLink and the transport factory follow in plan 02-11.</note-2>
         <note-3>Plan 02-11 done: TutkCameraLink + TutkLinkFactory + TransportLinkFactory (P2pLinkModule binds CameraLinkFactory to it). JVM only; device proof in plan 02-12. Extra marker: [P2P][factory][BLOCK_DISPATCH_LINK] for LANGTAO / UNKNOWN refusals.</note-3>
+        <note-4>2026-10-16 plan 02-12: module needed (GATE_2B: needed) and implemented; STATUS in-progress until the TUTK camera is checked on the phone.</note-4>
       </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TutkShimContractTest 6, TutkRuntimeTest 14, TutkCameraLinkTest 20, TransportLinkFactoryTest 3</evidence-1>
+        <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-TUTK-LINK>
 
@@ -1183,7 +1258,7 @@
     <module id="M-STREAM-CORE" rating="ready" reason="pure Kotlin with known-answer vectors" />
     <module id="M-MEDIA-RENDER" rating="conditional" reason="MediaCodec behaviour is device-verified" />
     <module id="M-UI-LIVE-PROBE" rating="conditional" requires="device" />
-    <module id="M-TUTK-LINK" rating="conditional" reason="only if device check 02-06 finds a TUTK camera" />
+    <module id="M-TUTK-LINK" rating="conditional" reason="needed (GATE_2B: needed, 02-DEVICE-CHECK-1); device checkpoint required" />
     <module id="M-EVENT-PLAYBACK" rating="ready" />
     <module id="M-PUSH" rating="ready" />
     <module id="M-MEDIA" rating="ready" note="add one failure scenario before phase gate" />
@@ -1267,6 +1342,23 @@
         <evidence-7>All Phase-3 unit tests pass; trace-coverage check passes</evidence-7>
       </required-evidence>
     </Gate-Phase-3>
+
+    <Gate-GSD-Phase-2 PHASE="GSD 02-p2p (GRACE Phase-3 steps 8-13)" STATUS="in-progress">
+      <goal>Live video over the camera's own P2P link (TNP and TUTK) on the user's phone, on Wi-Fi and on mobile data, with mode / codec / decoder evidence and clean logs.</goal>
+      <commands>
+        <command-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest :app:assembleDebug</command-1>
+        <command-2>sh tools/git-hooks/pre-commit --range $(cat .planning/phases/02-p2p/02-PHASE-BASE.txt)..HEAD</command-2>
+        <command-3>sh tools/git-hooks/test-pre-commit.sh</command-3>
+        <command-4>git ls-files | grep -Eic '\.(apk|apkm|xapk|so|dex)$' (expect 0)</command-4>
+        <command-5>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks</command-5>
+      </commands>
+      <required-evidence>
+        <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures</evidence-1>
+        <evidence-2>Pre-commit range scan over 02-PHASE-BASE..HEAD exits 0; hook self-test passes; no vendor binary tracked (see plan 02-12 Task 1 run)</evidence-2>
+        <evidence-3>Device log redaction sweep (Phase 2): RealLogScanTest with -PredactionLogFile passes on the pulled diag_log.txt (+ .1) of the live-video session, executed not skipped (SEC-01); recorded in 02-DEVICE-VERIFICATION.md (pending, plan 02-12 Task 3)</evidence-3>
+        <evidence-4>LIVE-01 / LIVE-02 / LIVE-03 mapped to PASS or FAIL in .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (pending)</evidence-4>
+      </required-evidence>
+    </Gate-GSD-Phase-2>
 
     <Gate-Phase-4 PHASE="Phase-4">
       <goal>All features polished, push notifications working, UX complete, ready for release build.</goal>
