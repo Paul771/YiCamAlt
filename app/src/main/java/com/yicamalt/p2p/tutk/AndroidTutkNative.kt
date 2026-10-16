@@ -1,5 +1,5 @@
 // FILE: AndroidTutkNative.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: TutkNative over the JNI shim com.tutk.IOTC.IOTCAPIs / AVAPIs (device implementation of the seam).
 //   SCOPE: 1:1 mapping of the seam calls in the vendor client order; check() reduces St_SInfoEx to a value-free
@@ -11,6 +11,7 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.p2p.tutk
 
+import timber.log.Timber
 import com.tutk.IOTC.AVAPIs
 import com.tutk.IOTC.IOTCAPIs
 import com.tutk.IOTC.St_SInfoEx
@@ -23,7 +24,10 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-10: created. UID and address bytes of St_SInfoEx never leave check(): they
+//   LAST_CHANGE: v0.1.1 - device finding: avSendIOCtrl(767) blocked 10-80 s with the screen off, holding the camera slot;
+//     stop now sends it on a helper thread, aborts with avSendIOCtrlExit after 1.5 s, and logs per-step timing
+//     (BLOCK_STOP_SESSION: step names and ms only). Close time on the phone: 80 s -> 1.6 s.
+//   PREV_CHANGE: v0.1.0 - GSD plan 02-10: created. UID and address bytes of St_SInfoEx never leave check(): they
 //     are reduced to a boolean and zero-filled. Never logs; never de-initialises IOTC / AV.
 // END_CHANGE_SUMMARY
 
@@ -91,14 +95,38 @@ class AndroidTutkNative @Inject constructor() : TutkNative {
     // START_BLOCK_STOP_SESSION
     override fun stop(av: Int, sid: Int) {
         if (av >= 0) {
-            AVAPIs.avSendIOCtrl(av, STOP_TYPE, ByteArray(STOP_PAYLOAD_SIZE), STOP_PAYLOAD_SIZE)
-            AVAPIs.avSendIOCtrlExit(av)
-            AVAPIs.avClientStop(av)
+            // avSendIOCtrl blocks until the camera acknowledges; with the screen off / Wi-Fi asleep that took 10-80 s on
+            // the test phone and held the camera slot. Send on a helper thread and abort it with avSendIOCtrlExit (its
+            // documented purpose) after a short wait; the stop command is a courtesy, the session is closed below anyway.
+            val sender = Thread({
+                try {
+                    timed("sendIOCtrlStop") { AVAPIs.avSendIOCtrl(av, STOP_TYPE, ByteArray(STOP_PAYLOAD_SIZE), STOP_PAYLOAD_SIZE) }
+                } catch (t: Throwable) {
+                    Timber.w("[P2P][tutk][BLOCK_STOP_SESSION] step=sendIOCtrlStop error=%s", t.javaClass.simpleName)
+                }
+            }, "tutk-stop-send")
+            sender.isDaemon = true
+            sender.start()
+            sender.join(STOP_SEND_WAIT_MS)
+            val aborted = sender.isAlive
+            timed("sendIOCtrlExit") { AVAPIs.avSendIOCtrlExit(av) }
+            if (aborted) {
+                sender.join(STOP_SEND_JOIN_MS)
+                Timber.d("[P2P][tutk][BLOCK_STOP_SESSION] step=sendIOCtrlStop aborted=true stillAlive=%b", sender.isAlive)
+            }
+            timed("clientStop") { AVAPIs.avClientStop(av) }
         }
         if (sid >= 0) {
-            AVAPIs.avClientExit(sid, CLIENT_CHANNEL)
-            IOTCAPIs.IOTC_Session_Close(sid)
+            timed("clientExit") { AVAPIs.avClientExit(sid, CLIENT_CHANNEL) }
+            timed("sessionClose") { IOTCAPIs.IOTC_Session_Close(sid) }
         }
+    }
+
+    // Value-free per-step timing of the vendor teardown (step names and milliseconds only).
+    private inline fun timed(step: String, block: () -> Unit) {
+        val t0 = System.nanoTime()
+        block()
+        Timber.d("[P2P][tutk][BLOCK_STOP_SESSION] step=%s ms=%d", step, (System.nanoTime() - t0) / 1_000_000L)
     }
     // END_BLOCK_STOP_SESSION
 
@@ -107,5 +135,7 @@ class AndroidTutkNative @Inject constructor() : TutkNative {
         const val CLIENT_CHANNEL = 0
         const val STOP_TYPE = 767
         const val STOP_PAYLOAD_SIZE = 8
+        private const val STOP_SEND_WAIT_MS = 1_500L
+        private const val STOP_SEND_JOIN_MS = 2_000L
     }
 }
