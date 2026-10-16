@@ -503,9 +503,10 @@
         <export-AndroidTutkNative PURPOSE="TutkNative over the com.tutk.IOTC shim; St_SInfoEx reduced to mode + private flag, UID/addresses zero-filled" />
         <export-TutkRuntime PURPOSE="ensureInitialized(): load libs, IOTC_Initialize2(0), avInitialize(32), versions once per process on tutk-runtime (BLOCK_INIT_TUTK)" />
         <export-TutkRuntimeModule PURPOSE="Hilt: @Binds TutkNative to AndroidTutkNative" />
+        <export-TutkLinkFactory PURPOSE="@Singleton CameraLinkFactory for TUTK: credential checks, TutkRuntime init, one session per camera" />
         <class-IOTCAPIs PURPOSE="JNI shim com.tutk.IOTC.IOTCAPIs (7 natives) + AVAPIs (8 natives, 7 av*Fn interfaces), St_SInfoEx, Region, st_LanSearchInfo/2, st_SearchDeviceInfo, St_AvIdentity" />
       </annotations>
-      <change-summary>2026-10-15 GSD plan 02-10: GATE_2B needed (02-DEVICE-CHECK-1); TUTK shim, TutkNative seam, AndroidTutkNative, TutkRuntime implemented with JVM tests. TutkCameraLink follows in 02-11. STATUS stays planned until the device checkpoint.</change-summary>
+      <change-summary>2026-10-15 GSD plan 02-10: GATE_2B needed (02-DEVICE-CHECK-1); TUTK shim, TutkNative seam, AndroidTutkNative, TutkRuntime implemented with JVM tests. TutkCameraLink follows in 02-11. STATUS stays planned until the device checkpoint. 2026-10-16 GSD plan 02-11: TutkCameraLink, TutkLinkFactory and TransportLinkFactory implemented with JVM tests; P2pLinkModule binds CameraLinkFactory to TransportLinkFactory.</change-summary>
     </M-TUTK-LINK>
 
     <!-- CrossLinks: module dependencies -->
@@ -531,6 +532,9 @@
     <CrossLink from="M-UI-LIVE-PROBE" to="M-CAMERA-LIST" relation="credentials by device id" />
     <CrossLink from="M-MEDIA-RENDER" to="M-STREAM-CORE" relation="consumes DecodableFrame" />
     <CrossLink from="M-TUTK-LINK" to="M-P2P-NATIVE" relation="drives IOTC/AV sessions" />
+    <CrossLink from="M-TUTK-LINK" to="M-STREAM-CORE" relation="LE frame heads, nonce + HMAC auth, start command" />
+    <CrossLink from="M-TUTK-LINK" to="M-TNP-LINK" relation="TransportLinkFactory dispatches TNP to TnpLinkFactory" />
+    <CrossLink from="M-UI-LIVE-PROBE" to="M-TUTK-LINK" relation="opens TUTK cameras through TransportLinkFactory" />
     <CrossLink from="M-EVENT-PLAYBACK" to="M-HTTP" relation="uses for playback URL" />
     <CrossLink from="M-EVENT-PLAYBACK" to="M-AUTH" relation="uses for auth token" />
     <CrossLink from="M-EVENT-PLAYBACK" to="M-EVENT" relation="uses for playback resolution" />

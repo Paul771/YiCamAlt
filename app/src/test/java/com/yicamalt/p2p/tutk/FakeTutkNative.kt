@@ -1,5 +1,5 @@
 // FILE: FakeTutkNative.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scriptable JVM fake of TutkNative: records every call (with the calling thread name) and returns
 //     configured codes, so runtime and link tests run without the vendor libraries.
@@ -21,10 +21,14 @@ import java.util.concurrent.TimeUnit
 //   FakeTutkNative - TutkNative fake; calls (names), threads (thread per call), callCount(name).
 //   initGate - when set, initialize() waits on it (bounded 10 s) to simulate a slow native init.
 //   recvQueue - scripted RecvResult values with optional payload; empty queue returns AV_ER_DATA_NOREADY.
+//   connectGate / clientStartGate - block connectByUid / clientStart; connectStop / stop abort them.
+//   lastUid / lastUser / lastPass - last secret inputs, kept in memory for assertions only.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-10: created for TutkRuntimeTest; plan 02-11 drives TutkCameraLink with it.
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-11: blocking connect / clientStart gates with vendor-like aborts
+//     (IOTC_ER_ABORTED, AV_ER_CLIENT_EXIT) and in-memory capture of uid / user / pass for TutkCameraLinkTest.
+//   PREVIOUS: v0.1.0 - GSD plan 02-10: created for TutkRuntimeTest.
 // END_CHANGE_SUMMARY
 
 class FakeTutkNative : TutkNative {
@@ -40,6 +44,20 @@ class FakeTutkNative : TutkNative {
     var clientStartResult: ClientStart = ClientStart(0, 0)
     var sendIoCtrlResult: Int = TutkCodes.OK
     var initGate: CountDownLatch? = null
+
+    // When set, connectByUid blocks until connectStop (-> IOTC_ER_ABORTED) or the gate is released (-> connectResult).
+    var connectGate: CountDownLatch? = null
+
+    // When set, clientStart blocks until stop (-> AV_ER_CLIENT_EXIT) or the gate is released (-> clientStartResult).
+    var clientStartGate: CountDownLatch? = null
+
+    @Volatile private var connectAborted = false
+    @Volatile private var clientAborted = false
+
+    // Held in memory only for assertions; never written into calls / threads.
+    @Volatile var lastUid: String? = null
+    @Volatile var lastUser: String? = null
+    @Volatile var lastPass: String? = null
 
     data class Frame(val result: RecvResult, val payload: ByteArray = ByteArray(0), val info: ByteArray = ByteArray(0))
 
@@ -84,11 +102,15 @@ class FakeTutkNative : TutkNative {
 
     override fun connectByUid(uid: String, sid0: Int): Int {
         record("connectByUid sid0=$sid0")
-        return connectResult
+        lastUid = uid
+        connectGate?.await(10, TimeUnit.SECONDS)
+        return if (connectAborted) TutkCodes.IOTC_ABORTED else connectResult
     }
 
     override fun connectStop(sid0: Int): Int {
         record("connectStop sid0=$sid0")
+        connectAborted = true
+        connectGate?.countDown()
         return connectStopResult
     }
 
@@ -99,7 +121,10 @@ class FakeTutkNative : TutkNative {
 
     override fun clientStart(sid: Int, user: String, pass: String, timeoutS: Int): ClientStart {
         record("clientStart sid=$sid timeoutS=$timeoutS")
-        return clientStartResult
+        lastUser = user
+        lastPass = pass
+        clientStartGate?.await(10, TimeUnit.SECONDS)
+        return if (clientAborted) ClientStart(TutkCodes.AV_CLIENT_EXIT, 0) else clientStartResult
     }
 
     override fun sendIoCtrl(av: Int, type: Int, payload: ByteArray): Int {
@@ -118,5 +143,9 @@ class FakeTutkNative : TutkNative {
 
     override fun stop(av: Int, sid: Int) {
         record("stop av=$av sid=$sid")
+        if (sid >= 0) {
+            clientAborted = true
+            clientStartGate?.countDown()
+        }
     }
 }

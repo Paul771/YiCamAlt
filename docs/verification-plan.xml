@@ -820,6 +820,9 @@
         <scenario-5 kind="success" evidence-type="deterministic">TUTK shim declares every com/tutk/IOTC name found in the libIOTCAPIs.so / libAVAPIs.so strings, with the vendor native signatures, struct fields and callback JNI descriptors (TutkShimContractTest, plan 02-10)</scenario-5>
         <scenario-6 kind="success" evidence-type="trace">TutkRuntime initialises IOTC then AV(32) then versions once per process on tutk-runtime, also from two threads; -3 / -20031 count as initialised (TutkRuntimeTest, plan 02-10)</scenario-6>
         <scenario-7 kind="failure" evidence-type="deterministic">Missing TUTK library is Unavailable with zero native calls; IOTC / AV init failures are terminal InitFailed(code); a 10 s bound gives InitFailed(-13) and the late result is adopted (TutkRuntimeTest, plan 02-10)</scenario-7>
+        <scenario-8 kind="success" evidence-type="trace">TutkCameraLink vendor order sessionId, connectByUid(cloud uid, sid0), check, clientStart(15-char nonce user, 15-char HMAC pass | admin), sendIoCtrl 8190 | 511 with LE useCount 1, recv loop -> VideoUnit with LE FrameInfo -> Streaming(authOk true); modes 0 P2P / 1 RELAY / 2 LAN (TutkCameraLinkTest, plan 02-11)</scenario-8>
+        <scenario-9 kind="failure" evidence-type="deterministic">clientStart -20009 WRONG_PASSWORD; negative connect / sessionId / check / sendIoCtrl classified; -20015 mid-stream REMOTE_CLOSED; 300 consecutive -20012 TIMEOUT(-20012); -20013 / -20014 drop to the next key frame staying Streaming; no reconnect; connect 30 s TIMEOUT(-13), first frame 20 s TIMEOUT(0) (TutkCameraLinkTest, plan 02-11)</scenario-9>
+        <scenario-10 kind="success" evidence-type="deterministic">close during connect -> connectStop(sid0) + stop(-1, sid0) once; during clientStart -> stop(-1, sid) aborts it; while streaming -> stop(av, sid) once; idempotent; tutk-&lt;n&gt;-* threads gone within 2 s; TutkLinkFactory refusals and ALREADY_OPEN (TutkCameraLinkTest, plan 02-11)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -835,6 +838,7 @@
       <notes>
         <note-1>Conditional: plans 02-10 / 02-11 run only if device check 02-06 finds a TUTK camera; otherwise this node is closed as not-needed.</note-1>
         <note-2>Device check 1 (02-DEVICE-CHECK-1.md): GATE_2B needed (tnp=1 tutk=1). Plan 02-10 delivered the shim, the TutkNative seam, AndroidTutkNative and TutkRuntime; TutkCameraLink and the transport factory follow in plan 02-11.</note-2>
+        <note-3>Plan 02-11 done: TutkCameraLink + TutkLinkFactory + TransportLinkFactory (P2pLinkModule binds CameraLinkFactory to it). JVM only; device proof in plan 02-12. Extra marker: [P2P][factory][BLOCK_DISPATCH_LINK] for LANGTAO / UNKNOWN refusals.</note-3>
       </notes>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-TUTK-LINK>

@@ -1114,6 +1114,7 @@
       <notes>
         <note-1>conditional: may be closed as not-needed when no camera resolves to TUTK (device check 02-06).</note-1>
         <note-2>02-DEVICE-CHECK-1: GATE_2B needed. Plan 02-10 done: JNI shim at com.tutk.IOTC (names from the .so strings), TutkNative seam + TutkCodes, AndroidTutkNative, TutkRuntime (tutk-runtime thread, once per process), TutkRuntimeModule binding. Plan 02-11: TutkCameraLink + TransportLinkFactory.</note-2>
+        <note-3>Plan 02-11 done: TutkCameraLink (tutk-&lt;n&gt;-connect / -rx / -watch / -close threads, one connectByUid per open, no reconnect, -20012 bound 300 x 30 ms), TutkLinkFactory (one session per camera), TransportLinkFactory bound as CameraLinkFactory in P2pLinkModule. STATUS stays planned until device check 02-12.</note-3>
       </notes>
     </M-TUTK-LINK>
 
