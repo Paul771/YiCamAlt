@@ -1,8 +1,8 @@
 // FILE: FrameAssemblerTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the keyframe gate, P-frame reorder and useCount generation filter.
-//   SCOPE: P before I, in-order and out-of-order P, duplicates, u16 wrap, MAX_PENDING overflow, generations, reset.
+//   SCOPE: P before I (waits, overtaking P drained after the I), in-order and out-of-order P, duplicates, u16 wrap, MAX_PENDING overflow, generations, reset.
 //   DEPENDS: M-STREAM-CORE (FrameAssembler, VideoUnit, FrameInfo)
 //   LINKS: V-M-STREAM-CORE
 //   ROLE: TEST
@@ -21,7 +21,10 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-05: scripted ordering sequences.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review HIGH-1: P frames that overtake their I frame (separate ch2 / ch3
+//     readers) are kept and drained after the I; stale pending (seq <= I, u16 order, other generation) is dropped
+//     when the I arrives; P before the first I waits instead of being dropped at once.
+//   PREVIOUS: v0.1.0 - GSD plan 02-05: scripted ordering sequences.
 // END_CHANGE_SUMMARY
 
 class FrameAssemblerTest {
@@ -41,11 +44,64 @@ class FrameAssemblerTest {
     private fun labels(units: List<VideoUnit>) = units.map { String(it.payload, Charsets.US_ASCII).substringBefore('u') }
 
     @Test
-    fun `P before any I is dropped`() {
+    fun `P before any I waits and is dropped when the first I proves it stale`() {
         val a = FrameAssembler()
         assertTrue(a.offer(p(1)).isEmpty())
-        assertEquals(1, a.dropped)
+        assertEquals(0, a.dropped)
+        assertEquals(1, a.pending)
         assertEquals(0, a.emitted)
+        assertEquals(listOf("I5"), labels(a.offer(i(5))))
+        assertEquals(1, a.dropped)
+        assertEquals(0, a.pending)
+    }
+
+    @Test
+    fun `P frames that overtake the first I are emitted after it in order`() {
+        val a = FrameAssembler()
+        assertTrue(a.offer(p(11)).isEmpty())
+        assertTrue(a.offer(p(12)).isEmpty())
+        assertEquals(listOf("I10", "P11", "P12"), labels(a.offer(i(10))))
+        assertEquals(0, a.dropped)
+        assertEquals(0, a.pending)
+        assertEquals(3, a.emitted)
+        assertEquals(listOf("P13"), labels(a.offer(p(13))))
+    }
+
+    @Test
+    fun `P frames that overtake a later I are kept, stale pending is dropped`() {
+        val a = FrameAssembler()
+        a.offer(i(10))
+        a.offer(p(11))
+        // P14 is pending for the old decode point; P21 and P22 belong to the I20 still in flight.
+        assertTrue(a.offer(p(14)).isEmpty())
+        assertTrue(a.offer(p(21)).isEmpty())
+        assertTrue(a.offer(p(22)).isEmpty())
+        assertTrue(a.offer(p(24)).isEmpty())
+        assertEquals(listOf("I20", "P21", "P22"), labels(a.offer(i(20))))
+        assertEquals(1, a.dropped)
+        assertEquals(1, a.pending)
+        assertEquals(listOf("P23", "P24"), labels(a.offer(p(23))))
+    }
+
+    @Test
+    fun `overtaking P frames across the u16 wrap`() {
+        val a = FrameAssembler()
+        a.offer(i(65000))
+        assertTrue(a.offer(p(0)).isEmpty())
+        assertTrue(a.offer(p(1)).isEmpty())
+        assertTrue(a.offer(p(65534)).isEmpty())
+        assertEquals(listOf("I65535", "P0", "P1"), labels(a.offer(i(65535))))
+        assertEquals(1, a.dropped)
+        assertEquals(0, a.pending)
+    }
+
+    @Test
+    fun `overtaking P of a new generation is emitted after its I`() {
+        val a = FrameAssembler()
+        a.offer(i(10, useCount = 5))
+        assertTrue(a.offer(p(51, useCount = 6)).isEmpty())
+        assertEquals(listOf("I50", "P51"), labels(a.offer(i(50, useCount = 6))))
+        assertEquals(0, a.dropped)
     }
 
     @Test
@@ -111,9 +167,13 @@ class FrameAssemblerTest {
         a.offer(i(10, useCount = 5))
         a.offer(p(11, useCount = 5))
         assertEquals(listOf("I50"), labels(a.offer(i(50, useCount = 6))))
-        assertTrue(a.offer(p(51, useCount = 5)).isEmpty())
-        assertEquals(1, a.dropped)
+        // A late P of the old generation never reaches the decoder; the next I drops it.
+        assertTrue(a.offer(p(52, useCount = 5)).isEmpty())
         assertEquals(listOf("P51"), labels(a.offer(p(51, useCount = 6))))
+        assertEquals(1, a.pending)
+        assertEquals(listOf("I60"), labels(a.offer(i(60, useCount = 6))))
+        assertEquals(1, a.dropped)
+        assertEquals(0, a.pending)
     }
 
     @Test
@@ -132,8 +192,8 @@ class FrameAssemblerTest {
         a.offer(i(10))
         a.reset()
         assertTrue(a.offer(p(11)).isEmpty())
-        assertEquals(1, a.dropped)
         assertEquals(listOf("I12"), labels(a.offer(i(12))))
+        assertEquals(1, a.dropped)
         assertEquals(listOf("P13"), labels(a.offer(p(13))))
     }
 }

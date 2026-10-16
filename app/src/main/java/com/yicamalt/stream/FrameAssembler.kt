@@ -1,5 +1,5 @@
 // FILE: FrameAssembler.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Order transport video units for the decoder: keyframe gate, P-frame sequence reorder, generation filter.
 //   SCOPE: u16 sequence arithmetic, bounded pending buffer (MAX_PENDING), useCount generation, counters.
@@ -16,7 +16,13 @@ package com.yicamalt.stream
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-05 from 02-RESEARCH.md Pattern 6.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review HIGH-1: I-frames (ch2) and P-frames (ch3) come from different reader
+//     threads, so P(I+1), P(I+2) can arrive before their I-frame. An I-frame no longer clears the pending buffer:
+//     it drops only stale pending units (seq <= I in u16 order, or another useCount generation; counted as
+//     dropped), is emitted, then drains I+1, I+2, ... from pending (vendor TnpCamera.handleVideoFrame). A P that
+//     arrives before the first I, or with a useCount other than the current generation, now waits in pending
+//     instead of being dropped at once; it is dropped as stale when the next I does not continue it.
+//   PREVIOUS: v0.1.0 - GSD plan 02-05 from 02-RESEARCH.md Pattern 6.
 //     Rules: an I-frame resets the decode point (seq, generation = useCount) and is emitted; a P-frame is emitted
 //     only when seq == last + 1 (u16 wrap); a future P (distance 2..0x7FFF) waits in pending; a P with seq <= last,
 //     a P before the first I, and a P of another useCount generation are dropped. Pending overflow drops the
@@ -47,7 +53,9 @@ class FrameAssembler {
     //   PURPOSE: Feed one transport unit; get back the units that may go to the decoder now, in decode order.
     //   INPUTS: { unit: VideoUnit }
     //   OUTPUTS: { List<VideoUnit> - possibly empty }
-    //   SIDE_EFFECTS: updates decode point, pending buffer, emitted/dropped counters
+    //   SIDE_EFFECTS: updates decode point, pending buffer, emitted/dropped counters. Key frame: drop stale pending
+//     (seq <= I modulo u16, or another generation), emit I, drain I+1, I+2, ... P before the first I or of another
+//     generation: buffered (bounded by MAX_PENDING) until an I continues it or proves it stale.
     //   LINKS: M-STREAM-CORE, FramePipeline.onVideoUnit
     // END_CONTRACT: offer
     fun offer(unit: VideoUnit): List<VideoUnit> {
@@ -55,48 +63,67 @@ class FrameAssembler {
         val info = unit.info
         val seq = info.seq and SEQ_MASK
         if (info.isKeyFrame) {
-            dropped += pendingBySeq.size
-            pendingBySeq.clear()
+            val it = pendingBySeq.values.iterator()
+            while (it.hasNext()) {
+                val queued = it.next()
+                val d = (queued.info.seq - seq) and SEQ_MASK
+                if (queued.info.useCount != info.useCount || d == 0 || d >= HALF_RANGE) {
+                    it.remove()
+                    dropped++
+                }
+            }
             armed = true
             lastSeq = seq
             generation = info.useCount
-            emitted++
-            return listOf(unit)
+            return drainFrom(unit)
         }
         if (!armed || info.useCount != generation) {
-            dropped++
-            return emptyList()
+            // May belong to an I-frame still in flight on the other reader thread: wait for it.
+            return enqueue(seq, unit)
         }
         val distance = (seq - lastSeq) and SEQ_MASK
         if (distance == 0 || distance >= HALF_RANGE) {
             dropped++
             return emptyList()
         }
-        if (distance > 1) {
-            if (pendingBySeq.containsKey(seq)) {
-                dropped++
-                return emptyList()
-            }
-            pendingBySeq[seq] = unit
-            if (pendingBySeq.size > MAX_PENDING) {
-                val oldest = pendingBySeq.keys.first()
-                pendingBySeq.remove(oldest)
-                dropped++
-            }
-            return emptyList()
-        }
+        if (distance > 1) return enqueue(seq, unit)
+        return drainFrom(unit)
+        // END_BLOCK_ASSEMBLE_FRAMES
+    }
+
+    // Emits [unit] (the new decode point) and every consecutive pending unit of the same generation after it.
+    private fun drainFrom(unit: VideoUnit): List<VideoUnit> {
         val out = ArrayList<VideoUnit>(1)
         out += unit
-        lastSeq = seq
+        lastSeq = unit.info.seq and SEQ_MASK
         while (true) {
             val next = (lastSeq + 1) and SEQ_MASK
-            val queued = pendingBySeq.remove(next) ?: break
+            val queued = pendingBySeq[next] ?: break
+            if (queued.info.useCount != generation) break
+            pendingBySeq.remove(next)
             out += queued
             lastSeq = next
         }
         emitted += out.size
         return out
-        // END_BLOCK_ASSEMBLE_FRAMES
+    }
+
+    private fun enqueue(seq: Int, unit: VideoUnit): List<VideoUnit> {
+        val existing = pendingBySeq[seq]
+        if (existing != null) {
+            dropped++
+            // A unit of the current generation wins the slot over a leftover of another generation.
+            val replace = armed && unit.info.useCount == generation && existing.info.useCount != generation
+            if (replace) pendingBySeq[seq] = unit
+            return emptyList()
+        }
+        pendingBySeq[seq] = unit
+        if (pendingBySeq.size > MAX_PENDING) {
+            val oldest = pendingBySeq.keys.first()
+            pendingBySeq.remove(oldest)
+            dropped++
+        }
+        return emptyList()
     }
 
     // START_CONTRACT: reset
