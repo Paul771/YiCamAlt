@@ -19,8 +19,8 @@ TUTK camera (account camera of transport TUTK), user away from home, no LAN:
 | Criterion | Status |
 |---|---|
 | 1 native load + extraction + manifest (see 02-DEVICE-CHECK-1.md) | PASS (device check 1) |
-| 2 / LIVE-01 video on home Wi-Fi (lan=yes) | PENDING (needs user at home) |
-| 3 / LIVE-02 video off the home network, mode shown | PARTIAL: TUTK camera PASS (mode=P2P, lan=no, moving). TNP camera PENDING (camera offline). Relay-only mode NOT exercised. |
+| 2 / LIVE-01 video on home Wi-Fi (lan=yes) | PARTIAL: TUTK camera PASS (mode=LAN, first render 31-67 ms). TNP camera PENDING. |
+| 3 / LIVE-02 video off the home network, mode shown | PARTIAL: TUTK camera PASS twice (mode=P2P, lan=no, moving; second time over 4G on another phone). TNP camera PENDING. Relay-only mode NOT exercised. |
 | 4 / LIVE-03 codec path | PARTIAL: H.264 hw decode PASS on TUTK camera. H.265 NOT exercised on device (no H.265 camera yet). |
 | 5 JVM contracts + GRACE | PASS at HEAD (490 tests, 0 failures) |
 
@@ -47,5 +47,14 @@ TUTK camera on the LAN (log markers, value-free), build with the review fixes an
 
 Still open: TNP camera on a real camera (never run), relay-only and mobile-data run, parallel use with the official app, H.265 on device,
 log pull + redaction sweep for the final evidence.
+
+## Update 2026-10-16 night: cellular run on a second phone
+
+The USB-attached test phone has no 4G, so the user ran the latest build on a different phone over 4G (no log pulled from that phone;
+evidence is the on-screen status line read by the user):
+- TUTK camera: transport=TUTK state=STREAMING mode=P2P lan=no relayForced=no codec=H264 decoder=c2.qti.avc.decoder hw=yes
+  fps=20.2 frames=174 keyFrames=5 decryptOk=yes auth=ok error=-
+- Criterion 3 / LIVE-02: PASS for the TUTK camera over mobile data (direct P2P path). Relay-only mode and the TNP camera are still NOT exercised.
+- Earlier remote run (user away from home, other network) gave the same result with fps=21.9.
 
 RESULT: PARTIAL (pending TNP camera, home Wi-Fi, relay, parallel-use checks and log sweep)
