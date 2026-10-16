@@ -1,5 +1,5 @@
 // FILE: LiveProbeScreen.kt
-// VERSION: 0.1.2
+// VERSION: 0.1.3
 // START_MODULE_CONTRACT
 //   PURPOSE: Minimal debug live screen for one camera: SurfaceView video, Connect / Stop, "relay only" toggle,
 //     HEVC decoder info, explicit message and the value-free status line (full live view is GSD Phase 3).
@@ -54,9 +54,11 @@ import androidx.lifecycle.LifecycleEventObserver
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.2 - the probe background is fixed white with black text regardless of the phone theme (user
+//   LAST_CHANGE: v0.1.3 - SurfaceView.setZOrderOnTop(true): with the default z-order the whole window rendered black on
+//     the test phone (verified by removing the SurfaceView: the screen turned white).
+//   PREV_CHANGE: v0.1.2 - the probe background is fixed white with black text regardless of the phone theme (user
 //     request); v0.1.1 had followed the dark theme and turned black.
-//   PREV_CHANGE: v0.1.1 - fix invisible UI on a dark phone theme: the screen is shown outside the Scaffold, so it now
+//   OLDER_CHANGE: v0.1.1 - fix invisible UI on a dark phone theme: the screen is shown outside the Scaffold, so it now
 //     wraps its content in a themed Surface (background + onBackground) and safeDrawingPadding.
 //   OLDER_CHANGE: v0.1.0 - GSD plan 02-09: initial debug live screen opened from the camera list.
 // END_CHANGE_SUMMARY
@@ -106,6 +108,9 @@ fun LiveProbeScreen(
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
             factory = { context ->
                 SurfaceView(context).apply {
+                    // Default z-order punches a hole through the whole window on the test phone (MIUI), painting the
+                    // screen black; on top it stays inside its own bounds and the white Surface behind it is kept.
+                    setZOrderOnTop(true)
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(holder: SurfaceHolder) = viewModel.attachSurface(holder.surface)
                         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
