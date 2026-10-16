@@ -1,5 +1,5 @@
 // FILE: TnpCameraLink.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: One TNP/CS2 PPPP session per camera, vendor call order.
 //   SCOPE: connect (PPPP_Connect / WakeUp_And_Connect) with the device_info DID, session check and mode mapping,
@@ -51,7 +51,9 @@ import java.util.concurrent.atomic.AtomicInteger
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-07: created from 02-RESEARCH.md Pattern 3 / 4 / 7, Pitfalls 3, 9, 11.
+//   LAST_CHANGE: v0.1.1 - GSD plan 02-12: auth reply (rx0) and first video unit (rx2/3/6) publish Streaming under
+//     liveLock; before, the video reader could overwrite Streaming(authOk=true) with a stale authOk=false.
+//   PREVIOUS: v0.1.0 - GSD plan 02-07: created from 02-RESEARCH.md Pattern 3 / 4 / 7, Pitfalls 3, 9, 11.
 //     INVARIANTS: one connect per start(), no reconnect, no retry; 9033 is never sent; every native call runs on a
 //     named thread of this link (p2p-<n>-connect | -rx<ch> | -tx | -close); secrets never reach logs, LinkError or
 //     LinkInfo; cam=<n> is a per-process counter, never an identifier.
@@ -93,6 +95,7 @@ internal class TnpCameraLink(
     private val commandNumber = AtomicInteger(0)
     private val videoUnits = AtomicInteger(0)
     private val threadLock = Any()
+    private val liveLock = Any()
     private val threads = CopyOnWriteArrayList<Thread>()
     private val txQueue = LinkedBlockingQueue<TxItem>()
     private val poison = TxItem(ByteArray(0))
@@ -381,9 +384,11 @@ internal class TnpCameraLink(
         )
         when (outcome) {
             IoCtrlMessages.AuthOutcome.OK -> {
-                authOk = true
-                val i = info
-                if (streaming && i != null) setLiveState(LinkState.Streaming(i, true))
+                synchronized(liveLock) {
+                    authOk = true
+                    val i = info
+                    if (streaming && i != null) setLiveState(LinkState.Streaming(i, true))
+                }
             }
             IoCtrlMessages.AuthOutcome.WRONG_PASSWORD ->
                 failWith(LinkError(LinkErrorKind.WRONG_PASSWORD, PpppCodes.APP_WRONG_PASSWORD), REASON_ERROR)
@@ -397,12 +402,15 @@ internal class TnpCameraLink(
         val (frameInfo, payload) = TnpCodec.splitFrameUnit(body, bigEndian = true) ?: return
         val unit = VideoUnit(ch, frameInfo, payload)
         if (videoUnits.incrementAndGet() == 1) {
-            streaming = true
             Timber.d(
                 "[P2P][tnp][BLOCK_FIRST_VIDEO] cam=%d ch=%d codecId=%d key=%b ms=%d",
                 camIndex, ch, frameInfo.codecId, frameInfo.isKeyFrame, now() - startMs,
             )
-            info?.let { setLiveState(LinkState.Streaming(it, authOk)) }
+            // Same lock as the auth reply, so whichever runs second publishes the final authOk.
+            synchronized(liveLock) {
+                streaming = true
+                info?.let { setLiveState(LinkState.Streaming(it, authOk)) }
+            }
         }
         sink?.onVideoUnit(unit)
     }

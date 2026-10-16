@@ -1,5 +1,5 @@
 // FILE: TnpCameraLinkTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TnpCameraLink over FakePpppNative: vendor call order, burst bytes, mode mapping,
 //     every failure code, partial reads, header version rule, kick, timeouts, cancellation, no retry, log hygiene.
@@ -53,10 +53,12 @@ import java.util.concurrent.atomic.AtomicLong
 //   cancellation - close during connect, close while streaming (STOP once, threads gone), idempotent close/start.
 //   timeouts - connect 30 s and first frame 20 s on an injected clock.
 //   log hygiene - marker presence and RedactionScanner over every captured buffer.
+//   auth/video race - auth reply and first video unit together, 15 rounds, always Streaming(authOk=true).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-07: created.
+//   LAST_CHANGE: v0.1.1 - GSD plan 02-12: regression for the rx0 auth / rx2 first-video race on authOk.
+//   PREVIOUS: v0.1.0 - GSD plan 02-07: created.
 // END_CHANGE_SUMMARY
 
 class TnpCameraLinkTest {
@@ -550,6 +552,24 @@ class TnpCameraLinkTest {
         RedactionScanner().assertClean(link.toString() + l2.state.value + l3.state.value, extraLiterals = SECRETS)
     }
     // END_BLOCK_LOG_HYGIENE
+
+    // START_BLOCK_AUTH_VIDEO_RACE
+    // Regression (plan 02-12): the auth reply (rx0) and the first video unit (rx2) arrive together; the final
+    // state must always be Streaming(authOk=true), never a stale authOk=false written by the video reader.
+    @Test
+    fun `auth reply racing the first video unit always ends with authOk`() {
+        repeat(15) {
+            val fake = FakePpppNative()
+            val link = newLink(fake)
+            link.start(RecordingSink())
+            awaitBurst(fake)
+            fake.enqueueUnit(2, videoUnit())
+            fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
+            awaitState(link) { it is LinkState.Streaming && it.authOk }
+            link.close()
+        }
+    }
+    // END_BLOCK_AUTH_VIDEO_RACE
 
     companion object {
         private const val PASSWORD = "SYNTH1234567890"
