@@ -1,5 +1,5 @@
 // FILE: TnpCameraLinkTest.kt
-// VERSION: 0.1.1
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TnpCameraLink over FakePpppNative: vendor call order, burst bytes, mode mapping,
 //     every failure code, partial reads, header version rule, kick, timeouts, cancellation, no retry, log hygiene.
@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Test
 import java.nio.ByteBuffer
 import java.util.Random
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -49,7 +50,13 @@ import java.util.concurrent.atomic.AtomicLong
 //   burst bytes - payloads, numbers 1..3, auth comma at 15, one nonce prefix per link.
 //   flag / mode tests - 0x49 / 0xDF, wakeup, bMode 0..3, lan, resolution 1 / 2.
 //   failure tests - -3006, check failure, dirty head, -3012 without retry, auth 1 / 4, 9033 kick.
-//   header version - adopt once, re-send only 4881 with the same useCount and resolution.
+//   header version - adopt once (camera answers 3 or 1), re-send the whole start sequence once with the same useCounts
+//     and resolution, the mismatched reply is skipped unparsed (its authResult never fails the link).
+//   auth on every reply - authResult 1|2 on a non-4882 reply fails WRONG_PASSWORD; unknown authResult is ignored and
+//     logged once.
+//   thread guard - a sink that throws an Error and an empty encrypted password end as Failed(INTERNAL, 0) with teardown.
+//   registry release - onClosed waits for a connect thread that ignores Connect_Break.
+//   handle reuse - no PPPP_Read is in flight when ForceClose runs.
 //   cancellation - close during connect, close while streaming (STOP once, threads gone), idempotent close/start.
 //   timeouts - connect 30 s and first frame 20 s on an injected clock.
 //   log hygiene - marker presence and RedactionScanner over every captured buffer.
@@ -57,7 +64,10 @@ import java.util.concurrent.atomic.AtomicLong
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - GSD plan 02-12: regression for the rx0 auth / rx2 first-video race on authOk.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review: HIGH-2 (whole start sequence re-sent once, mismatched reply skipped),
+//     MED-3 (authResult on every reply, unknown ignored), MED-7 (thread guard, empty password), LOW-8 (deferred
+//     registry release), LOW-9 (ForceClose after the readers left).
+//   PREVIOUS: v0.1.1 - GSD plan 02-12: regression for the rx0 auth / rx2 first-video race on authOk.
 //   PREVIOUS: v0.1.0 - GSD plan 02-07: created.
 // END_CHANGE_SUMMARY
 
@@ -104,11 +114,12 @@ class TnpCameraLinkTest {
         clock: AtomicLong? = null,
         credentials: P2pCredentials = creds(),
         cam: Int = CAM.incrementAndGet(),
+        timeouts: TnpCameraLink.Timeouts = TnpCameraLink.Timeouts(pollMs = 5),
     ): TnpCameraLink {
         val now: () -> Long = if (clock != null) ({ clock.get() }) else ({ System.nanoTime() / 1_000_000L })
         val link = TnpCameraLink(
             credentials, options, fake, cam, Random(7),
-            TnpCameraLink.Timeouts(pollMs = 5), now,
+            timeouts, now,
         ) { closedCount.incrementAndGet() }
         links += link
         return link
@@ -377,34 +388,159 @@ class TnpCameraLinkTest {
     // END_BLOCK_FAILURE_TESTS
 
     // START_BLOCK_HEADER_VERSION_TESTS
-    @Test
-    fun `first ch0 reply with another header version re-sends only 4881 once`() {
+    private fun assertVersionResend(cameraVersion: Int) {
         val fake = FakePpppNative()
         val sink = RecordingSink()
         val link = newLink(fake)
         link.start(sink)
         awaitBurst(fake)
-        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0, version = 3)
-        awaitTrue { fake.written.size == 4 }
-        val resent = fake.written[3].second
-        assertEquals(3, resent[0].toInt())
-        assertEquals(4881, typeOf(resent))
-        assertEquals(4, numberOf(resent))
-        assertArrayEquals(IoCtrlMessages.setResolution(1, 1), payloadOf(resent))
+        // The mismatched first reply is skipped unparsed: its authResult 1 must not fail the link.
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 1, version = cameraVersion)
+        awaitTrue(what = { "resent sequence, written=${fake.written.size}" }) { fake.written.size == 6 }
+        val resent = fake.written.drop(3).map { it.second }
+        assertEquals(listOf(4881, 9029, 768), resent.map { typeOf(it) })
+        assertEquals(listOf(4, 5, 6), resent.map { numberOf(it) })
+        resent.forEach { assertEquals(cameraVersion, it[0].toInt()) }
+        assertArrayEquals(IoCtrlMessages.setResolution(1, 1), payloadOf(resent[0]))
+        assertArrayEquals(IoCtrlMessages.startRealtime(2, 1), payloadOf(resent[1]))
+        assertArrayEquals(IoCtrlMessages.audioStart(), payloadOf(resent[2]))
+        assertFalse(link.state.value is LinkState.Failed, link.state.value.toString())
 
-        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0, version = 1)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0, version = cameraVersion)
         fake.enqueueUnit(2, videoUnit())
         awaitState(link) { it is LinkState.Streaming && it.authOk }
+        // A later version change is ignored: no further resend.
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0, version = if (cameraVersion == 1) 3 else 1)
         Thread.sleep(100)
-        assertEquals(4, fake.written.size)
+        assertEquals(6, fake.written.size)
+        assertEquals(2, fake.written.count { typeOf(it.second) == IoCtrlMessages.START_REALTIME })
 
         link.close()
         val stop = fake.written.last().second
         assertEquals(IoCtrlMessages.STOP, typeOf(stop))
-        assertEquals(3, stop[0].toInt())
+        assertEquals(cameraVersion, stop[0].toInt())
+        assertFalse(recorder.bufferText().contains("outcome=WRONG_PASSWORD"))
+    }
+
+    @Test
+    fun `camera answering with header version 3 gets the whole start sequence once more and streams`() {
+        assertVersionResend(3)
         recorder.assertMarkerAppeared("BLOCK_HEADER_VERSION")
     }
+
+    @Test
+    fun `camera answering with header version 1 gets the whole start sequence once more and streams`() {
+        assertVersionResend(1)
+    }
+
+    @Test
+    fun `first reply with the same header version resends nothing`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0, version = 2)
+        fake.enqueueUnit(2, videoUnit())
+        awaitState(link) { it is LinkState.Streaming && it.authOk }
+        Thread.sleep(100)
+        assertEquals(3, fake.written.size)
+    }
     // END_BLOCK_HEADER_VERSION_TESTS
+
+    // START_BLOCK_AUTH_EVERY_REPLY_TESTS
+    @Test
+    fun `wrong password on a reply other than 4882 fails WRONG_PASSWORD`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.replyIoCtrl(OTHER_REPLY_TYPE, 2)
+        assertEquals(
+            LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -20009)),
+            awaitState(link) { it is LinkState.Failed },
+        )
+    }
+
+    @Test
+    fun `unknown authResult drops the reply without failing and is logged once`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 7)
+        fake.replyIoCtrl(IoCtrlMessages.KICK, 9, beInt(1))
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
+        fake.enqueueUnit(2, videoUnit())
+        awaitState(link) { it is LinkState.Streaming && it.authOk }
+        Thread.sleep(50)
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        val text = recorder.bufferText()
+        assertEquals(1, Regex("outcome=UNKNOWN").findAll(text).count(), text)
+    }
+    // END_BLOCK_AUTH_EVERY_REPLY_TESTS
+
+    // START_BLOCK_THREAD_GUARD_TESTS
+    @Test
+    fun `a sink that throws an Error ends the link as INTERNAL with teardown`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        link.start(object : VideoUnitSink {
+            override fun onVideoUnit(unit: VideoUnit) = throw AssertionError("SYNTH sink failure")
+        })
+        awaitBurst(fake)
+        fake.enqueueUnit(2, videoUnit())
+        assertEquals(LinkState.Failed(LinkError(LinkErrorKind.INTERNAL, 0)), awaitState(link) { it is LinkState.Failed })
+        awaitTrue { fake.calls.contains("forceClose") }
+        awaitTrue { closedCount.get() == 1 }
+        recorder.assertMarkerAppeared("BLOCK_THREAD_GUARD")
+    }
+
+    @Test
+    fun `an empty encrypted password fails INTERNAL instead of killing the connect thread`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake, credentials = creds().copy(password = ""))
+        link.start(RecordingSink())
+        assertEquals(LinkState.Failed(LinkError(LinkErrorKind.INTERNAL, 0)), awaitState(link) { it is LinkState.Failed })
+        awaitTrue { fake.calls.contains("forceClose") }
+        assertTrue(fake.written.isEmpty())
+    }
+    // END_BLOCK_THREAD_GUARD_TESTS
+
+    // START_BLOCK_RELEASE_ORDER_TESTS
+    @Test
+    fun `registry entry is released only after a stuck connect thread exits`() {
+        val hold = CountDownLatch(1)
+        val fake = FakePpppNative().apply { connectHold = hold }
+        val link = newLink(fake, timeouts = TnpCameraLink.Timeouts(pollMs = 5, joinMs = 300))
+        link.start(RecordingSink())
+        awaitTrue { fake.calls.any { it.startsWith("connect ") } }
+        link.close()
+        assertEquals(LinkState.Closed("user"), awaitState(link) { it is LinkState.Closed })
+        Thread.sleep(100)
+        assertEquals(0, closedCount.get())
+        hold.countDown()
+        awaitTrue { closedCount.get() == 1 }
+        assertTrue(recorder.bufferText().contains("registry=deferred"))
+    }
+
+    @Test
+    fun `force close runs only after every reader left PPPP_Read`() {
+        repeat(5) {
+            val fake = FakePpppNative()
+            val link = newLink(fake)
+            link.start(RecordingSink())
+            awaitBurst(fake)
+            fake.enqueueUnit(2, videoUnit())
+            awaitState(link) { it is LinkState.Streaming }
+            link.close()
+            assertEquals(0, fake.readsInFlightAtForceClose, fake.calls.takeLast(20).toString())
+            val calls = fake.calls.toList()
+            assertTrue(calls.indexOf("connectBreak") < calls.indexOf("forceClose"), calls.toString())
+            val afterClose = calls.subList(calls.indexOf("forceClose"), calls.size)
+            assertTrue(afterClose.none { c -> c.startsWith("read") }, calls.toString())
+        }
+    }
+    // END_BLOCK_RELEASE_ORDER_TESTS
 
     // START_BLOCK_CANCELLATION_TESTS
     @Test
@@ -576,5 +712,6 @@ class TnpCameraLinkTest {
         private const val LICENSE_KEY = "SYNTHLIC01"
         private val SECRETS = RedactionFixtures.ALL_SECRETS + listOf(PASSWORD, LICENSE_KEY)
         private val CAM = AtomicInteger(100)
+        private const val OTHER_REPLY_TYPE = 0x2346
     }
 }

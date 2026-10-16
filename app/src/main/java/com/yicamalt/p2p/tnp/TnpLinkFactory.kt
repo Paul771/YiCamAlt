@@ -1,5 +1,5 @@
 // FILE: TnpLinkFactory.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: CameraLinkFactory for TNP cameras: credential checks, process-once runtime init, one session per camera.
 //   SCOPE: open(credentials, options) -> TnpCameraLink or a link that is already Failed with a typed refusal;
@@ -38,7 +38,10 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-07: created. One session per camera; refusals are typed links, never exceptions.
+//   LAST_CHANGE: v0.1.1 - Phase 2 review MED-7: an empty password with p2pEncrypt is refused as NO_CREDENTIALS (an
+//     empty HMAC key made SecretKeySpec throw on the connect thread). The registry entry is released by the link only
+//     after all of its threads exited (LOW-8).
+//   PREVIOUS: v0.1.0 - GSD plan 02-07: created. One session per camera; refusals are typed links, never exceptions.
 //     The registry entry lives from open() until the link's teardown, so every opened link must be closed.
 // END_CHANGE_SUMMARY
 
@@ -57,7 +60,7 @@ class TnpLinkFactory @Inject constructor(
     //   OUTPUTS: { CameraLink - checks in order:
     //     1. transport != TNP -> Failed(UNSUPPORTED_TRANSPORT, 0)
     //     2. blank p2pId, missing InitString or missing license key -> Failed(NO_CREDENTIALS, 0)
-    //     3. needsPincode, or p2pEncrypt with no password -> Failed(NO_CREDENTIALS, 0)
+    //     3. needsPincode, or p2pEncrypt with a null or empty password -> Failed(NO_CREDENTIALS, 0)
     //     4. runtime Unavailable -> Failed(NATIVE_UNAVAILABLE, 0); InitFailed(code) -> Failed(NATIVE_UNAVAILABLE, code)
     //     5. a link for credentials.deviceId still open -> Failed(ALREADY_OPEN, 0)
     //     6. else a new idle TnpCameraLink (call start(sink); always close it) }
@@ -72,7 +75,7 @@ class TnpLinkFactory @Inject constructor(
             credentials.transport != TransportType.TNP -> LinkError(LinkErrorKind.UNSUPPORTED_TRANSPORT, 0)
             credentials.p2pId.isBlank() || credentials.initString.isNullOrBlank() || credentials.licenseKey.isNullOrBlank() ->
                 LinkError(LinkErrorKind.NO_CREDENTIALS, 0)
-            credentials.needsPincode || (credentials.p2pEncrypt && credentials.password == null) ->
+            credentials.needsPincode || (credentials.p2pEncrypt && credentials.password.isNullOrEmpty()) ->
                 LinkError(LinkErrorKind.NO_CREDENTIALS, 0)
             else -> when (val rt = runtime.ensureInitialized()) {
                 is RuntimeState.Ready -> null

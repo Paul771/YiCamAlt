@@ -1,5 +1,5 @@
 // FILE: TnpLinkFactoryTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TnpLinkFactory: typed refusals, runtime init once, one session per camera.
 //   SCOPE: JVM only; PpppRuntime over FakePpppNative and a fake library loader; synthetic credentials.
@@ -40,7 +40,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-07: created.
+//   LAST_CHANGE: v0.1.1 - Phase 2 review MED-7: an empty password with p2pEncrypt is refused as NO_CREDENTIALS.
+//   PREVIOUS: v0.1.0 - GSD plan 02-07: created.
 // END_CHANGE_SUMMARY
 
 class TnpLinkFactoryTest {
@@ -119,6 +120,7 @@ class TnpLinkFactoryTest {
             creds(licenseKey = null),
             creds(needsPincode = true),
             creds(p2pEncrypt = true, password = null),
+            creds(p2pEncrypt = true, password = ""),
         ).forEach { c ->
             assertEquals(failed(LinkErrorKind.NO_CREDENTIALS), f.openTracked(c).state.value, c.toString())
         }

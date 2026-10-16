@@ -1,5 +1,5 @@
 // FILE: FakePpppNative.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scripted JVM fake of the vendor PPPP surface so TNP link logic is testable without native code.
 //   SCOPE: scripted init/connect/check results, blocking connect released by connectBreak, per-channel byte queues
@@ -30,10 +30,14 @@ import java.util.concurrent.TimeUnit
 //     returned bytes is followed by "data ch=<n> bytes=<k>".
 //   written - every write as (channel, copied bytes).
 //   MAX_READ_WAIT_MS - cap on how long a read waits for data (keeps tests fast).
+//   connectHold - when set, connect() blocks on it and ignores connectBreak (a native connect that does not abort).
+//   inflightReads / readsInFlightAtForceClose - reads running right now / at the first forceClose call.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 02-07: enqueueUnit, replyIoCtrl, checkBlocks; "data ch=<n> bytes=<k>" trace entry
+//   LAST_CHANGE: v0.3.0 - Phase 2 review LOW-8 / LOW-9: connectHold (connect that ignores Connect_Break) and the
+//     in-flight read count seen by forceClose.
+//   PREVIOUS: v0.2.0 - GSD plan 02-07: enqueueUnit, replyIoCtrl, checkBlocks; "data ch=<n> bytes=<k>" trace entry
 //     after a read that returned bytes (lets TnpCameraLinkTest prove no ch0 data was consumed inside the burst).
 //   PREVIOUS: v0.1.0 - GSD plan 02-00: created with the PpppNative contract.
 // END_CHANGE_SUMMARY
@@ -44,6 +48,9 @@ class FakePpppNative : PpppNative {
     var apiVersionValue = 0xA2050401.toInt()
     var connectResult = 0
     @Volatile var connectBlocks = false
+    @Volatile var connectHold: CountDownLatch? = null
+    val inflightReads = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile var readsInFlightAtForceClose: Int = -1
     @Volatile var checkBlocks = false
     var checkResult = PpppCheck(0, 0, 500, true)
     var writeResult: (Int, ByteArray) -> Int = { _, b -> b.size }
@@ -95,6 +102,10 @@ class FakePpppNative : PpppNative {
     // START_BLOCK_FAKE_CONNECT
     override fun connect(did: String, flag: Byte, wakeup: Boolean, serverString: String, licenseKey: String): Int {
         calls += "connect flag=0x%02X wakeup=%b".format(flag.toInt() and 0xFF, wakeup)
+        connectHold?.let {
+            it.await(10, TimeUnit.SECONDS)
+            return PpppCodes.USER_CONNECT_BREAK
+        }
         if (connectBlocks) {
             connectGate.await()
             connectGate = CountDownLatch(1)
@@ -122,6 +133,15 @@ class FakePpppNative : PpppNative {
 
     // START_BLOCK_FAKE_READ
     override fun read(handle: Int, channel: Int, buf: ByteArray, size: IntArray, timeoutMs: Int): Int {
+        inflightReads.incrementAndGet()
+        try {
+            return readInner(handle, channel, buf, size, timeoutMs)
+        } finally {
+            inflightReads.decrementAndGet()
+        }
+    }
+
+    private fun readInner(handle: Int, channel: Int, buf: ByteArray, size: IntArray, timeoutMs: Int): Int {
         calls += "read ch=$channel"
         if (handle in closedHandles) {
             size[0] = 0
@@ -157,6 +177,7 @@ class FakePpppNative : PpppNative {
 
     override fun forceClose(handle: Int): Int {
         calls += "forceClose"
+        if (readsInFlightAtForceClose < 0) readsInFlightAtForceClose = inflightReads.get()
         closedHandles += handle
         checkGate.countDown()
         return 0
