@@ -1,8 +1,8 @@
 // FILE: IoCtrlMessages.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: IOCTRL command ids, payload builders and reply interpretation for the live-view session.
-//   SCOPE: 4881/9029/768/767 payloads (BE, TNP), 8190/511 payload (LE, TUTK), 4882 authResult, 9033 kick reason,
+//   SCOPE: 4881/9029/768/767 payloads (BE, TNP), 8190/511 payload (LE, TUTK), ch0 reply authResult, 9033 kick reason,
 //          resolution policy per link mode.
 //   DEPENDS: CameraLink (LinkMode)
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE
@@ -17,12 +17,15 @@ import java.nio.ByteOrder
 // START_MODULE_MAP
 //   IoCtrlMessages - object: command constants, setResolution, startRealtime, audioStart, stop, tutkStart,
 //     authOutcome(authResult), kickCode(payload), app codes.
-//   IoCtrlMessages.AuthOutcome - OK | WRONG_PASSWORD(-20009) | RETRY(-9000) | Unknown(code).
+//   IoCtrlMessages.AuthOutcome - OK | WRONG_PASSWORD(-20009) | RETRY(-9000) | Unknown(code) (not fatal, appCode 0).
 //   IoCtrlMessages.ResolutionPolicy - forMode(LinkMode): 1 (HD) on P2P/LAN, 2 (SD) otherwise.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-04 from 02-RESEARCH.md Pattern 4 (VERIFIED-LOCAL layouts).
+//   LAST_CHANGE: v0.2.0 - Phase 2 review MED-3 / LOW-11: authOutcome applies to every ch0 reply and Unknown is not
+//     fatal (vendor drops such a reply; appCode 0). kickCode reads the kick reason from payload[0] (one byte, vendor
+//     AVIOCTRLDEFs), not a big-endian u32.
+//   PREVIOUS: v0.1.0 - GSD plan 02-04 from 02-RESEARCH.md Pattern 4 (VERIFIED-LOCAL layouts).
 //     AuthOutcome is a sealed interface (not an enum) so the unknown branch keeps the raw authResult code.
 // END_CHANGE_SUMMARY
 
@@ -62,8 +65,9 @@ object IoCtrlMessages {
             override fun toString() = "RETRY"
         }
 
+        // Not fatal: the vendor silently drops a reply with such an authResult.
         data class Unknown(val code: Int) : AuthOutcome {
-            override val appCode = CODE_MANUAL_RETRY
+            override val appCode = 0
         }
     }
 
@@ -116,9 +120,9 @@ object IoCtrlMessages {
         ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(useCount).array()
 
     // START_CONTRACT: authOutcome
-    //   PURPOSE: Interpret authResult (s32 at IOCtrl offset 8 of a reply).
+    //   PURPOSE: Interpret authResult (s32 at IOCtrl offset 8 of every ch0 reply, not only 4882).
     //   INPUTS: { authResult: Int }
-    //   OUTPUTS: { AuthOutcome - 0 OK, 1|2 WRONG_PASSWORD, 4 RETRY, else Unknown(code) }
+    //   OUTPUTS: { AuthOutcome - 0 OK, 1|2 WRONG_PASSWORD, 4 RETRY, else Unknown(code): caller drops the reply }
     //   SIDE_EFFECTS: none
     //   LINKS: M-STREAM-CORE, TnpCodec.parseIoCtrlReply
     // END_CONTRACT: authOutcome
@@ -130,16 +134,15 @@ object IoCtrlMessages {
     }
 
     // START_CONTRACT: kickCode
-    //   PURPOSE: App error code for a 9033 kick reply (u32 BE reason in payload).
+    //   PURPOSE: App error code for a 9033 kick reply (reason = payload[0], one byte, vendor AVIOCTRLDEFs).
     //   INPUTS: { payload: ByteArray }
-    //   OUTPUTS: { Int - -3101 for reason 1 (max sessions), else -3100 (also for a short payload) }
+    //   OUTPUTS: { Int - -3101 for reason 1 (max sessions), else -3100 (also for an empty payload) }
     //   SIDE_EFFECTS: none
     //   LINKS: M-STREAM-CORE
     // END_CONTRACT: kickCode
     fun kickCode(payload: ByteArray): Int {
-        if (payload.size < 4) return CODE_KICKED
-        val reason = ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN).getInt(0)
-        return if (reason == 1) CODE_KICK_MAX_SESSION else CODE_KICKED
+        if (payload.isEmpty()) return CODE_KICKED
+        return if (payload[0].toInt() == 1) CODE_KICK_MAX_SESSION else CODE_KICKED
     }
 
     object ResolutionPolicy {

@@ -1,5 +1,5 @@
 // FILE: IoCtrlMessagesTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for IOCTRL constants, payload builders and reply interpretation.
 //   SCOPE: 4881/9029/768/767/8190/511 payload bytes, authOutcome, kickCode, ResolutionPolicy.
@@ -21,7 +21,8 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-04: wire-layer vectors.
+//   LAST_CHANGE: v0.2.0 - Phase 2 review: kick reason is payload[0] (LOW-11); Unknown authResult has appCode 0 (MED-3).
+//   PREVIOUS: v0.1.0 - GSD plan 02-04: wire-layer vectors.
 // END_CHANGE_SUMMARY
 
 class IoCtrlMessagesTest {
@@ -58,15 +59,18 @@ class IoCtrlMessagesTest {
         assertEquals(AuthOutcome.RETRY, IoCtrlMessages.authOutcome(4))
         assertEquals(-9000, IoCtrlMessages.authOutcome(4).appCode)
         assertEquals(AuthOutcome.Unknown(7), IoCtrlMessages.authOutcome(7))
+        assertEquals(0, IoCtrlMessages.authOutcome(7).appCode)
         assertEquals(0, IoCtrlMessages.authOutcome(0).appCode)
     }
 
     @Test
     fun `kickCode maps reason`() {
-        assertEquals(-3101, IoCtrlMessages.kickCode(bytes(0, 0, 0, 1)))
+        assertEquals(-3101, IoCtrlMessages.kickCode(bytes(1, 0, 0, 0)))
+        assertEquals(-3101, IoCtrlMessages.kickCode(bytes(1)))
+        assertEquals(-3100, IoCtrlMessages.kickCode(bytes(0, 0, 0, 1)))
         assertEquals(-3100, IoCtrlMessages.kickCode(bytes(0, 0, 0, 0)))
-        assertEquals(-3100, IoCtrlMessages.kickCode(bytes(0, 0, 0, 9)))
-        assertEquals(-3100, IoCtrlMessages.kickCode(bytes(0, 1)))
+        assertEquals(-3100, IoCtrlMessages.kickCode(bytes(9, 0, 0, 0)))
+        assertEquals(-3100, IoCtrlMessages.kickCode(ByteArray(0)))
     }
 
     @Test
