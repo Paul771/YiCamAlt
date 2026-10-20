@@ -1,11 +1,12 @@
 // FILE: AppShellScreen.kt
-// VERSION: 0.1.2
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Top-level post-login shell: tab host (Cameras / Settings) with session-aware header.
 //   SCOPE: renders active tab content; emits BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN markers.
-//     Live-View / Events tabs arrive in Phase-3; only Cameras + Settings are wired now.
-//   DEPENDS: M-UI-SHELL, M-CAMERA-LIST, M-UI-SETTINGS, M-AUTH (logout via caller)
-//   LINKS: M-UI-SHELL
+//     Live-View / Events tabs arrive in Phase-3; only Cameras + Settings are wired now. A camera row tap shows the
+//     debug LiveProbeScreen in place of the tab content (bottom bar hidden) until back / tab switch / logout.
+//   DEPENDS: M-UI-SHELL, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVE-PROBE, M-AUTH (logout via caller)
+//   LINKS: M-UI-SHELL, M-UI-LIVE-PROBE
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
@@ -30,19 +31,25 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.yicamalt.camera.CameraInfo
+import com.yicamalt.ui.live.LiveProbeScreen
 import timber.log.Timber
 
 // START_MODULE_MAP
-//   AppShellScreen - bottom-nav host for Cameras/Settings tabs (post-login).
+//   AppShellScreen - bottom-nav host for Cameras/Settings tabs (post-login) plus the debug live overlay.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.2 - CAM-04: camera list UNAUTHORIZED state routes "Войти снова" to onLogout (back to login)
-//   PREV_CHANGE: v0.1.1 - SEC-01: render marker logs hasUser instead of the user id
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-09: onOpenCamera from the camera list shows LiveProbeScreen (plain remember,
+//     not rememberSaveable: the cloud uid never enters the saved-instance Bundle; never logged). Tab switch or
+//     logout clears it; the probe screen's DisposableEffect then closes the P2P session.
+//   PREV_CHANGE: v0.1.2 - CAM-04: camera list UNAUTHORIZED state routes "Войти снова" to onLogout (back to login)
+//   OLDER_CHANGE: v0.1.1 - SEC-01: render marker logs hasUser instead of the user id
 // END_CHANGE_SUMMARY
 
 private enum class ShellTab(val label: String, val icon: ImageVector) {
@@ -54,9 +61,21 @@ private enum class ShellTab(val label: String, val icon: ImageVector) {
 @Composable
 fun AppShellScreen(userId: String, onLogout: () -> Unit) {
     var selected by remember { mutableIntStateOf(0) }
+    // Plain remember on purpose: the cloud uid must not be written into the saved-instance Bundle.
+    var liveCamera by remember { mutableStateOf<CameraInfo?>(null) }
     // START_BLOCK_RENDER_SHELL
-    Timber.d("[Shell][render][BLOCK_RENDER_SHELL] hasUser=${userId.isNotBlank()} tab=${ShellTab.entries[selected].label}")
+    Timber.d("[Shell][render][BLOCK_RENDER_SHELL] hasUser=${userId.isNotBlank()} tab=${if (liveCamera != null) "live" else ShellTab.entries[selected].label}")
     // END_BLOCK_RENDER_SHELL
+
+    val live = liveCamera
+    if (live != null) {
+        LiveProbeScreen(
+            deviceId = live.deviceId,
+            title = live.name.ifBlank { "Камера" },
+            onClose = { liveCamera = null },
+        )
+        return
+    }
 
     Scaffold(
         topBar = {
@@ -77,6 +96,7 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
                         onClick = {
                             // START_BLOCK_NAVIGATE_SCREEN
                             Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=${tab.label}")
+                            liveCamera = null
                             selected = index
                             // END_BLOCK_NAVIGATE_SCREEN
                         },
@@ -89,7 +109,13 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (ShellTab.entries[selected]) {
-                ShellTab.Cameras -> com.yicamalt.ui.cameras.CameraListScreen(onSessionExpired = onLogout)
+                ShellTab.Cameras -> com.yicamalt.ui.cameras.CameraListScreen(
+                    onSessionExpired = onLogout,
+                    onOpenCamera = { camera ->
+                        Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live")
+                        liveCamera = camera
+                    },
+                )
                 ShellTab.Settings -> com.yicamalt.ui.settings.SettingsScreen(onBack = {})
             }
         }

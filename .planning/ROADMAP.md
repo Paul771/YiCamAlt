@@ -63,8 +63,23 @@ Plans:
   3. Пользователь на мобильном интернете (Wi-Fi выключен) открывает ту же камеру и видит видео через P2P или relay; режим соединения виден в отладочной информации
   4. Камера с H.265 показывает видео так же, как камера с H.264 (или явно сообщает об отсутствии аппаратного декодера)
   5. Чистое Kotlin-ядро (`YiP2pAuth`, `TnpCodec`, `IFrameDecryptor`, `NalUtils`) покрыто JVM-тестами на эталонных векторах; устаревшие контракты `M-STREAM-LIVE` / `M-STREAM-DECODE` заменены в GRACE-документах
-**Plans**: TBD
-**Research**: needs `/gsd:research-phase` — PPPP error table, JNI-сигнатуры и поля структур из локального jadx/ELF, версия заголовка TNP-auth, аргументы `PPPP_Initialize`
+**Plans:** 6/13 plans executed
+
+Plans:
+- [x] 02-00-PLAN.md — Wave 0: базовая линия, контракты портов (CameraLink, PpppNative, StreamTypes), FakePpppNative, формы секретов в RedactionScanner, GRACE-узлы (M-STREAM-LIVE/DECODE → superseded)
+- [x] 02-01-PLAN.md — Вендорское правило транспорта: /v4/tnp/device_info для каждой камеры, TNP по форме DID, иначе по регистру uid; P2pCredentialsSource (wave 1)
+- [x] 02-02-PLAN.md — Gradle-извлечение вендорских .so из локального APK + SHA-256 манифест, abiFilters, R8 keep, HANDOFF (wave 1)
+- [x] 02-03-PLAN.md — Java JNI-шим с вендорскими FQCN, NativeLibs, PpppRuntime, AndroidPpppNative, DecoderCatalog, «Проверить P2P» в настройках (wave 1)
+- [x] 02-04-PLAN.md — TDD: YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec на эталонных векторах (wave 1)
+- [x] 02-05-PLAN.md — TDD: IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline (wave 1)
+- [x] 02-06-PLAN.md — Проверка на телефоне №1: загрузка libPPPP_API, PPPP_GetAPIVersion, транспорт обеих камер, HEVC-декодер, гейт 2B (wave 2, checkpoint)
+- [x] 02-07-PLAN.md — TnpCameraLink + фабрика (одна сессия на камеру, порядок вызовов вендора, без повторов) (wave 3)
+- [x] 02-08-PLAN.md — VideoDecoder (MediaCodec async → Surface) + DecoderPolicy (wave 3)
+- [x] 02-09-PLAN.md — Отладочный экран live из списка камер: режим, кодек, декодер, fps, decryptOk (wave 4)
+- [x] 02-10-PLAN.md — 2B часть A: гейт; при TUTK-камере — TUTK-шим, TutkNative, TutkRuntime, иначе задокументированный пропуск (wave 5)
+- [x] 02-11-PLAN.md — 2B часть B: TutkCameraLink + диспетчер фабрик по транспорту, или пропуск (wave 6)
+- [ ] 02-12-PLAN.md — Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, передача сессии официальному приложению (wave 7, checkpoint)
+**Research**: done — `.planning/phases/02-p2p/02-RESEARCH.md`
 **UI hint**: yes
 
 ### Phase 3: Полноценный live-view
@@ -125,7 +140,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
-| 2. Нативный P2P и первый кадр | 0/TBD | Not started | - |
+| 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Not started | - |
 | 4. Архив SD-карты | 0/TBD | Not started | - |
 | 5. Лента событий | 0/TBD | Not started | - |

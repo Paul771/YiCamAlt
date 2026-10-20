@@ -1,5 +1,5 @@
 // FILE: RedactionScannerTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Prove RedactionScanner flags every SEC-01 secret shape and stays clean on real redacted log shapes.
 //   SCOPE: one test per secret shape; known-safe project log lines; assertCleanQuiet message hygiene.
@@ -24,7 +24,8 @@ import org.junit.jupiter.api.assertThrows
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - SEC-01: initial shape coverage for scanner v0.2.0.
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-00: IPv4 / authInfo hits and value-free P2P / decoder marker lines (scanner v0.3.0).
+//   PREVIOUS: v0.1.0 - SEC-01: initial shape coverage for scanner v0.2.0.
 // END_CHANGE_SUMMARY
 
 class RedactionScannerTest {
@@ -49,6 +50,10 @@ class RedactionScannerTest {
     @Test fun `flags bare base64 hmac`() = assertFlagged("sig ${F.HMAC} ok")
     @Test fun `flags bare token_secret`() = assertFlagged("value ${F.TOKEN_SECRET} end")
     @Test fun `flags email`() = assertFlagged("user ${F.EMAIL} logged in")
+    @Test fun `flags private ip`() = assertFlagged("[P2P][tnp][BLOCK_CHECK_SESSION] peer ${F.PRIVATE_IP} lan")
+    @Test fun `flags wan ip`() = assertFlagged("[P2P][tnp][BLOCK_CHECK_SESSION] peer ${F.WAN_IP}:32108")
+    @Test fun `flags auth info`() = assertFlagged("[P2P][tnp][BLOCK_AUTH_REPLY] sent ${F.AUTH_INFO} ok")
+    @Test fun `flags bare TNP DID in P2P line`() = assertFlagged("[P2P][tnp][BLOCK_CONNECT] ${F.DID}")
     // END_BLOCK_FLAG_SHAPES
 
     // START_BLOCK_SAFE_LINES
@@ -72,6 +77,20 @@ class RedactionScannerTest {
     @Test fun `safe line 6 is clean`() = scanner.assertClean("[Shell][render][BLOCK_RENDER_SHELL] hasUser=true tab=Камеры")
 
     @Test fun `safe line 7 is clean`() = scanner.assertClean("x-xiaoyi-appVersion: android;454;6.9.8_20260826105838")
+
+    @Test fun `safe P2P init line is clean`() =
+        scanner.assertClean("[P2P][runtime][BLOCK_INIT_PPPP] init=0 api=0xA2050401 debug=off")
+
+    @Test fun `safe decoder line is clean`() =
+        scanner.assertClean("[Media][decoder][BLOCK_CREATE_DECODER] mime=video/hevc name=c2.qti.hevc.decoder hw=true")
+
+    @Test fun `safe check session line is clean`() =
+        scanner.assertClean("[P2P][tnp][BLOCK_CHECK_SESSION] mode=P2P lan=true connectMs=812")
+
+    @Test fun `safe version line is clean`() = scanner.assertClean("version 1.13.9")
+
+    @Test fun `safe loopback mock server url is clean`() =
+        scanner.assertClean("--> GET http://127.0.0.1:41234/v4/devices/list?seq=1&hmac=██")
     // END_BLOCK_SAFE_LINES
 
     // START_BLOCK_QUIET_ASSERT

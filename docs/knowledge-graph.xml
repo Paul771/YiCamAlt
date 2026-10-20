@@ -116,6 +116,8 @@
       <change-summary phase="01-secrets-camera-list" plan="01-09" verification="passed">CameraRegistry v0.5.0: BRANCH A source /v5/devices/list only (no shared path, no registry region fallback: tokens are per region, login discovery keeps the region); owned + shared rows deduped by uid; ServerRejected; cachedCameras; CameraDao.replaceAll + refresh Mutex; P2P credentials (transport, decrypted password, TNP DID/InitString/License from /v4/tnp/device_info, reused per DID) only in P2pCredentialStore; clearAll on logout (MainActivity).</change-summary>
       <change-summary phase="01-secrets-camera-list" plan="01-09" verification="passed">CameraRegistry v0.6.0 (security review, fail-closed cleanup): logout cleanup moved into M-AUTH: AuthRepository.logout calls LogoutCleanup (CameraRegistry, via Provider) synchronously; writes guarded by writeLock + wipe generation; purgeIfSignedOut at start without a session.</change-summary>
       <change-summary phase="01-secrets-camera-list" plan="01-11" verification="in-progress">GRACE sync for waves 4-6: module marked implemented; region is chosen only by M-AUTH login discovery (no registry BLOCK_REGION_FALLBACK, no shared-list path); log markers [Camera][getCameraList][BLOCK_FETCH_SOURCE] source=LABEL code=C count=N, [Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport/mismatch/hasPassword/tnpInfo/needsPincode then stored/withLicense/withPassword, [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices/shared/tnp/tutk. On-device verification pending (plan 01-11 Task 2/3).</change-summary>
+      <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review MED-4: CameraRegistry v0.8.0 refreshCredentials (one getCameraList, errors swallowed, BLOCK_REFRESH_CREDENTIALS result=&lt;ok|ErrorClass&gt; found=&lt;b&gt;) for the live probe's single WRONG_PASSWORD retry. CameraRegistryCredentialsTest creds_13.</change-summary>
+      <change-summary phase="02-p2p" plan="02-01" commits="827d67f, 29fa3cc" verification="passed">device_info (/v4/tnp/device_info) is asked once per user refresh for every camera without a transportVerified record; verified records are reused (zero extra calls); a network failure keeps a verified record or yields UNKNOWN / via=none. CameraRegistry implements P2pCredentialsSource (credentialsFor; CameraBindsModule.bindP2pCredentialsSource). Markers: BLOCK_RESOLVE_P2P_CREDENTIALS transport= via=deviceInfo|uid|none listType= tnpInfo= hasPassword= needsPincode=, summary stored= withLicense= withPassword= verified=. The old type-vs-id flag is gone. CameraRegistryCredentialsTest 23, CameraRegistryModuleTest 22.</change-summary>
     </M-CAMERA-LIST>
 
     <M-CAMERA-CMD NAME="CameraCommand" TYPE="CORE_LOGIC" STATUS="implemented-provisional">
@@ -156,11 +158,13 @@
       <change-summary phase="01-secrets-camera-list" commit="05dcd39" verification="passed">GSD phase 01 (plan 01-04): EventSigner removed; EventServiceModule signs via M-HTTP YiRequestSigner. EventServiceModuleTest 23/23 green.</change-summary>
     </M-EVENT>
 
-    <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" STATUS="planned">
+    <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" STATUS="superseded">
       <purpose>Establish and manage live video stream from a Yi camera. Lifecycle management, reconnection, quality adaptation.</purpose>
       <path>app/src/main/java/com/yicamalt/stream/LiveStreamModule.kt</path>
       <depends>M-HTTP, M-AUTH, M-CAMERA-LIST, M-STREAM-DECODE</depends>
       <verification-ref>V-M-STREAM-LIVE</verification-ref>
+      <superseded-by>M-TNP-LINK, M-STREAM-CORE, M-MEDIA-RENDER, M-UI-LIVE-PROBE</superseded-by>
+      <change-summary phase="02-p2p" plan="02-00" verification="n/a">Superseded: 2026-10-12 GSD Phase 2 research: there is no cloud HLS/RTSP stream and no cloud AES handshake; live video is P2P via the vendor PPPP/TUTK libraries; I-frame key = camera password + '0' (02-RESEARCH.md)</change-summary>
       <annotations>
         <fn-startStream PURPOSE="Initialize and connect to camera stream" />
         <fn-stopStream PURPOSE="Gracefully disconnect stream" />
@@ -171,11 +175,13 @@
       </annotations>
     </M-STREAM-LIVE>
 
-    <M-STREAM-DECODE NAME="StreamDecoder" TYPE="CORE_LOGIC" STATUS="planned">
+    <M-STREAM-DECODE NAME="StreamDecoder" TYPE="CORE_LOGIC" STATUS="superseded">
       <purpose>Handle video stream decryption (AES-128) and decoding. Wraps ExoPlayer MediaSource with decryption support.</purpose>
       <path>app/src/main/java/com/yicamalt/stream/StreamDecoderModule.kt</path>
       <depends>M-HTTP</depends>
       <verification-ref>V-M-STREAM-DECODE</verification-ref>
+      <superseded-by>M-STREAM-CORE, M-MEDIA-RENDER</superseded-by>
+      <change-summary phase="02-p2p" plan="02-00" verification="n/a">Superseded: 2026-10-12 GSD Phase 2 research: there is no cloud HLS/RTSP stream and no cloud AES handshake; live video is P2P via the vendor PPPP/TUTK libraries; I-frame key = camera password + '0' (02-RESEARCH.md)</change-summary>
       <annotations>
         <fn-createDecryptedSource PURPOSE="Create ExoPlayer MediaSource from encrypted URL + AES key" />
         <fn-handshakeWithCamera PURPOSE="Perform handshake to obtain AES session key" />
@@ -243,12 +249,13 @@
       </annotations>
       <change-summary step="5" phase="2" commit="3cbee19" verification="deferred-emulator">M-UI-SHELL implemented: AppShellScreen replaces the HomeScreen stub — NavigationBar tabs Cameras (CameraListScreen + CameraListViewModel via CameraListPort) and Settings (existing SettingsScreen). MainActivity hosts the shell post-login. Compose instrumented tests require an emulator (not available in build env); ViewModel unit tests green.</change-summary>
       <change-summary step="10" phase="1" plan="01-10" verification="passed">CAM-01/04/05 camera list UI: cache-first start, Empty vs typed Error (NETWORK/SERVER/UNAUTHORIZED), stale banner over a kept list, single-flight refresh, pull-to-refresh, transport + shared mark in the row, device id removed from the screen (SEC-01). CameraListViewModelTest 17 JVM tests.</change-summary>
+      <change-summary phase="02-p2p" plan="02-09" commit="9f696a0" verification="in-progress">Camera row tap (CameraListScreen onOpenCamera) opens the debug live probe (M-UI-LIVE-PROBE) as an AppShellScreen overlay; bars hidden while shown, back returns to the list; [Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live. Device proof: 02-DEVICE-VERIFICATION.md.</change-summary>
     </M-UI-SHELL>
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" STATUS="planned">
       <purpose>Live view screen: video surface, PTZ joystick, quality selector, camera selector, disconnect.</purpose>
       <path>app/src/main/java/com/yicamalt/ui/liveview/LiveViewScreen.kt</path>
-      <depends>M-UI-SHELL, M-STREAM-LIVE, M-CAMERA-CMD, M-CAMERA-LIST</depends>
+      <depends>M-UI-SHELL, M-TNP-LINK, M-MEDIA-RENDER, M-CAMERA-CMD, M-CAMERA-LIST</depends>
       <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
       <annotations>
         <fn-LiveViewScreen PURPOSE="Compose screen with video + controls" />
@@ -392,10 +399,10 @@
       <depends>M-HTTP</depends>
       <verification-ref>V-M-P2P-CREDS</verification-ref>
       <annotations>
-        <export-TransportResolver PURPOSE="resolve(type, p2pId): 2 TNP, 0 TUTK, 1 LANGTAO, else UNKNOWN; missing type falls back to the TNP DID shape; conflict sets mismatch (BLOCK_RESOLVE_TRANSPORT, code anchor, no log)" />
+        <export-TransportResolver PURPOSE="decide(deviceInfoDid, cloudUid): vendor rule (02-RESEARCH.md Pattern 5) - TNP-shaped device_info DID (isTnpDid: TNP prefix, exactly 3 dash parts) gives TNP dialled with that DID, else the cloud uid is the id and its case decides (all lower-case LANGTAO, else TUTK); the list type/did are log hints only and never decide; Resolution(transport, p2pId, source) (BLOCK_RESOLVE_TRANSPORT, code anchor, no log)" />
         <export-CameraPasswordCipher PURPOSE="decrypt(passwordHex, cloudUid): AES/ECB key = first 16 chars of the cloud uid; blank = factory default; failure = null; never logs (BLOCK_DECRYPT_CAMERA_PASSWORD, code anchor)" />
         <export-P2pCredentialStore PURPOSE="get / replaceAll / clear; EncryptedP2pCredentialStore (EncryptedSharedPreferences file yicamalt_p2p, Hilt bindP2pCredentialStore), InMemoryP2pCredentialStore; never Room; logs [P2pCreds][replaceAll][BLOCK_STORE_P2P_CREDENTIALS] count=N" />
-        <type-P2pCredentials PURPOSE="deviceId, p2pId, transport, password, initString, licenseKey, p2pEncrypt, wakeup, needsPincode; toString prints flags only" />
+        <type-P2pCredentials PURPOSE="deviceId, p2pId, transport, password, initString, licenseKey, p2pEncrypt, wakeup, needsPincode, transportVerified; toString prints flags only" />
         <type-TransportType PURPOSE="TNP | TUTK | LANGTAO | UNKNOWN" />
         <class-P2pCredentialsCodec PURPOSE="JSON codec for one stored entry (internal)" />
       </annotations>
@@ -405,7 +412,182 @@
       <change-summary phase="01-secrets-camera-list" plan="01-12" commit="768dada" verification="passed">TransportType, P2pCredentials (flag-only toString), TransportResolver, CameraPasswordCipher (synthetic openssl vector, 888888 default, invalid inputs -> null).</change-summary>
       <change-summary phase="01-secrets-camera-list" plan="01-12" commit="15722f2" verification="passed">P2pCredentialStore contract, EncryptedP2pCredentialStore (yicamalt_p2p), InMemoryP2pCredentialStore (atomic map swap), codec, P2P_STORE_FAILED warning. JVM: 10 + 7 + 8 tests. Encrypted store itself is device-verified only (plan 01-11).</change-summary>
       <change-summary phase="01-secrets-camera-list" plan="01-09" commit="de27b3f" verification="passed">Wired by M-CAMERA-LIST: credentials built from the device row + /v4/tnp/device_info and stored with replaceAll; secrets live in memory / EncryptedSharedPreferences only (SEC-04).</change-summary>
+      <change-summary phase="02-p2p" plan="02-01" commits="8c82f96, 29fa3cc" verification="passed">Vendor transport rule: TransportResolver.decide(deviceInfoDid, cloudUid) + isTnpDid; P2pCredentials.transportVerified persisted (older records decode as false). Device check 1: TRANSPORTS tnp=1 tutk=1 langtao=0 unknown=0, verified=2 of 2. P2pCredentialsTest 11, P2pCredentialStoreTest 10.</change-summary>
     </M-P2P-CREDS>
+
+    <!-- GSD Phase 2 (02-p2p): P2P live-video modules (contract-first in plan 02-00, implemented by plans 02-01..02-11) -->
+
+    <M-P2P-NATIVE NAME="P2pNative" TYPE="INTEGRATION" STATUS="implemented">
+      <purpose>Vendor CS2-PPPP library from the user's own APK: build-time extraction with SHA-256 manifest, Java JNI shim at vendor FQCNs, library loading as a state, once-per-process PPPP init with native debug off.</purpose>
+      <path>app/src/main/java/com/yicamalt/p2p/PpppNative.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/NativeLibs.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/PpppRuntime.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/AndroidPpppNative.kt</path>
+      <path>app/src/main/java/com/p2p/pppp_api/PPPP_APIs.java</path>
+      <path>app/src/main/java/com/tnp/model/st_PPPP_Session.java</path>
+      <path>app/src/main/java/com/tnp/model/st_PPPP_NetInfo.java</path>
+      <path>app/build.gradle.kts</path>
+      <path>app/vendor-natives.sha256</path>
+      <depends>none (vendor .so only)</depends>
+      <verification-ref>V-M-P2P-NATIVE</verification-ref>
+      <annotations>
+        <export-PpppNative PURPOSE="9-call native seam (initialize, configDebug, apiVersion, connect, connectBreak, check, read, write, forceClose); FakePpppNative on the JVM" />
+        <export-AndroidPpppNative PURPOSE="PpppNative over the JNI shim; check() returns only mode, connect time, remoteIsPrivate (BLOCK_CHECK_SESSION)" />
+        <export-NativeLibs PURPOSE="loadPppp / loadTutk / primaryAbi; LoadState Loaded | Missing | Error, cached (BLOCK_LOAD_NATIVE)" />
+        <export-PpppRuntime PURPOSE="ensureInitialized(): once-per-process init + Config_Debug(0, 4194311) on p2p-runtime, 10 s bound; RuntimeState NotStarted | Unavailable | InitFailed | Ready(apiVersion, initCode); never DeInitialize (BLOCK_INIT_PPPP)" />
+        <export-P2pRuntimeModule PURPOSE="Hilt: NativeLibs singleton, @Binds PpppNative to AndroidPpppNative" />
+        <class-PPPP_APIs PURPOSE="JNI shim at the vendor FQCN com.p2p.pppp_api.PPPP_APIs (13 static natives + 2 JNI_OnLoad callbacks) with com.tnp.model.st_PPPP_Session / st_PPPP_NetInfo; R8 keep rules" />
+        <type-PpppCheck PURPOSE="Value-free session projection" />
+        <export-PpppCodes PURPOSE="Error constants, name(code), classify(code) (BLOCK_CLASSIFY_PPPP_CODE)" />
+        <export-extractVendorNatives PURPOSE="Gradle: libs from the user's own APK into app/build/generated/vendorJniLibs; never throws (BLOCK_EXTRACT_VENDOR_NATIVES)" />
+        <export-verifyVendorNatives PURPOSE="Gradle: fails APK tasks on MISSING / MISMATCH vs app/vendor-natives.sha256 (BLOCK_VERIFY_VENDOR_NATIVES)" />
+      </annotations>
+      <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/ShimContractTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/PpppRuntimeTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/FakePpppNative.kt</tests>
+      <change-summary phase="02-p2p" plan="02-00" verification="passed">Contract-first: PpppNative / PpppCheck / PpppCodes created; FakePpppNative test double; PpppContractTest green.</change-summary>
+      <change-summary phase="02-p2p" plan="02-02" commits="517f5fe, 963432e" verification="passed">extractVendorNatives / verifyVendorNatives with the 8-hash manifest; fresh-clone (JVM tests run, APK assembly fails with a hint) and mismatch simulations; R8 keep rules; nothing vendor in Git.</change-summary>
+      <change-summary phase="02-p2p" plan="02-03" commits="7d1501f, 020b2e9, c4f6373" verification="passed">JNI shim at vendor FQCNs, NativeLibs, PpppRuntime, AndroidPpppNative, Settings debug check line. ShimContractTest 5, PpppRuntimeTest 16.</change-summary>
+      <change-summary phase="02-p2p" plan="02-06" commit="2179027" verification="passed">Device check 1: CRITERION_1_RUNTIME PASS (pppp=ok, init=0, api=0xA2050401) on the user's arm64 phone; redaction sweep clean.</change-summary>
+      <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented; device live-video proof in 02-DEVICE-VERIFICATION.md.</change-summary>
+    </M-P2P-NATIVE>
+
+    <M-TNP-LINK NAME="TnpCameraLink" TYPE="CORE_LOGIC" STATUS="implemented">
+      <purpose>One TNP session per camera over PpppNative: connect/check, readers on ch0/1/2/3/6, startup burst 4881/9029/768, auth reply, teardown.</purpose>
+      <path>app/src/main/java/com/yicamalt/p2p/tnp/TnpCameraLink.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/tnp/TnpLinkFactory.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/P2pLinkModule.kt</path>
+      <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
+      <verification-ref>V-M-TNP-LINK</verification-ref>
+      <annotations>
+        <export-TnpCameraLink PURPOSE="Internal CameraLink for TNP: connect 0x49 / relay 0xDF with the device_info DID, check, five readers before the 4881/9029/768 burst, authResult on every ch0 reply, header version (whole start sequence re-sent once), 9033 kick, 30 s / 20 s timers, thread guard, bounded teardown on p2p-&lt;n&gt;-close (BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_HEADER_VERSION, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_THREAD_GUARD)" />
+        <export-TnpLinkFactory PURPOSE="CameraLinkFactory: typed refusals, PpppRuntime init once, one session per camera (BLOCK_OPEN_LINK)" />
+        <export-P2pLinkModule PURPOSE="Hilt: @Binds CameraLinkFactory to TransportLinkFactory" />
+      </annotations>
+      <tests>app/src/test/java/com/yicamalt/p2p/tnp/TnpCameraLinkTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/tnp/TnpLinkFactoryTest.kt</tests>
+      <change-summary phase="02-p2p" plan="02-07" commits="fc90ee7, d86c641" verification="passed">TnpCameraLink + TnpLinkFactory + P2pLinkModule on FakePpppNative (JVM only); TnpCameraLinkTest 18, TnpLinkFactoryTest 5.</change-summary>
+      <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 Race fix (TnpCameraLink v0.1.1): auth reply and first video unit publish Streaming.authOk under one lock; regression test added (TnpCameraLinkTest 19). Device proof: 02-DEVICE-VERIFICATION.md.</change-summary>
+      <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes (TnpCameraLink v0.2.0): HIGH-2 whole start sequence re-sent once on a header version mismatch, mismatched reply skipped; MED-3 authResult on every ch0 reply; MED-7 thread guard and empty-password refusal; LOW-8 registry released after the link threads exited; LOW-9 ForceClose after the readers left. TnpCameraLinkTest 27, TnpLinkFactoryTest 5. See 02-REVIEW-FIXES.md.</change-summary>
+    </M-TNP-LINK>
+
+    <M-STREAM-CORE NAME="StreamCore" TYPE="CORE_LOGIC" STATUS="implemented">
+      <purpose>Pure-Kotlin protocol core and port types: CameraLink port, YiP2pAuth, TnpCodec, IoCtrlMessages, FrameHeadCodec, IFrameDecryptor, NalUtils, FrameAssembler, FramePipeline.</purpose>
+      <path>app/src/main/java/com/yicamalt/stream/CameraLink.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/StreamTypes.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/YiP2pAuth.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/TnpCodec.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/IoCtrlMessages.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/FrameHeadCodec.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/IFrameDecryptor.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/NalUtils.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/FrameAssembler.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/FramePipeline.kt</path>
+      <depends>M-P2P-CREDS</depends>
+      <verification-ref>V-M-STREAM-CORE</verification-ref>
+      <annotations>
+        <export-CameraLink PURPOSE="Live session port: deviceId, state, start(sink), close(reason)" />
+        <export-CameraLinkFactory PURPOSE="open(credentials, options)" />
+        <export-P2pCredentialsSource PURPOSE="credentialsFor(deviceId)" />
+        <type-LinkState PURPOSE="Idle | Connecting | Connected | Streaming | Failed | Closed" />
+        <type-VideoUnit PURPOSE="Transport unit (channel, FrameInfo, payload)" />
+        <type-DecodableFrame PURPOSE="Annex-B access unit + csd" />
+        <export-FramePipeline PURPOSE="VideoUnit -> DecodableFrame; stats() PipelineStats incl. decryptOk and framing; reset() (BLOCK_FIRST_KEYFRAME, BLOCK_MAP_CODEC, BLOCK_EMIT_FRAME)" />
+        <export-YiP2pAuth PURPOSE="Vendor-exact 32-byte authInfo: nonce + HmacSHA1 pass (15 chars) or the admin form (BLOCK_BUILD_AUTH_INFO)" />
+        <export-TnpCodec PURPOSE="TNPHead / IOCtrlHead, validateHead, 56/52/56-byte command units, reply and frame-unit parsing (BLOCK_ENCODE_COMMAND, BLOCK_VALIDATE_HEAD, BLOCK_PARSE_UNIT)" />
+        <export-IoCtrlMessages PURPOSE="Command ids and payloads, authOutcome, kickCode, ResolutionPolicy" />
+        <export-FrameHeadCodec PURPOSE="24-byte frame head, BE (TNP) / LE (TUTK) (BLOCK_PARSE_FRAME_HEAD)" />
+        <export-IFrameDecryptor PURPOSE="AES/ECB/NoPadding on [4,20) and [20,36), key = password + '0', fail-open (BLOCK_DECRYPT_IFRAME)" />
+        <export-NalUtils PURPOSE="Framing detection, Annex-B, NAL types, parameter sets (BLOCK_SPLIT_NALS)" />
+        <export-FrameAssembler PURPOSE="Keyframe gate, u16 P reorder (MAX_PENDING 100), useCount generation filter; P frames overtaking their I are drained after it (BLOCK_ASSEMBLE_FRAMES)" />
+      </annotations>
+      <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/YiP2pAuthTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/TnpCodecTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/IoCtrlMessagesTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/FrameHeadCodecTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/IFrameDecryptorTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/NalUtilsTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/FrameAssemblerTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/FramePipelineTest.kt</tests>
+      <change-summary phase="02-p2p" plan="02-00" verification="passed">Contract-first port types StreamTypes.kt + CameraLink.kt created; protocol core follows in plans 02-04 / 02-05.</change-summary>
+      <change-summary phase="02-p2p" plan="02-04" commits="8ef9894, 6f46d90" verification="passed">YiP2pAuth (RFC 2202 + frozen synthetic vector), TnpCodec (byte-exact 56/52/56), IoCtrlMessages, FrameHeadCodec; 29 JVM tests.</change-summary>
+      <change-summary phase="02-p2p" plan="02-05" commits="4f4341e, 84459de" verification="passed">IFrameDecryptor (FIPS-197 C.1 through our cipher path), NalUtils, FrameAssembler, FramePipeline; 35 JVM tests.</change-summary>
+      <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented; device proof in 02-DEVICE-VERIFICATION.md.</change-summary>
+      <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes: FrameAssembler v0.2.0 (HIGH-1, overtaking P frames kept), IoCtrlMessages v0.2.0 (LOW-11 kick reason payload[0], MED-3 Unknown authResult not fatal), CameraLink.kt v0.2.0 (P2pCredentialsSource.refreshCredentials). FrameAssemblerTest 13, IoCtrlMessagesTest 5.</change-summary>
+    </M-STREAM-CORE>
+
+    <M-MEDIA-RENDER NAME="VideoDecoder" TYPE="UI_SUPPORT" STATUS="implemented">
+      <purpose>MediaCodec async decode of DecodableFrame to a Surface; decoder catalog (HW AVC/HEVC); explicit no-decoder outcome.</purpose>
+      <path>app/src/main/java/com/yicamalt/media/VideoDecoder.kt</path>
+      <path>app/src/main/java/com/yicamalt/media/DecoderPolicy.kt</path>
+      <path>app/src/main/java/com/yicamalt/media/DecoderCatalog.kt</path>
+      <depends>M-STREAM-CORE</depends>
+      <verification-ref>V-M-MEDIA-RENDER</verification-ref>
+      <annotations>
+        <export-VideoDecoder PURPOSE="DecodableFrameSink over MediaCodec async on the media-decoder HandlerThread; status / resetEvents; NoDecoder explicit (BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET, BLOCK_NO_DECODER, BLOCK_FEED_INPUT, BLOCK_PUMP)" />
+        <export-DecoderCatalog PURPOSE="MediaCodecList query (BLOCK_QUERY_DECODERS)" />
+        <export-DecoderPolicy PURPOSE="Pure rules: FrameQueue (key gate, oldest-first overflow), ResetCounter, CsdBuilder, PtsGuard, DecoderStatus texts" />
+      </annotations>
+      <tests>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</tests>
+      <change-summary phase="02-p2p" plan="02-08" verification="jvm-passed">VideoDecoder (MediaCodec async to Surface) and JVM-tested DecoderPolicy; device proof in plan 02-12.</change-summary>
+      <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented; DecoderPolicyTest 9; device check 1 lists hardware AVC and HEVC decoders; device proof in 02-DEVICE-VERIFICATION.md.</change-summary>
+    </M-MEDIA-RENDER>
+
+    <M-UI-LIVE-PROBE NAME="LiveProbeScreen" TYPE="UI" STATUS="implemented">
+      <purpose>Debug live screen for Phase 2 checkpoints: open from camera list, Connect / force-relay / Stop, SurfaceView, mode / codec / decoder / fps / decryptOk status line, close on leave.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/live/LiveProbeScreen.kt</path>
+      <path>app/src/main/java/com/yicamalt/ui/live/LiveProbeViewModel.kt</path>
+      <depends>M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST</depends>
+      <verification-ref>V-M-UI-LIVE-PROBE</verification-ref>
+      <annotations>
+        <export-LiveProbeScreen PURPOSE="Compose debug screen" />
+        <export-LiveProbeViewModel PURPOSE="One CameraLink per press plus at most one retry after WRONG_PASSWORD; Connect disabled while the closed link drains; value-free status line (BLOCK_OPEN_PROBE, BLOCK_CONNECT_PRESSED, BLOCK_LINK_STATE, BLOCK_RETRY, BLOCK_STATUS, BLOCK_CLOSE_PROBE)" />
+        <export-VideoSinkPort PURPOSE="Decoder seam (VideoDecoderAdapter in production, fake in tests)" />
+        <export-VideoSinkProvider PURPOSE="Injectable decoder factory" />
+        <export-HevcProbe PURPOSE="Injectable HEVC decoder description" />
+        <export-linkErrorMessage PURPOSE="LinkErrorKind to Russian text" />
+        <export-codeName PURPOSE="Vendor code name by transport (TutkCodes / PpppCodes)" />
+        <export-LiveProbeTexts PURPOSE="Fixed Russian refusal texts" />
+      </annotations>
+      <change-summary>2026-10-15 GSD plan 02-09: LiveProbeViewModel.kt + LiveProbeScreen.kt implemented; opened from CameraListScreen row tap via AppShellScreen (onOpenCamera). STATUS stays planned until the device checkpoint (02-12).</change-summary>
+      <tests>app/src/test/java/com/yicamalt/ui/live/LiveProbeViewModelTest.kt</tests>
+      <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented (LiveProbeViewModelTest 17); device proof in 02-DEVICE-VERIFICATION.md.</change-summary>
+      <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes (LiveProbeViewModel v0.2.0): MED-4 one automatic retry per press after WRONG_PASSWORD (2 s, refreshCredentials, new session; cancelled by Stop), LOW-8 Connect disabled until the closed link is terminal, LOW-10 auth=pending and TUTK code names. LiveProbeViewModelTest 25.</change-summary>
+    </M-UI-LIVE-PROBE>
+
+    <M-TUTK-LINK NAME="TutkCameraLink" TYPE="CORE_LOGIC" STATUS="implemented">
+      <purpose>TUTK/Kalay adapter behind CameraLink (only if a camera resolves to TUTK after the vendor transport rule; plans 02-10/02-11, gated by device check 02-06). Conditional: may be closed as not-needed.</purpose>
+      <path>app/src/main/java/com/yicamalt/p2p/tutk/TutkCameraLink.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/tutk/TutkNative.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/tutk/AndroidTutkNative.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/tutk/TutkRuntime.kt</path>
+      <path>app/src/main/java/com/yicamalt/p2p/TransportLinkFactory.kt</path>
+      <path>app/src/main/java/com/tutk/IOTC/IOTCAPIs.java</path>
+      <path>app/src/main/java/com/tutk/IOTC/AVAPIs.java</path>
+      <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
+      <verification-ref>V-M-TUTK-LINK</verification-ref>
+      <annotations>
+        <export-TutkCameraLink PURPOSE="CameraLink over IOTC/AV sessions; vendor fatal read codes, split AV / session release, thread guard (BLOCK_READ_LOOP, BLOCK_CLOSE, BLOCK_THREAD_GUARD)" />
+        <export-TransportLinkFactory PURPOSE="Routes open() by transport" />
+        <export-TutkNative PURPOSE="Seam over IOTC/AV natives in the vendor client order (TutkNative.kt); JVM fake FakeTutkNative" />
+        <export-TutkCodes PURPOSE="IOTC_ER_* / AV_ER_* names and classify to LinkErrorKind (-20009 WRONG_PASSWORD; -20015/-20016/-20010 REMOTE_CLOSED)" />
+        <export-AndroidTutkNative PURPOSE="TutkNative over the com.tutk.IOTC shim; St_SInfoEx reduced to mode + private flag, UID/addresses zero-filled" />
+        <export-TutkRuntime PURPOSE="ensureInitialized(): load libs, IOTC_Initialize2(0), avInitialize(32), versions once per process on tutk-runtime (BLOCK_INIT_TUTK)" />
+        <export-TutkRuntimeModule PURPOSE="Hilt: @Binds TutkNative to AndroidTutkNative" />
+        <export-TutkLinkFactory PURPOSE="@Singleton CameraLinkFactory for TUTK: credential checks, TutkRuntime init, one session per camera" />
+        <class-IOTCAPIs PURPOSE="JNI shim com.tutk.IOTC.IOTCAPIs (7 natives) + AVAPIs (8 natives, 7 av*Fn interfaces), St_SInfoEx, Region, st_LanSearchInfo/2, st_SearchDeviceInfo, St_AvIdentity" />
+      </annotations>
+      <change-summary>2026-10-15 GSD plan 02-10: GATE_2B needed (02-DEVICE-CHECK-1); TUTK shim, TutkNative seam, AndroidTutkNative, TutkRuntime implemented with JVM tests. TutkCameraLink follows in 02-11. STATUS stays planned until the device checkpoint. 2026-10-16 GSD plan 02-11: TutkCameraLink, TutkLinkFactory and TransportLinkFactory implemented with JVM tests; P2pLinkModule binds CameraLinkFactory to TransportLinkFactory.</change-summary>
+      <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkShimContractTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkRuntimeTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/tutk/TutkCameraLinkTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/tutk/FakeTutkNative.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/p2p/TransportLinkFactoryTest.kt</tests>
+      <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented (GATE_2B: needed; plans 02-10 + 02-11; TutkShimContractTest 6, TutkRuntimeTest 14, TutkCameraLinkTest 20, TransportLinkFactoryTest 3); device proof in 02-DEVICE-VERIFICATION.md.</change-summary>
+      <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes (TutkCameraLink v0.2.0, TutkNative v0.1.1): MED-5 vendor fatal read codes, -20001 buffer growth; MED-6 avReleased / sidReleased; MED-7 thread guard, empty-password refusal; LOW-8 deferred registry release; LOW-9 stop after the reader left. TutkCameraLinkTest 28.</change-summary>
+    </M-TUTK-LINK>
 
     <!-- CrossLinks: module dependencies -->
     <CrossLink from="M-HTTP" to="M-CONFIG" relation="uses for base URL config" />
@@ -422,11 +604,17 @@
     <CrossLink from="M-EVENT" to="M-HTTP" relation="uses for API calls; signs requests via YiRequestSigner" />
     <CrossLink from="M-EVENT" to="M-AUTH" relation="uses for auth token" />
     <CrossLink from="M-EVENT" to="M-LOCAL-DB" relation="caches event data" />
-    <CrossLink from="M-STREAM-LIVE" to="M-HTTP" relation="uses for stream URL" />
-    <CrossLink from="M-STREAM-LIVE" to="M-AUTH" relation="uses for auth token" />
-    <CrossLink from="M-STREAM-LIVE" to="M-CAMERA-LIST" relation="uses stream URL resolution" />
-    <CrossLink from="M-STREAM-LIVE" to="M-STREAM-DECODE" relation="uses for decryption" />
-    <CrossLink from="M-STREAM-DECODE" to="M-HTTP" relation="uses for handshake API" />
+    <CrossLink from="M-TNP-LINK" to="M-P2P-NATIVE" relation="drives PPPP sessions" />
+    <CrossLink from="M-TNP-LINK" to="M-STREAM-CORE" relation="framing, auth, frame heads" />
+    <CrossLink from="M-TNP-LINK" to="M-P2P-CREDS" relation="connects with stored credentials" />
+    <CrossLink from="M-UI-LIVE-PROBE" to="M-TNP-LINK" relation="opens and closes one link" />
+    <CrossLink from="M-UI-LIVE-PROBE" to="M-MEDIA-RENDER" relation="renders frames to a Surface" />
+    <CrossLink from="M-UI-LIVE-PROBE" to="M-CAMERA-LIST" relation="credentials by device id" />
+    <CrossLink from="M-MEDIA-RENDER" to="M-STREAM-CORE" relation="consumes DecodableFrame" />
+    <CrossLink from="M-TUTK-LINK" to="M-P2P-NATIVE" relation="drives IOTC/AV sessions" />
+    <CrossLink from="M-TUTK-LINK" to="M-STREAM-CORE" relation="LE frame heads, nonce + HMAC auth, start command" />
+    <CrossLink from="M-TUTK-LINK" to="M-TNP-LINK" relation="TransportLinkFactory dispatches TNP to TnpLinkFactory" />
+    <CrossLink from="M-UI-LIVE-PROBE" to="M-TUTK-LINK" relation="opens TUTK cameras through TransportLinkFactory" />
     <CrossLink from="M-EVENT-PLAYBACK" to="M-HTTP" relation="uses for playback URL" />
     <CrossLink from="M-EVENT-PLAYBACK" to="M-AUTH" relation="uses for auth token" />
     <CrossLink from="M-EVENT-PLAYBACK" to="M-EVENT" relation="uses for playback resolution" />
@@ -437,7 +625,7 @@
     <CrossLink from="M-MEDIA" to="M-EVENT" relation="uses for thumbnail URLs" />
     <CrossLink from="M-UI-SHELL" to="M-AUTH" relation="reads auth state" />
     <CrossLink from="M-UI-LIVEVIEW" to="M-UI-SHELL" relation="embedded in shell navigation" />
-    <CrossLink from="M-UI-LIVEVIEW" to="M-STREAM-LIVE" relation="controls stream lifecycle" />
+    <CrossLink from="M-UI-LIVEVIEW" to="M-TNP-LINK" relation="Phase 3 live view" />
     <CrossLink from="M-UI-LIVEVIEW" to="M-CAMERA-CMD" relation="sends PTZ commands" />
     <CrossLink from="M-UI-LIVEVIEW" to="M-CAMERA-LIST" relation="reads camera info" />
     <CrossLink from="M-UI-EVENTS" to="M-UI-SHELL" relation="embedded in shell navigation" />
@@ -462,8 +650,10 @@
     <CrossLink from="M-UI-SETTINGS" to="M-DEBUG-PROBE" relation="debug-only trigger" />
     <CrossLink from="M-P2P-CREDS" to="M-HTTP" relation="signed tnp device info" />
     <CrossLink from="M-CAMERA-LIST" to="M-P2P-CREDS" relation="resolves and stores P2P credentials" />
+    <CrossLink from="M-CAMERA-LIST" to="M-STREAM-CORE" relation="CameraRegistry implements P2pCredentialsSource (Hilt bindP2pCredentialsSource, plan 02-01)" />
     <CrossLink from="M-AUTH" to="M-CAMERA-LIST" relation="logout runs LogoutCleanup (camera cache + P2P store wipe)" />
     <CrossLink from="M-CAMERA-LIST" to="M-CONFIG" relation="uses the region kept by login discovery (no registry region fallback)" />
     <CrossLink from="M-UI-SHELL" to="M-CAMERA-LIST" relation="cache-first camera list" />
+    <CrossLink from="M-UI-SHELL" to="M-UI-LIVE-PROBE" relation="camera row tap opens the debug live screen" />
   </Project>
 </KnowledgeGraph>

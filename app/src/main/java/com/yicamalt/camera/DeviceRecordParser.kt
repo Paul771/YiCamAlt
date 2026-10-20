@@ -1,9 +1,9 @@
 // FILE: DeviceRecordParser.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Shape-tolerant parsers for the Yi device list and /v4/tnp/device_info.
 //   SCOPE: DeviceRecord (one device-list row with the fields the P2P layer needs), TnpDeviceInfo
-//     (DID, InitString, license key), DeviceRecordParser.parse / parseTnpInfo. Pure functions over
+//     (DID, InitString, license key), DeviceRecordParser.parse / parseTnpInfo / parseTnpDid. Pure functions over
 //     JsonElement: no network, no storage, no logging, no decryption.
 //   DEPENDS: CameraListParser helpers (CameraInfo.kt)
 //   LINKS: M-CAMERA-LIST, M-P2P-CREDS, V-M-CAMERA-LIST
@@ -22,10 +22,12 @@ import kotlinx.serialization.json.JsonPrimitive
 //   TnpDeviceInfo - DID, InitString, license key (text before the first colon of License); toString() is value-free.
 //   DeviceRecordParser.parse - device-list data (array, wrapping object, JSON-encoded string, absent) to records.
 //   DeviceRecordParser.parseTnpInfo - /v4/tnp/device_info data to TnpDeviceInfo, or null when incomplete.
+//   DeviceRecordParser.parseTnpDid - raw DID of a device_info answer even when InitString/License are missing.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Created (plan 01-07). Key provenance:
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-01: parseTnpDid for the vendor transport rule (DID shape alone decides).
+//   PREV_CHANGE: v0.1.0 - Created (plan 01-07). Key provenance:
 //     MEASURED on the device (01-PROBE-RESULTS.md, 2026-10-11, names only): uid, did, type, password,
 //       name, model, online, hasPincode, ipcParam, category, share; ipcParam inner key p2p_encrypt;
 //       tnp device_info keys DID, InitString, License.
@@ -138,6 +140,21 @@ internal object DeviceRecordParser {
         val licenseKey = license.substringBefore(':').trim().takeIf { it.isNotEmpty() } ?: return null
         return TnpDeviceInfo(did = did, initString = initString, licenseKey = licenseKey)
         // END_BLOCK_PARSE_TNP_INFO
+    }
+
+    // START_CONTRACT: parseTnpDid
+    //   PURPOSE: Raw DID of a /v4/tnp/device_info answer, even when InitString / License are missing (the vendor
+    //     transport rule looks at the DID alone).
+    //   INPUTS: { element: JsonElement? - envelope data: object or JSON-encoded string of an object }
+    //   OUTPUTS: { String? - DID (key DID/did, case-insensitive), null when absent or blank }
+    //   SIDE_EFFECTS: none (the value is a secret and is never logged)
+    //   LINKS: M-P2P-CREDS
+    // END_CONTRACT: parseTnpDid
+    fun parseTnpDid(element: JsonElement?): String? {
+        val obj = (element as? JsonObject)
+            ?: (CameraListParser.decodeEmbeddedJson(element) as? JsonObject)
+            ?: return null
+        return firstTextIgnoreCase(obj, TNP_DID_KEYS)
     }
 
     // START_BLOCK_FIELD_HELPERS

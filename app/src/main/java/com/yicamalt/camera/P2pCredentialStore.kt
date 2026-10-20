@@ -1,5 +1,5 @@
 // FILE: P2pCredentialStore.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Only persistence path for P2P secrets: EncryptedSharedPreferences (SEC-04).
 //   SCOPE: P2pCredentialStore contract (get / replaceAll / clear), the Keystore-backed production store,
@@ -31,7 +31,9 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 01-12 (SEC-04): created. Log lines carry a count only, never a key or a value.
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-01: Stored.transportVerified (default false, so v0.1.0 records decode as
+//     unverified and every Phase 1 camera is asked device_info exactly once).
+//   PREVIOUS: v0.1.0 - GSD plan 01-12 (SEC-04): created. Log lines carry a count only, never a key or a value.
 //     The encrypted store needs the Android Keystore, so it is verified on the phone (plan 01-11), not on the JVM.
 // END_CHANGE_SUMMARY
 
@@ -75,6 +77,7 @@ internal object P2pCredentialsCodec {
         val p2pEncrypt: Boolean = false,
         val wakeup: Boolean = false,
         val needsPincode: Boolean = false,
+        val transportVerified: Boolean = false,
     )
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -91,6 +94,7 @@ internal object P2pCredentialsCodec {
             p2pEncrypt = c.p2pEncrypt,
             wakeup = c.wakeup,
             needsPincode = c.needsPincode,
+            transportVerified = c.transportVerified,
         ),
     )
 
@@ -121,6 +125,7 @@ internal object P2pCredentialsCodec {
             p2pEncrypt = stored.p2pEncrypt,
             wakeup = stored.wakeup,
             needsPincode = stored.needsPincode,
+            transportVerified = stored.transportVerified,
         )
     }
 }

@@ -1,5 +1,5 @@
 // FILE: DeviceListFixtures.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Synthetic device-list and tnp device_info responses in the shape measured by the probe.
 //   SCOPE: JSON strings only, assembled from RedactionFixtures; field NAMES come from
@@ -19,10 +19,15 @@ import com.yicamalt.test.RedactionFixtures as F
 //   DeviceListFixtures.WRAPPED_LIST / ENCODED_DATA_LIST - the same rows inside an object / a JSON-encoded string.
 //   DeviceListFixtures.EMPTY_20200 - envelope without data (no devices on this server).
 //   DeviceListFixtures.TNP_INFO - DID, InitString, License.
+//   DeviceListFixtures.TNP_INFO_NOT_TNP - success answer whose DID has no TNP prefix (uid rule decides).
+//   DeviceListFixtures.TNP_INFO_REJECTED - non-success code 20253.
+//   DeviceListFixtures.TNP_INFO_INCOMPLETE - TNP DID without InitString / License.
+//   DeviceListFixtures.V4_LIST_TYPES_SWAPPED - V4_LIST with the list `type` values of the two rows swapped.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Created (plan 01-07).
+//   LAST_CHANGE: v0.2.0 - plan 02-01: device_info variants for the vendor transport rule; type-swapped list.
+//   PREV_CHANGE: v0.1.0 - Created (plan 01-07).
 // END_CHANGE_SUMMARY
 
 internal object DeviceListFixtures {
@@ -56,6 +61,17 @@ internal object DeviceListFixtures {
         """{"name":"$NAME_2","type":0,"uid":"${F.TUTK_UID}"}]}"""
 
     const val EMPTY_20200 = """{"code":"20200"}"""
+
+    val V4_LIST_TYPES_SWAPPED = V4_LIST
+        .replace(""""type":2,""", """"type":"SYNTHSWAP",""")
+        .replace(""""type":"0",""", """"type":2,""")
+        .replace(""""type":"SYNTHSWAP",""", """"type":"0",""")
+
+    val TNP_INFO_NOT_TNP = """{"code":"20000","data":{"DID":"SYNTHNOTTNPDID","InitString":"${F.INIT_STRING}","License":"${F.LICENSE}"}}"""
+
+    const val TNP_INFO_REJECTED = """{"code":"20253"}"""
+
+    val TNP_INFO_INCOMPLETE = """{"code":"20000","data":{"DID":"${F.DID}","InitString":""}}"""
 
     val TNP_INFO = """{"code":"20000","data":{"DID":"${F.DID}","InitString":"${F.INIT_STRING}","License":"${F.LICENSE}"}}"""
 }

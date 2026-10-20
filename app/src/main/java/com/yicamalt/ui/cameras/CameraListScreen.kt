@@ -1,18 +1,20 @@
 // FILE: CameraListScreen.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Compose screen listing the user's cameras (name, model, online/offline, transport, shared mark).
 //   SCOPE: renders every CameraListUiState (loading / content + stale banner / empty / error) inside one LazyColumn
 //     under a material3 1.2.0 pull-to-refresh container; retry buttons and the pull call CameraListViewModel.refresh;
-//     an expired session offers a way back to login. Never renders device id / serial / DID (SEC-01).
+//     an expired session offers a way back to login; a row tap calls onOpenCamera (debug live screen).
+//     Never renders device id / serial / DID (SEC-01).
 //   DEPENDS: M-UI-SHELL (host), M-CAMERA-LIST (via ViewModel)
-//   LINKS: M-UI-SHELL, M-CAMERA-LIST, V-M-UI-SHELL
+//   LINKS: M-UI-SHELL, M-CAMERA-LIST, V-M-UI-SHELL, M-UI-LIVE-PROBE
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
 package com.yicamalt.ui.cameras
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,14 +55,15 @@ import kotlinx.coroutines.flow.first
 
 // START_MODULE_MAP
 //   CameraListScreen - camera list UI: pull-to-refresh, loading / content + stale banner / empty / error, retry;
-//     onSessionExpired is offered on UNAUTHORIZED (host routes it to logout -> login screen).
+//     onSessionExpired is offered on UNAUTHORIZED (host routes it to logout -> login screen); onOpenCamera on row tap.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - CAM-01/04/05: pull-to-refresh (material3 1.2.0 PullToRefreshContainer), Empty/Error screens
+//   LAST_CHANGE: v0.3.0 - GSD plan 02-09: row tap opens the debug live screen (onOpenCamera(CameraInfo)).
+//   PREV_CHANGE: v0.2.0 - CAM-01/04/05: pull-to-refresh (material3 1.2.0 PullToRefreshContainer), Empty/Error screens
 //     with retry, stale banner, transport + shared in the row; device id removed from the UI (SEC-01);
 //     UNAUTHORIZED offers "Войти снова" (onSessionExpired).
-//   PREV_CHANGE: v0.1.0 - loading / error / content, row subtitle showed the device id.
+//   OLDER_CHANGE: v0.1.0 - loading / error / content, row subtitle showed the device id.
 // END_CHANGE_SUMMARY
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,6 +71,7 @@ import kotlinx.coroutines.flow.first
 fun CameraListScreen(
     viewModel: CameraListViewModel = hiltViewModel(),
     onSessionExpired: () -> Unit = {},
+    onOpenCamera: (CameraInfo) -> Unit = {},
 ) {
     // START_BLOCK_RENDER_CAMERA_LIST
     val state by viewModel.state.collectAsState()
@@ -100,7 +104,7 @@ fun CameraListScreen(
                             )
                         }
                     }
-                    items(s.cameras, key = { it.deviceId }) { CameraRow(it) }
+                    items(s.cameras, key = { it.deviceId }) { CameraRow(it, onOpenCamera) }
                 }
                 is CameraListUiState.Empty -> item {
                     CenteredMessage(Modifier.fillParentMaxSize()) {
@@ -166,8 +170,13 @@ private fun StaleBanner(kind: ErrorKind, onRetry: () -> Unit, onSessionExpired: 
 }
 
 @Composable
-private fun CameraRow(camera: CameraInfo) {
-    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+private fun CameraRow(camera: CameraInfo, onClick: (CameraInfo) -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable { onClick(camera) },
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -58,7 +58,7 @@ git checkout master
 git reset --hard origin/master
 ```
 
-Если `git lfs pull` не отработал (нет сети или LFS не установлен), план и статус всё равно доступны — они обычные текстовые файлы. LFS нужен только для APK в `_apk/`.
+Если `git lfs pull` не отработал (нет сети или LFS не установлен), план и статус всё равно доступны — они обычные текстовые файлы. APK в репозитории нет: свой APK кладётся в `_apk/` локально (см. раздел 3).
 
 ## 2. Порядок чтения
 
@@ -72,7 +72,7 @@ git reset --hard origin/master
 | `docs/knowledge-graph.xml` | Навигация по модулям и связям. |
 | `docs/requirements.xml`, `docs/technology.xml` | Требования и стек. |
 | `INSTRUCTIONS.md` | Пошаговая инструкция: эмулятор, mitmproxy, CA, установка Yi Home. |
-| `_apk/extracted/` | Оригинальный APK Yi Home (в LFS) — эталон для реверс-инжиниринга. |
+| `_apk/extracted/` | Ваш локальный APK Yi Home (не в Git) — эталон для реверс-инжиниринга и источник vendor `.so` для сборки. |
 
 Навигация внутри кода — по якорям `START_MODULE_CONTRACT`, `START_CONTRACT:`, `START_BLOCK_`, `START_CHANGE_SUMMARY` и ID модулей `M-*` / верификаций `V-M-*`.
 
@@ -103,7 +103,7 @@ git reset --hard origin/master
 Не нужно скачивать:
 
 - **Gradle** — wrapper в репозитории (`gradle/wrapper/gradle-wrapper.jar` + `.properties`).
-- **APK Yi Home** — уже в репозитории под Git LFS (`_apk/`).
+- **APK Yi Home** — в репозитории нет ни APK, ни `.so`. Положите свой собственный APK Yi Home (`.xapk`/`.apkm`/универсальный `.apk`, либо `split_config.arm64_v8a.apk` + `split_config.armeabi_v7a.apk` в `_apk/extracted/`) в `_apk/` (папка в `.gitignore`) или передайте `-PvendorApk=<path>`. Сборка (`:app:extractVendorNatives`) извлекает `libPPPP_API.so`, `libIOTCAPIs.so`, `libAVAPIs.so`, `libsCHL.so` для `arm64-v8a` и `armeabi-v7a` в `app/build/generated/vendorJniLibs` и сверяет их с `app/vendor-natives.sha256` (Yi Home 6.9.8). Другая версия приложения валит сборку APK (`:app:verifyVendorNatives`) с наблюдёнными хэшами; закрепить их можно только после ревью: `-PvendorNativesAccept=true` (перепишет манифест, проверьте diff). JVM-тесты (`:app:testDebugUnitTest`) работают без APK.
 - **Документы плана/статуса** — обычные файлы в репозитории.
 
 ## 4. Что проверить на новой машине
@@ -148,4 +148,5 @@ git reset --hard origin/master
 - Логин и пароль Yi-аккаунта вводятся пользователем вручную и **не** должны появляться в чате, командах, логах, коммитах или документации.
 - `captures/` (flow-файлы mitmproxy), `auth_log.txt`, токены и cookie не коммитить — они исключены из Git, но проверяйте `git status` перед коммитом.
 - SEC-03: pre-commit-хук (п. 4.7) блокирует `*.apk`/`*.so`/`*.dex`/`*.smali`/`*.jadx`, capture-файлы, `_apk/`, `_re/`, `_work/`, `_tools/`, `jniLibs/` и строки с реальными значениями token/License/InitString/password/hmac. Фиктивные значения в тестах должны содержать `SYNTH`. Проверка уже попавших коммитов: `sh tools/git-hooks/pre-commit --range <base>..HEAD`.
+- Vendor `.so` (из вашего APK) никогда не коммитятся: их блокируют `.gitignore` (`*.so`, `_apk/`, `app/src/main/jniLibs/`) и pre-commit-хук; сборка кладёт их только в `app/build/`.
 - Логи приложения уже маскируют `password=`, `account=` и `Authorization` значениями `██`. Не отключайте `RedactionScanner` и не возвращайте plaintext-пароль в URL.

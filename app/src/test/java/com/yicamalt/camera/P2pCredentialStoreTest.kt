@@ -1,5 +1,5 @@
 // FILE: P2pCredentialStoreTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Pin the storage codec of P2P credentials and the replace-all semantics of the store contract.
 //   SCOPE: P2pCredentialsCodec round trip + rejects; InMemoryP2pCredentialStore get/replaceAll/clear.
@@ -22,7 +22,8 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 01-12 (SEC-04): created.
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-01: transportVerified round trip; v0.1.0 JSON decodes as unverified.
+//   PREVIOUS: v0.1.0 - GSD plan 01-12 (SEC-04): created.
 // END_CHANGE_SUMMARY
 
 class P2pCredentialStoreTest {
@@ -68,6 +69,21 @@ class P2pCredentialStoreTest {
             val c = bare.copy(transport = t)
             assertEquals(c, P2pCredentialsCodec.decode(P2pCredentialsCodec.encode(c)))
         }
+    }
+
+    @Test
+    fun `codec keeps transportVerified true`() {
+        val c = full.copy(transportVerified = true)
+        assertEquals(c, P2pCredentialsCodec.decode(P2pCredentialsCodec.encode(c)))
+    }
+
+    @Test
+    fun `v0_1_0 record without transportVerified decodes as unverified`() {
+        val legacy = """{"deviceId":"SYNTHUID00000002","p2pId":"SYNTHTUTKUID0000001A","transport":"TUTK",""" +
+            """"password":"synthpw1","p2pEncrypt":false,"wakeup":false,"needsPincode":false}"""
+        val decoded = P2pCredentialsCodec.decode(legacy)
+        assertEquals(TransportType.TUTK, decoded?.transport)
+        assertEquals(false, decoded?.transportVerified)
     }
 
     @Test

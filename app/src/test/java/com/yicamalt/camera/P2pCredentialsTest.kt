@@ -1,8 +1,8 @@
 // FILE: P2pCredentialsTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Pin transport resolution (type vs p2pid shape) and the secret-free toString() of P2pCredentials.
-//   SCOPE: TransportResolver.resolve, TransportType.fromStorage, P2pCredentials.toString (SEC-04). Synthetic values only.
+//   PURPOSE: Pin the vendor transport rule (device_info DID shape, else uid case) and the secret-free toString() of P2pCredentials.
+//   SCOPE: TransportResolver.decide / isTnpDid, TransportType.fromStorage, P2pCredentials.toString (SEC-04). Synthetic values only.
 //   DEPENDS: M-P2P-CREDS, TestInfrastructure (RedactionFixtures)
 //   LINKS: V-M-P2P-CREDS, M-P2P-CREDS
 //   ROLE: TEST
@@ -22,7 +22,9 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 01-12: first evidence for V-M-P2P-CREDS (transport + redaction).
+//   LAST_CHANGE: v0.2.0 - GSD plan 02-01: resolver cases rewritten to the vendor rule (decide / isTnpDid);
+//     mismatch tests dropped with the flag; verified= in toString.
+//   PREVIOUS: v0.1.0 - GSD plan 01-12: first evidence for V-M-P2P-CREDS (transport + redaction).
 // END_CHANGE_SUMMARY
 
 class P2pCredentialsTest {
@@ -41,66 +43,67 @@ class P2pCredentialsTest {
 
     // START_BLOCK_RESOLVER_MATRIX
     @Test
-    fun `type 2 with TNP shaped id resolves to TNP without mismatch`() {
+    fun `isTnpDid accepts TNP prefix with exactly three parts`() {
+        assertTrue(TransportResolver.isTnpDid("TNPXSYN-123456-SYNTH"))
+        assertTrue(TransportResolver.isTnpDid("TNPSYNTH-ABCDEF-SYNTH"))
+    }
+
+    @Test
+    fun `isTnpDid rejects wrong part count, lower-case prefix and empty input`() {
+        assertFalse(TransportResolver.isTnpDid("TNP-123"))
+        assertFalse(TransportResolver.isTnpDid("TNPA-1-2-3"))
+        assertFalse(TransportResolver.isTnpDid("tnpxsyn-123456-synth"))
+        assertFalse(TransportResolver.isTnpDid(null))
+        assertFalse(TransportResolver.isTnpDid(""))
+    }
+
+    @Test
+    fun `TNP shaped device_info DID decides TNP and is the id to dial`() {
         assertEquals(
-            TransportResolver.Resolution(TransportType.TNP, false),
-            TransportResolver.resolve(2, RedactionFixtures.DID),
+            TransportResolver.Resolution(
+                TransportType.TNP, RedactionFixtures.DID, TransportResolver.Source.DEVICE_INFO,
+            ),
+            TransportResolver.decide(RedactionFixtures.DID, RedactionFixtures.CLOUD_UID),
         )
     }
 
     @Test
-    fun `type 0 with TUTK shaped id resolves to TUTK without mismatch`() {
+    fun `no DID falls back to the cloud uid shape - mixed case is TUTK`() {
         assertEquals(
-            TransportResolver.Resolution(TransportType.TUTK, false),
-            TransportResolver.resolve(0, RedactionFixtures.TUTK_UID),
+            TransportResolver.Resolution(
+                TransportType.TUTK, RedactionFixtures.TUTK_UID, TransportResolver.Source.UID_SHAPE,
+            ),
+            TransportResolver.decide(null, RedactionFixtures.TUTK_UID),
+        )
+        assertEquals(TransportType.TUTK, TransportResolver.decide(null, "SynthMixedUid01").transport)
+    }
+
+    @Test
+    fun `non TNP DID is ignored and the uid decides`() {
+        assertEquals(
+            TransportResolver.Resolution(
+                TransportType.TUTK, RedactionFixtures.TUTK_UID, TransportResolver.Source.UID_SHAPE,
+            ),
+            TransportResolver.decide("NOTATNPID", RedactionFixtures.TUTK_UID),
         )
     }
 
     @Test
-    fun `type 1 resolves to LANGTAO`() {
+    fun `all lower-case uid is LANGTAO`() {
         assertEquals(
-            TransportResolver.Resolution(TransportType.LANGTAO, false),
-            TransportResolver.resolve(1, null),
+            TransportResolver.Resolution(
+                TransportType.LANGTAO, "synthlangtao0001", TransportResolver.Source.UID_SHAPE,
+            ),
+            TransportResolver.decide(null, "synthlangtao0001"),
         )
     }
 
     @Test
-    fun `missing type falls back to the id shape`() {
-        assertEquals(
-            TransportResolver.Resolution(TransportType.TNP, false),
-            TransportResolver.resolve(null, RedactionFixtures.DID),
-        )
-        assertEquals(
-            TransportResolver.Resolution(TransportType.UNKNOWN, false),
-            TransportResolver.resolve(null, "whatever"),
-        )
-    }
-
-    @Test
-    fun `unknown type code resolves to UNKNOWN`() {
-        assertEquals(
-            TransportResolver.Resolution(TransportType.UNKNOWN, false),
-            TransportResolver.resolve(7, null),
-        )
-    }
-
-    @Test
-    fun `type wins over the id shape and the conflict is flagged`() {
-        assertEquals(
-            TransportResolver.Resolution(TransportType.TUTK, true),
-            TransportResolver.resolve(0, RedactionFixtures.DID),
-        )
-        assertEquals(
-            TransportResolver.Resolution(TransportType.TNP, true),
-            TransportResolver.resolve(2, RedactionFixtures.TUTK_UID),
-        )
-    }
-
-    @Test
-    fun `blank id never raises a mismatch`() {
-        assertFalse(TransportResolver.resolve(2, null).mismatch)
-        assertFalse(TransportResolver.resolve(2, "  ").mismatch)
-        assertFalse(TransportResolver.resolve(0, "").mismatch)
+    fun `Resolution toString hides the id`() {
+        val text = TransportResolver.Resolution(
+            TransportType.TNP, RedactionFixtures.DID, TransportResolver.Source.DEVICE_INFO,
+        ).toString()
+        assertFalse(text.contains(RedactionFixtures.DID))
     }
     // END_BLOCK_RESOLVER_MATRIX
 
@@ -129,6 +132,13 @@ class P2pCredentialsTest {
         }
         assertTrue(text.contains("transport=TNP"))
         assertTrue(text.contains("hasPassword=true"))
+        assertTrue(text.contains("verified=false"))
+    }
+
+    @Test
+    fun `transportVerified defaults to false and shows in toString`() {
+        assertFalse(sample().transportVerified)
+        assertTrue(sample().copy(transportVerified = true).toString().contains("verified=true"))
     }
 
     @Test
