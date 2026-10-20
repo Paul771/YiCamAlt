@@ -1,5 +1,5 @@
 // FILE: LiveProbeViewModelTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify the debug live-probe orchestration: refusals, one factory.open per press off Main, no start after
 //     close during an in-flight open, status line and Russian messages, close on leave, decoder reset -> pipeline reset.
@@ -19,14 +19,17 @@
 //   FakeDecoder - VideoSinkPort with a controllable status, reset events, frame and release counters.
 //   FakeProvider / FakeHevc - injectable seams replaced by subclasses.
 //   LiveProbeViewModelTest - one test per behaviour of plan 02-09 Task 1 plus the Phase 2 review fixes (single
-//     WRONG_PASSWORD retry, Connect disabled while the link drains, auth pending, transport code names).
+//     WRONG_PASSWORD retry, Connect disabled while the link drains, auth pending, transport code names) and the
+//     TUTK relay-only refusal.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review MED-4 / LOW-8 / LOW-10: retry once then success, retry once then final
+//   LAST_CHANGE: v0.3.0 - device fix: relay-only unavailable for TUTK (toggle ignored, LinkOptions(false),
+//     relayForced=no in status and BLOCK_CONNECT_PRESSED, relayAvailable=false); TNP relay test also checks the log.
+//   PREVIOUS: v0.2.0 - Phase 2 review MED-4 / LOW-8 / LOW-10: retry once then success, retry once then final
 //     failure (exactly 2 opens), no retry on other errors or after Stop, Connect disabled until the link is closed,
 //     auth=pending, TUTK code names.
-//   PREVIOUS: v0.1.0 - GSD plan 02-09: initial tests.
+//   OLDER: v0.1.0 - GSD plan 02-09: initial tests.
 // END_CHANGE_SUMMARY
 package com.yicamalt.ui.live
 
@@ -387,7 +390,27 @@ class LiveProbeViewModelTest {
         awaitCond("factory call") { factory.links.isNotEmpty() }
         assertEquals(listOf(LinkOptions(true)), factory.options.toList())
         assertTrue(v.snap().statusLine.contains("relayForced=yes"))
+        assertTrue(v.snap().relayAvailable)
+        assertTrue(recorder.bufferText().contains("[BLOCK_CONNECT_PRESSED] relayForced=true"))
     }
+
+    @Test
+    fun `relay-only is unavailable for TUTK - toggle ignored, factory gets no relay, logs relayForced no`() =
+        runTest(dispatcher) {
+            val v = newVm(creds(TransportType.TUTK))
+            v.open(DEVICE_ID)
+            assertFalse(v.snap().relayAvailable)
+            v.setForceRelay(true)
+            assertFalse(v.snap().forceRelay)
+            v.connect()
+            awaitCond("factory call") { factory.links.isNotEmpty() }
+            assertEquals(listOf(LinkOptions(false)), factory.options.toList())
+            assertTrue(v.snap().statusLine.contains("relayForced=no"), v.snap().statusLine)
+            val log = recorder.bufferText()
+            assertTrue(log.contains("[BLOCK_CONNECT_PRESSED] relayForced=false"), log)
+            assertFalse(log.contains("relayForced=true"), log)
+            assertEquals("Для TUTK недоступно", LiveProbeTexts.RELAY_TUTK_UNAVAILABLE)
+        }
 
     @Test
     fun `streaming status line shows mode, lan, codec and decoder`() = runTest(dispatcher) {

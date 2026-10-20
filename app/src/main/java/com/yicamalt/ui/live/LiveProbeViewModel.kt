@@ -1,5 +1,5 @@
 // FILE: LiveProbeViewModel.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Debug live-probe orchestration for one camera: credentials -> CameraLinkFactory -> FramePipeline ->
 //     VideoDecoder -> Surface, with a value-free status line and explicit Russian refusal / error texts.
@@ -66,8 +66,9 @@ import javax.inject.Inject
 //   VideoSinkPort - the decoder surface the VM uses (status, resetEvents, surface attach/detach, release, frames).
 //   VideoSinkProvider - injectable factory of VideoSinkPort (VideoDecoderAdapter over a new VideoDecoder).
 //   HevcProbe - injectable "HEVC-декодер: <name> (hw|sw)" / "HEVC-декодер: нет" text from DecoderCatalog.
-//   LiveProbeUi - title, canConnect, canStop, statusLine, message, forceRelay, hevcInfo.
-//   LiveProbeViewModel - open / setForceRelay / connect / stop / onStop / close / attachSurface / detachSurface.
+//   LiveProbeUi - title, canConnect, canStop, statusLine, message, forceRelay, hevcInfo, relayAvailable (false for TUTK).
+//   LiveProbeViewModel - open / setForceRelay (ignored for TUTK) / connect / stop / onStop / close / attachSurface /
+//     detachSurface.
 //   linkErrorMessage - Russian text for every LinkErrorKind (UNSUPPORTED_TRANSPORT and the INTERNAL code name depend
 //     on the transport).
 //   codeName - symbolic name of a vendor code from the table of the camera's transport (TutkCodes for TUTK, else
@@ -76,7 +77,11 @@ import javax.inject.Inject
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review fixes.
+//   LAST_CHANGE: v0.3.0 - device fix: "Только relay" had no effect for TUTK (the TUTK connect call has no relay flag)
+//     yet the log said relayForced=yes with mode=LAN. For TUTK the toggle is forced false (open, setForceRelay,
+//     connect), LiveProbeUi.relayAvailable=false disables the checkbox with RELAY_TUTK_UNAVAILABLE; logs and the
+//     status line show relayForced=no. TNP unchanged.
+//   PREVIOUS: v0.2.0 - Phase 2 review fixes.
 //     MED-4: a camera can answer WRONG_PASSWORD once and accept the same password moments later (vendor treats
 //       -20009 as possibly temporary and reconnects). One automatic retry per press: on Failed(WRONG_PASSWORD) of the
 //       first session the session is finished (link teardown already complete), the UI shows "Повторная попытка…",
@@ -135,6 +140,7 @@ object LiveProbeTexts {
     const val RETRYING = "Повторная попытка…"
     const val HEVC_PENDING = "HEVC-декодер: проверка…"
     const val HEVC_NONE = "HEVC-декодер: нет"
+    const val RELAY_TUTK_UNAVAILABLE = "Для TUTK недоступно"
 }
 
 data class LiveProbeUi(
@@ -145,6 +151,8 @@ data class LiveProbeUi(
     val message: String?,
     val forceRelay: Boolean,
     val hevcInfo: String,
+    // False for TUTK: the relay-only toggle is shown disabled with LiveProbeTexts.RELAY_TUTK_UNAVAILABLE.
+    val relayAvailable: Boolean = true,
 )
 
 // START_CONTRACT: linkErrorMessage
@@ -244,6 +252,7 @@ class LiveProbeViewModel @Inject constructor(
         val c = credentials.credentialsFor(deviceId)
         creds = c
         refusal = refusalFor(c)
+        if (!relayAvailable(c)) forceRelay = false
         Timber.d(
             "[LiveProbe][vm][BLOCK_OPEN_PROBE] transport=%s verified=%b hasCreds=%b",
             c?.transport?.name ?: "-", c?.transportVerified == true, c != null,
@@ -269,8 +278,18 @@ class LiveProbeViewModel @Inject constructor(
         else -> null
     }
 
+    // The TUTK connect call has no relay flag (IOTC picks LAN / P2P / relay itself): relay-only is TNP-only.
+    private fun relayAvailable(c: P2pCredentials?): Boolean = c?.transport != TransportType.TUTK
+
+    // START_CONTRACT: setForceRelay
+    //   PURPOSE: "Только relay" toggle; ignored (stays false) for TUTK cameras, where it has no effect.
+    //   INPUTS: { value: Boolean - requested relay-only mode }
+    //   OUTPUTS: none (ui.forceRelay)
+    //   SIDE_EFFECTS: none beyond ui
+    //   LINKS: M-UI-LIVE-PROBE, V-M-UI-LIVE-PROBE
+    // END_CONTRACT: setForceRelay
     fun setForceRelay(value: Boolean) {
-        forceRelay = value
+        forceRelay = value && relayAvailable(creds)
         publish()
     }
 
@@ -287,7 +306,7 @@ class LiveProbeViewModel @Inject constructor(
         // START_BLOCK_CONNECT_PRESSED
         val c = creds ?: return
         if (session != null || retryJob != null || draining != null || refusal != null) return
-        startSession(c, forceRelay, attempt = 1, press = ++presses)
+        startSession(c, forceRelay && relayAvailable(c), attempt = 1, press = ++presses)
         // END_BLOCK_CONNECT_PRESSED
     }
 
@@ -520,6 +539,7 @@ class LiveProbeViewModel @Inject constructor(
             message = refusal ?: linkMessage ?: decoderProblem,
             forceRelay = forceRelay,
             hevcInfo = hevcInfo,
+            relayAvailable = relayAvailable(creds),
         )
     }
 

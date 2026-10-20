@@ -851,6 +851,7 @@
         <scenario-12 kind="failure" evidence-type="deterministic">A second WRONG_PASSWORD is final: "Неверный пароль камеры", auth=fail, exactly 2 factory.open and 1 refresh after 60 s; TIMEOUT / PROTOCOL / REMOTE_CLOSED never retry; Stop during the retry pause cancels it (no second open, no refresh); a user Stop of a streaming session never retries (Phase 2 review MED-4)</scenario-12>
         <scenario-13 kind="success" evidence-type="deterministic">After Stop, Connect stays disabled until the closed link reports Closed / Failed, then one press opens again (Phase 2 review LOW-8)</scenario-13>
         <scenario-14 kind="success" evidence-type="deterministic">Status auth= is "-" before streaming, "pending" while Streaming(authOk=false), "ok" / "fail" only when known; TUTK codes named from TutkCodes (error=AV_ER_SESSION_CLOSE_BY_REMOTE, INTERNAL text with IOTC names) (Phase 2 review LOW-10)</scenario-14>
+        <scenario-15 kind="failure" evidence-type="deterministic">TUTK camera: "Только relay" is unavailable (LiveProbeUi.relayAvailable=false, checkbox disabled with "Для TUTK недоступно"); setForceRelay(true) is ignored, factory gets LinkOptions(false), status line relayForced=no and BLOCK_CONNECT_PRESSED relayForced=false; TNP still passes LinkOptions(true) (device fix 2026-10-20)</scenario-15>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE]</marker-1>

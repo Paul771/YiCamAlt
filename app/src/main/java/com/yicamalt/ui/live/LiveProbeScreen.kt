@@ -1,5 +1,5 @@
 // FILE: LiveProbeScreen.kt
-// VERSION: 0.1.3
+// VERSION: 0.1.4
 // START_MODULE_CONTRACT
 //   PURPOSE: Minimal debug live screen for one camera: SurfaceView video, Connect / Stop, "relay only" toggle,
 //     HEVC decoder info, explicit message and the value-free status line (full live view is GSD Phase 3).
@@ -50,13 +50,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
 // START_MODULE_MAP
-//   LiveProbeScreen - debug live screen: SurfaceView + Connect / Stop / relay toggle + message + status line.
+//   LiveProbeScreen - debug live screen: SurfaceView + Connect / Stop / relay toggle (disabled for TUTK) + message +
+//     status line.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.3 - SurfaceView.setZOrderOnTop(true): with the default z-order the whole window rendered black on
+//   LAST_CHANGE: v0.1.4 - "Только relay" checkbox disabled for TUTK cameras (ui.relayAvailable=false; the TUTK connect
+//     call has no relay flag) with the hint "Для TUTK недоступно" under the row. White Surface and setZOrderOnTop
+//     unchanged.
+//   PREV_CHANGE: v0.1.3 - SurfaceView.setZOrderOnTop(true): with the default z-order the whole window rendered black on
 //     the test phone (verified by removing the SurfaceView: the screen turned white).
-//   PREV_CHANGE: v0.1.2 - the probe background is fixed white with black text regardless of the phone theme (user
+//   OLDER_CHANGE: v0.1.2 - the probe background is fixed white with black text regardless of the phone theme (user
 //     request); v0.1.1 had followed the dark theme and turned black.
 //   OLDER_CHANGE: v0.1.1 - fix invisible UI on a dark phone theme: the screen is shown outside the Scaffold, so it now
 //     wraps its content in a themed Surface (background + onBackground) and safeDrawingPadding.
@@ -120,10 +124,18 @@ fun LiveProbeScreen(
             },
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Checkbox(checked = ui.forceRelay, onCheckedChange = { viewModel.setForceRelay(it) }, enabled = ui.canConnect)
-            Text("Только relay")
+            Checkbox(
+                checked = ui.forceRelay,
+                onCheckedChange = { viewModel.setForceRelay(it) },
+                enabled = ui.canConnect && ui.relayAvailable,
+            )
+            Text("Только relay", color = if (ui.relayAvailable) Color.Unspecified else Color.Gray)
             Button(onClick = { viewModel.connect() }, enabled = ui.canConnect) { Text("Подключить") }
             OutlinedButton(onClick = { viewModel.stop() }, enabled = ui.canStop) { Text("Стоп") }
+        }
+        if (!ui.relayAvailable) {
+            // TUTK connect has no relay flag: the toggle would do nothing, so it is disabled with a hint.
+            Text(LiveProbeTexts.RELAY_TUTK_UNAVAILABLE, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
         }
         Text(ui.hevcInfo, style = MaterialTheme.typography.bodySmall)
         ui.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
