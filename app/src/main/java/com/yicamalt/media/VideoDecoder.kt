@@ -1,5 +1,5 @@
 // FILE: VideoDecoder.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Render a DecodableFrame stream (H.264 / H.265) to a Surface with MediaCodec in async mode.
 //   SCOPE: decoder creation on the first key frame (csd from that frame), input feeding from the FrameQueue,
@@ -43,7 +43,10 @@ import java.util.concurrent.TimeUnit
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-08: created. All codec work runs on the decoder HandlerThread; callers only
+//   LAST_CHANGE: v0.2.0 - device fix: no spurious reason=queue-overflow reset at stream start. The FrameQueue is
+//     told codecRunning=true right after codec start and false on every releaseCodec; while false it holds up to
+//     HOLD_CAPACITY frames (latest key frame chain, BLOCK_STARTUP_HOLD debug log) instead of resetting.
+//   PREVIOUS: v0.1.0 - GSD plan 02-08: created. All codec work runs on the decoder HandlerThread; callers only
 //     offer to the FrameQueue and post a pump. Extra reset reasons beyond the plan: format-change (mime, size or csd
 //     differ on a key frame, e.g. SD/HD switch) and oversize-frame (access unit larger than the input buffer).
 //     INVARIANT: logs carry mime, decoder name, flags, sizes, counts and ms only; never frame bytes.
@@ -59,7 +62,7 @@ class VideoDecoder(
     private val _resetEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val resetEvents: SharedFlow<Unit> = _resetEvents.asSharedFlow()
 
-    private val queue = FrameQueue(QUEUE_CAPACITY)
+    private val queue = FrameQueue(QUEUE_CAPACITY, HOLD_CAPACITY)
     private val errors = ResetCounter(MAX_CODEC_ERRORS)
 
     private val threadLock = Any()
@@ -134,8 +137,9 @@ class VideoDecoder(
     //   PURPOSE: Accept one decodable access unit from the pipeline.
     //   INPUTS: { frame: DecodableFrame - Annex-B access unit with csd on key frames }
     //   OUTPUTS: { Unit }
-    //   SIDE_EFFECTS: queue offer; posts a pump to the decoder thread; queue overflow -> BLOCK_DECODER_RESET
-    //     reason=queue-overflow + resetEvents
+    //   SIDE_EFFECTS: queue offer; posts a pump to the decoder thread; queue overflow with a running codec ->
+    //     BLOCK_DECODER_RESET reason=queue-overflow + resetEvents; overflow while no codec runs (being created) ->
+    //     BLOCK_STARTUP_HOLD (frames trimmed to the latest key frame), no reset
     //   LINKS: M-MEDIA-RENDER, M-STREAM-CORE
     // END_CONTRACT: onFrame
     override fun onFrame(frame: DecodableFrame) {
@@ -143,12 +147,15 @@ class VideoDecoder(
         if (blockedMime == frame.codec.mime) return
         if (surface == null) return
         val h = handler ?: return
-        when (queue.offer(frame)) {
+        when (val r = queue.offer(frame)) {
             OfferResult.DROPPED_NO_KEY -> return
             OfferResult.ACCEPTED_DROPPED_OLDEST -> {
                 logReset("queue-overflow")
                 _resetEvents.tryEmit(Unit)
             }
+            OfferResult.HELD_TRIMMED, OfferResult.DROPPED_HOLD_FULL ->
+                // No codec runs yet (being created): the queue keeps the latest key-frame chain; not a reset.
+                Timber.d("[Media][decoder][BLOCK_STARTUP_HOLD] result=%s queued=%d", r.name, queue.size)
             OfferResult.ACCEPTED -> Unit
         }
         h.post { pump() }
@@ -257,6 +264,8 @@ class VideoDecoder(
             c.configure(format, out, null, 0)
             c.start()
             codec = c
+            // From now on a queue overflow means this codec fell behind (reset); before, frames were held.
+            queue.codecRunning = true
         } catch (e: Exception) {
             Timber.w("[Media][decoder][BLOCK_CREATE_DECODER] mime=%s name=%s result=failed error=%s", mime, name, e.javaClass.simpleName)
             runCatching { created?.release() }
@@ -404,6 +413,7 @@ class VideoDecoder(
 
     // Stop and release the current codec; never throws. Callbacks of the old codec are ignored by identity.
     private fun releaseCodec(why: String) {
+        queue.codecRunning = false
         val c = codec ?: return
         codec = null
         ready = null
@@ -441,6 +451,8 @@ class VideoDecoder(
 
     private companion object {
         const val QUEUE_CAPACITY = 8
+        // Frames held while the codec is created (about 2.4 s at 20 fps covers the startup burst + one GOP).
+        const val HOLD_CAPACITY = 48
         const val MAX_CODEC_ERRORS = 3
         const val DEFAULT_WIDTH = 1920
         const val DEFAULT_HEIGHT = 1080

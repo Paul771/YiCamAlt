@@ -801,7 +801,8 @@
         <scenario-2 kind="success" evidence-type="trace">First render after the first key frame (device)</scenario-2>
         <scenario-3 kind="failure" evidence-type="deterministic">No decoder for the codec is an explicit outcome</scenario-3>
         <scenario-4 kind="failure" evidence-type="trace">csd change resets the decoder</scenario-4>
-        <scenario-5 kind="success" evidence-type="deterministic">FrameQueue rejects P-frames before a key frame; the 9th frame drops the oldest and closes the gate (DecoderPolicyTest)</scenario-5>
+        <scenario-5 kind="success" evidence-type="deterministic">FrameQueue rejects P-frames before a key frame; with a running codec (codecRunning=true) the 9th frame drops the oldest and closes the gate (DecoderPolicyTest)</scenario-5>
+        <scenario-9 kind="success" evidence-type="deterministic">Startup hold (device fix 2026-10-20, spurious reason=queue-overflow before BLOCK_CREATE_DECODER): while no codec runs (codecRunning=false) a burst of up to holdCapacity frames is held with no reset result and the key frame is polled first; overflow trims to the latest key frame chain (HELD_TRIMMED) or drops the newcomer and closes the gate (DROPPED_HOLD_FULL), never ACCEPTED_DROPPED_OLDEST; after codec start the held backlog drains without a false overflow while a stalled codec still overflows; release returns to hold mode (DecoderPolicyTest BLOCK_STARTUP_HOLD)</scenario-9>
         <scenario-6 kind="failure" evidence-type="deterministic">3 codec errors without a render exhaust ResetCounter (status Failed, no loop)</scenario-6>
         <scenario-7 kind="success" evidence-type="deterministic">csd map AVC csd-0/csd-1, HEVC csd-0; PtsGuard strictly increasing; NoDecoder text "H.265: на этом телефоне нет декодера"</scenario-7>
         <scenario-8 kind="success" evidence-type="trace">Device: decoder name and hw flag of each camera's codec on the status line match BLOCK_CREATE_DECODER; first render logged (02-DEVICE-VERIFICATION.md)</scenario-8>
@@ -812,6 +813,7 @@
         <marker-3>[Media][decoder][BLOCK_FIRST_RENDER] ms=&lt;n since create&gt;</marker-3>
         <marker-4>[Media][decoder][BLOCK_DECODER_RESET] reason=&lt;codec-error|surface-lost|queue-overflow|format-change|oversize-frame&gt; resets=&lt;n&gt;</marker-4>
         <marker-5>[Media][decoder][BLOCK_NO_DECODER] mime=&lt;mime&gt;</marker-5>
+        <marker-6>[Media][decoder][BLOCK_STARTUP_HOLD] result=&lt;HELD_TRIMMED|DROPPED_HOLD_FULL&gt; queued=&lt;n&gt; (debug; frames held while the codec is created, never a reset)</marker-6>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>

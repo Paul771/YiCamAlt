@@ -1,5 +1,5 @@
 // FILE: DecoderPolicy.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Pure decision rules of the video decoder, testable on the JVM without MediaCodec.
 //   SCOPE: bounded input queue with key-frame gate, codec-error streak counter, csd mapping per codec,
@@ -15,8 +15,10 @@ import com.yicamalt.stream.DecodableFrame
 import com.yicamalt.stream.VideoCodec
 
 // START_MODULE_MAP
-//   OfferResult - ACCEPTED | DROPPED_NO_KEY | ACCEPTED_DROPPED_OLDEST.
-//   FrameQueue(capacity = 8) - thread-safe FIFO behind a key-frame gate; overflow drops the oldest and closes the gate.
+//   OfferResult - ACCEPTED | DROPPED_NO_KEY | ACCEPTED_DROPPED_OLDEST (reset) | HELD_TRIMMED | DROPPED_HOLD_FULL.
+//   FrameQueue(capacity = 8, holdCapacity = 48) - thread-safe FIFO behind a key-frame gate; codecRunning=false holds
+//     up to holdCapacity frames trimmed to the latest key frame (no reset); codecRunning=true overflow drops the
+//     oldest and closes the gate (reset).
 //   ResetCounter(max = 3) - codec-error streak; exhausted after max errors without a render in between.
 //   CsdBuilder.csdFor(frame) - MediaFormat csd keys: AVC csd-0 SPS, csd-1 PPS; HEVC csd-0 VPS+SPS+PPS.
 //   PtsGuard - strictly increasing presentation time for queueInputBuffer.
@@ -24,29 +26,61 @@ import com.yicamalt.stream.VideoCodec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-08: created; every decoder decision that can be tested off-device lives here.
+//   LAST_CHANGE: v0.2.0 - device fix: every TUTK/TNP start logged reason=queue-overflow resets=1 before
+//     BLOCK_CREATE_DECODER. Root cause: the decoder thread is blocked inside MediaCodec create/configure/start
+//     while the network keeps offering; the 8-slot queue overflowed and the running-codec overflow rule closed the
+//     gate and reset the pipeline although no codec existed. FrameQueue now has a hold mode (codecRunning=false):
+//     up to holdCapacity frames, trimmed to the latest key frame, never a reset; the running bound starts at the
+//     held backlog and shrinks on poll (backlog + capacity) so the backlog drains without a false overflow.
+//   PREVIOUS: v0.1.0 - GSD plan 02-08: created; every decoder decision that can be tested off-device lives here.
 //     INVARIANT: no Android framework import (JVM-tested by DecoderPolicyTest).
 // END_CHANGE_SUMMARY
 
-enum class OfferResult { ACCEPTED, DROPPED_NO_KEY, ACCEPTED_DROPPED_OLDEST }
+// ACCEPTED_DROPPED_OLDEST is the only result that means "reset the pipeline" (running codec fell behind).
+// HELD_TRIMMED / DROPPED_HOLD_FULL happen only while no codec runs and never ask for a reset.
+enum class OfferResult { ACCEPTED, DROPPED_NO_KEY, ACCEPTED_DROPPED_OLDEST, HELD_TRIMMED, DROPPED_HOLD_FULL }
 
 // START_CONTRACT: FrameQueue
 //   PURPOSE: Bounded FIFO between the frame pipeline and MediaCodec input buffers.
-//   INPUTS: { capacity: Int - max queued frames (default 8) }
+//   INPUTS: { capacity: Int - max queued frames while a codec runs (default 8);
+//     holdCapacity: Int - max frames held while no codec runs yet (default 48, >= capacity) }
 //   OUTPUTS: { offer -> OfferResult; poll -> oldest frame or null }
 //   SIDE_EFFECTS: none (in-memory)
 //   LINKS: M-MEDIA-RENDER
 // END_CONTRACT: FrameQueue
-class FrameQueue(private val capacity: Int = 8) {
-    init { require(capacity > 0) { "capacity must be > 0" } }
+class FrameQueue(private val capacity: Int = 8, private val holdCapacity: Int = 48) {
+    init {
+        require(capacity > 0) { "capacity must be > 0" }
+        require(holdCapacity >= capacity) { "holdCapacity must be >= capacity" }
+    }
 
     private val items = ArrayDeque<DecodableFrame>()
     private var gateOpen = false
+    private var running = false
+    // Overflow bound while running: starts at the backlog held at the hold -> running switch and, on each poll,
+    // shrinks to (remaining backlog + capacity) but never below capacity. Draining the startup backlog is never an
+    // overflow; growth beyond the bound (codec stalled) is.
+    private var runningLimit = capacity
 
     // True while P-frames are rejected (before the first key frame, after overflow or clear()).
     val needsKeyFrame: Boolean @Synchronized get() = !gateOpen
 
     val size: Int @Synchronized get() = items.size
+
+    // START_CONTRACT: codecRunning
+    //   PURPOSE: Owner reports whether a started codec consumes the queue (true) or not yet / no longer (false).
+    //   INPUTS: { value: Boolean - true right after codec start, false after codec release }
+    //   OUTPUTS: { Boolean }
+    //   SIDE_EFFECTS: false -> hold mode (overflow trims to the latest key frame, no reset);
+    //     true -> running mode (overflow drops the oldest, closes the gate, owner resets)
+    //   LINKS: M-MEDIA-RENDER
+    // END_CONTRACT: codecRunning
+    var codecRunning: Boolean
+        @Synchronized get() = running
+        @Synchronized set(value) {
+            if (value && !running) runningLimit = maxOf(capacity, items.size)
+            running = value
+        }
 
     @Synchronized
     fun offer(frame: DecodableFrame): OfferResult {
@@ -55,8 +89,9 @@ class FrameQueue(private val capacity: Int = 8) {
         } else if (!gateOpen) {
             return OfferResult.DROPPED_NO_KEY
         }
+        if (!running) return holdOffer(frame)
         items.addLast(frame)
-        if (items.size > capacity) {
+        if (items.size > runningLimit) {
             items.removeFirst()
             // The reference chain is broken: wait for the next key frame.
             gateOpen = false
@@ -65,13 +100,46 @@ class FrameQueue(private val capacity: Int = 8) {
         return OfferResult.ACCEPTED
     }
 
+    // START_BLOCK_HOLD_OFFER
+    // No codec consumes the queue (it is being created): keep the newest decodable chain, never reset.
+    private fun holdOffer(frame: DecodableFrame): OfferResult {
+        if (items.size < holdCapacity) {
+            items.addLast(frame)
+            return OfferResult.ACCEPTED
+        }
+        if (frame.isKeyFrame) {
+            // A newer key frame makes everything held before it useless.
+            items.clear()
+            items.addLast(frame)
+            return OfferResult.HELD_TRIMMED
+        }
+        val lastKey = items.indexOfLast { it.isKeyFrame }
+        if (lastKey > 0) {
+            repeat(lastKey) { items.removeFirst() }
+            items.addLast(frame)
+            return OfferResult.HELD_TRIMMED
+        }
+        // The held chain (key frame + followers, or followers of a key frame already taken by the owner)
+        // is a valid prefix: keep it, drop this frame and wait for the next key frame.
+        gateOpen = false
+        return OfferResult.DROPPED_HOLD_FULL
+    }
+    // END_BLOCK_HOLD_OFFER
+
     @Synchronized
-    fun poll(): DecodableFrame? = items.removeFirstOrNull()
+    fun poll(): DecodableFrame? {
+        val f = items.removeFirstOrNull()
+        if (f != null && runningLimit > capacity) {
+            runningLimit = maxOf(capacity, minOf(runningLimit, items.size + capacity))
+        }
+        return f
+    }
 
     @Synchronized
     fun clear() {
         items.clear()
         gateOpen = false
+        runningLimit = capacity
     }
 }
 
