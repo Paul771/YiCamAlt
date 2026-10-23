@@ -92,7 +92,24 @@ Plans:
   3. Пользователь сохраняет снимок кадра в галерею, разворачивает видео на весь экран и масштабирует его жестом
   4. При уходе с экрана или сворачивании приложения поток останавливается; на камеру открыта одна P2P-сессия, и официальное приложение продолжает показывать видео параллельно
   5. Пользователь смотрит видео дольше официального лимита превью, без рекламы и прерываний
-**Plans**: TBD
+**Plans:** 14 plans
+
+Plans:
+- [ ] 03-00-PLAN.md — Wave 0: порт-типы (AudioUnit, CameraLink.setAudioSink/requestResolution/capabilities, SupervisorState, MediaSession, NetworkMonitor), configChanges + WRITE_EXTERNAL_STORAGE max 28, GRACE-узлы (wave 1)
+- [ ] 03-01-PLAN.md — TDD: AdtsParser + AudioPipeline (расшифровка TNP-аудио, mute, доступность звука) (wave 2)
+- [ ] 03-02-PLAN.md — TNP: ch1-аудио в AudioUnitSink, requestResolution через txQueue, abilityRet 4882 (wave 2)
+- [ ] 03-03-PLAN.md — TUTK-шим: avRecvAudioData / avRecvIOCtrl / avClientCleanAudioBuf, проверка экспортов обеих ABI (wave 2)
+- [ ] 03-05-PLAN.md — TDD: QualityController (HD/SD, D-06/D-07) + ResumePolicy (5 мин, D-10) (wave 2)
+- [ ] 03-08-PLAN.md — NetStateTracker + AndroidNetworkMonitor, VideoDecoder.videoSize (wave 2)
+- [ ] 03-09-PLAN.md — Снимок в галерею (MediaStore Pictures/YiCamAlt) + ZoomMath (wave 2)
+- [ ] 03-04-PLAN.md — TUTK: потоки tx/rxc/rxa, 768, 4881 LE, расширенный teardown (wave 3)
+- [ ] 03-06-PLAN.md — TDD: LiveSessionSupervisor (backoff 2/5/10/20, пароль/kick, сеть, stall, drain, resume) (wave 3)
+- [ ] 03-07-PLAN.md — AacDecoder (MediaCodec → AudioTrack) + AudioFrameQueue (wave 3)
+- [ ] 03-10-PLAN.md — DefaultMediaSession + LiveViewModel (плашка, звук, HD/SD, снимок, жизненный цикл) (wave 4)
+- [ ] 03-11-PLAN.md — LiveViewScreen на TextureView, полный экран, жесты; тап → live, long-press → отладочный экран (wave 5)
+- [ ] 03-12-PLAN.md — Синхронизация GRACE, тройной прогон тестов, 03-HUMAN-UAT.md (wave 6)
+- [ ] 03-13-PLAN.md — Проверка на телефоне H-L1..H-L9 (wave 7, checkpoint)
+**Research**: done — `.planning/phases/03-live-view/03-RESEARCH.md`
 **UI hint**: yes
 
 ### Phase 4: Архив SD-карты
