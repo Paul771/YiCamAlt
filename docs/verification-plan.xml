@@ -1160,7 +1160,7 @@
       <autonomy-score commands="fast" scenarios="success-only" markers="observable" followup="present" rating="partial" />
     </V-M-MEDIA-AUDIO>
 
-    <V-M-MEDIA-SNAPSHOT MODULE="M-MEDIA-SNAPSHOT" PRIORITY="medium" STATUS="planned">
+    <V-M-MEDIA-SNAPSHOT MODULE="M-MEDIA-SNAPSHOT" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/media/SnapshotSaverTest.kt</file>
       </test-files>
@@ -1173,7 +1173,7 @@
         <scenario-2 kind="failure" evidence-type="deterministic">No frame or a write failure gives an explicit result, no crash</scenario-2>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Media][snapshot][BLOCK_SAVE_SNAPSHOT]</marker-1>
+        <marker-1>[Media][snapshot][BLOCK_SAVE_SNAPSHOT] result=&lt;Saved|PermissionDenied|WriteFailed(class)&gt; sdk=&lt;n&gt; bytes=&lt;n&gt; (never URI, path, file or camera name)</marker-1>
       </required-log-markers>
       <phase-follow-up>Device follow-up H-L8 (picture visible in the gallery).</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />

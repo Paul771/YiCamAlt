@@ -652,16 +652,19 @@
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: planned module.</change-summary>
     </M-MEDIA-AUDIO>
 
-    <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" STATUS="planned">
+    <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" STATUS="implemented">
       <purpose>Save the current video frame to MediaStore Pictures/YiCamAlt (WRITE_EXTERNAL_STORAGE only on API 26-28).</purpose>
       <path>app/src/main/java/com/yicamalt/media/SnapshotSaver.kt</path>
       <depends>none</depends>
       <verification-ref>V-M-MEDIA-SNAPSHOT</verification-ref>
       <annotations>
         <export-SnapshotSaver PURPOSE="Bitmap to JPEG in MediaStore (BLOCK_SAVE_SNAPSHOT)" />
+        <export-SnapshotSpec PURPOSE="Pure rules: fileName YiCamAlt_yyyyMMdd_HHmmss.jpg, target(sdk) scoped+IS_PENDING (29+) vs legacy permission (26-28), JPEG q=90" />
+        <export-SnapshotStore PURPOSE="Port save(bitmap): SnapshotResult Saved|NotReady|PermissionDenied|WriteFailed(class); MediaStoreSnapshotStore bound in SnapshotModule" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/media/SnapshotSaverTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: planned module.</change-summary>
+      <change-summary phase="03-live-view" plan="03-09" verification="jvm-passed">2026-10-23: SnapshotSpec + MediaStoreSnapshotStore; SnapshotSaverTest 4; failed write deletes the row.</change-summary>
     </M-MEDIA-SNAPSHOT>
 
     <!-- CrossLinks: module dependencies -->

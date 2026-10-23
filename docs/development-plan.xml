@@ -1191,7 +1191,7 @@
       <verification-ref>V-M-MEDIA-AUDIO</verification-ref>
     </M-MEDIA-AUDIO>
 
-    <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" LAYER="2" ORDER="21" STATUS="planned">
+    <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" LAYER="2" ORDER="21" STATUS="implemented">
       <contract>
         <purpose>Save the current video frame as a picture in MediaStore Pictures/YiCamAlt (WRITE_EXTERNAL_STORAGE only on API 26-28)</purpose>
         <inputs>
