@@ -1,8 +1,9 @@
 // FILE: StreamTypes.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Value types shared by the P2P transport, the frame pipeline and the decoder (Phase 2 port types).
-//   SCOPE: VideoCodec wire ids, 24-byte frame head value, transport video unit, decodable Annex-B frame, sinks.
+//   SCOPE: VideoCodec / AudioCodec wire ids, 24-byte frame head value, transport video and audio units,
+//     decodable Annex-B frame, sinks.
 //   DEPENDS: none
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE
 //   ROLE: TYPES
@@ -17,10 +18,15 @@ package com.yicamalt.stream
 //   DecodableFrame - decrypted Annex-B access unit + csd for MediaCodec; toString carries no bytes.
 //   VideoUnitSink - transport -> pipeline callback.
 //   DecodableFrameSink - pipeline -> decoder callbacks (frame, unsupported codec).
+//   AudioCodec - AAC (wire 138) | PCM (wire 140); fromWireId(id) -> AudioCodec?.
+//   AudioUnit - one audio unit from the transport (channel, head, payload, encrypted); toString carries no bytes.
+//   AudioUnitSink - transport -> audio pipeline callback.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-00: contract-first port types for Phase 2. Doc comments use // only (no block comments).
+//   LAST_CHANGE: v0.2.0 - GSD plan 03-00: Phase 3 audio port types AudioCodec, AudioUnit, AudioUnitSink.
+//     INVARIANT: AudioUnit.toString() never prints payload bytes.
+//   PREVIOUS: v0.1.0 - GSD plan 02-00: contract-first port types for Phase 2. Doc comments use // only (no block comments).
 //     INVARIANT: toString() of VideoUnit / DecodableFrame never prints payload bytes (I-frames carry key-derived data).
 // END_CHANGE_SUMMARY
 
@@ -81,4 +87,24 @@ fun interface VideoUnitSink {
 interface DecodableFrameSink {
     fun onFrame(frame: DecodableFrame)
     fun onUnsupportedCodec(codecId: Int)
+}
+
+enum class AudioCodec(val wireId: Int) {
+    AAC(138),
+    PCM(140);
+
+    companion object {
+        // Maps the frame-head codec id to an audio codec; null for video or unknown ids.
+        fun fromWireId(id: Int): AudioCodec? = entries.firstOrNull { it.wireId == id }
+    }
+}
+
+// One audio unit from the transport: 24-byte frame head + payload. encrypted = TNP header version >= 2 at read time
+// (every full 16-byte block AES-ECB); TUTK audio is never encrypted. toString carries no bytes.
+class AudioUnit(val channel: Int, val info: FrameInfo, val payload: ByteArray, val encrypted: Boolean) {
+    override fun toString() = "AudioUnit(ch=$channel, codec=${info.codecId}, enc=$encrypted, bytes=${payload.size})"
+}
+
+fun interface AudioUnitSink {
+    fun onAudioUnit(unit: AudioUnit)
 }

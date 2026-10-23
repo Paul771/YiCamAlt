@@ -1,8 +1,9 @@
 // FILE: IoCtrlMessages.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: IOCTRL command ids, payload builders and reply interpretation for the live-view session.
-//   SCOPE: 4881/9029/768/767 payloads (BE, TNP), 8190/511 payload (LE, TUTK), ch0 reply authResult, 9033 kick reason,
+//   SCOPE: 4881 payload (BE for TNP, LE for TUTK), 9029/768/767 payloads (BE, TNP), 769 id, 8190/511 payload
+//          (LE, TUTK), ch0 reply authResult, 9033 kick reason,
 //          resolution policy per link mode.
 //   DEPENDS: CameraLink (LinkMode)
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE
@@ -15,14 +16,17 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 // START_MODULE_MAP
-//   IoCtrlMessages - object: command constants, setResolution, startRealtime, audioStart, stop, tutkStart,
+//   IoCtrlMessages - object: command constants (incl. AUDIO_STOP 769), setResolution (BE, or BE/LE), startRealtime, audioStart, stop, tutkStart,
 //     authOutcome(authResult), kickCode(payload), app codes.
 //   IoCtrlMessages.AuthOutcome - OK | WRONG_PASSWORD(-20009) | RETRY(-9000) | Unknown(code) (not fatal, appCode 0).
 //   IoCtrlMessages.ResolutionPolicy - forMode(LinkMode): 1 (HD) on P2P/LAN, 2 (SD) otherwise.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review MED-3 / LOW-11: authOutcome applies to every ch0 reply and Unknown is not
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-00: AUDIO_STOP = 769 (declared for completeness; Phase 3 mute is local and
+//     never sends it); setResolution(resolution, useCount, bigEndian) for the TUTK little-endian 4881; the 2-arg form
+//     is byte-identical and delegates with bigEndian = true.
+//   PREVIOUS: v0.2.0 - Phase 2 review MED-3 / LOW-11: authOutcome applies to every ch0 reply and Unknown is not
 //     fatal (vendor drops such a reply; appCode 0). kickCode reads the kick reason from payload[0] (one byte, vendor
 //     AVIOCTRLDEFs), not a big-endian u32.
 //   PREVIOUS: v0.1.0 - GSD plan 02-04 from 02-RESEARCH.md Pattern 4 (VERIFIED-LOCAL layouts).
@@ -34,6 +38,7 @@ object IoCtrlMessages {
     const val SET_RESOLUTION_RESP = 4882
     const val START_REALTIME = 9029
     const val AUDIO_START = 768
+    const val AUDIO_STOP = 769
     const val STOP = 767
     const val KICK = 9033
     const val TUTK_START_ENC = 8190
@@ -78,8 +83,18 @@ object IoCtrlMessages {
     //   SIDE_EFFECTS: none
     //   LINKS: M-STREAM-CORE
     // END_CONTRACT: setResolution
-    fun setResolution(resolution: Int, useCount: Int): ByteArray =
-        ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putInt(resolution).putInt(useCount).array()
+    fun setResolution(resolution: Int, useCount: Int): ByteArray = setResolution(resolution, useCount, bigEndian = true)
+
+    // START_CONTRACT: setResolutionOrdered
+    //   PURPOSE: 4881 payload in the transport byte order: big-endian for TNP, little-endian for TUTK.
+    //   INPUTS: { resolution: Int - 1 HD, 2 SD; useCount: Int; bigEndian: Boolean }
+    //   OUTPUTS: { ByteArray - 8 bytes: u32 resolution + u32 useCount }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK
+    // END_CONTRACT: setResolutionOrdered
+    fun setResolution(resolution: Int, useCount: Int, bigEndian: Boolean): ByteArray =
+        ByteBuffer.allocate(8).order(if (bigEndian) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN)
+            .putInt(resolution).putInt(useCount).array()
 
     // START_CONTRACT: startRealtime
     //   PURPOSE: 9029 payload: [useCount, resolution, 1, 0].
