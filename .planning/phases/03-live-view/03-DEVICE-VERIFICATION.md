@@ -10,7 +10,7 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | Check | Result | Evidence |
 |---|---|---|
 | H-L1 TextureView on MIUI (TUTK) | PASS | White surface, black text, video visible, controls drawn over the video; no window blackening |
-| H-L2 Audio, TUTK (receive + decode) | PASS (playback audibility NOT confirmed by a human) | `BLOCK_AUDIO_FIRST codecId=138 rate=8000 ch=2`, `BLOCK_AUDIO_DECODER_CREATE`, `BLOCK_AUDIO_TRACK` after unmute; mute is default |
+| H-L2 Audio, TUTK (receive + decode) | PASS (sound confirmed audible by the user, TUTK camera) | `BLOCK_AUDIO_FIRST codecId=138 rate=8000 ch=2`, `BLOCK_AUDIO_DECODER_CREATE`, `BLOCK_AUDIO_TRACK` after unmute; mute is default |
 | H-L4 HD/SD switch, TUTK | PASS | `4881` sent, `4882` reply; decoder recreated at 1280x720 (HD) and 640x360 (SD); button label follows |
 | H-L7 Fullscreen (button) | PASS | Landscape, system bars hidden, controls over video, `BLOCK_FULLSCREEN on=true source=button` |
 | H-L8 Snapshot | PASS | `result=Saved`, file in `Pictures/YiCamAlt`, JPEG 640x360 = stream resolution at that moment |
@@ -20,9 +20,8 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 
 ## Not verified (pending)
 
-- Human confirmation that sound is actually audible (unmute only checked via logs).
 - Gestures: pinch / pan / double tap (could not be driven reliably via `adb input`).
-- Rotation-triggered fullscreen, keep-screen-on, exit by Back.
+- Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
 - H-L5 network changes (Wi-Fi off / Wi-Fi→4G / camera power cycle), H-L6 lock-screen and >5 min return, parallel use with the official app.
 - H-L3 and TNP half of H-L4 (TNP audio / HD-SD) — blocked on Phase 2 H1 (TNP camera online).
 - Phase 2 H1–H7 on the TNP camera.
