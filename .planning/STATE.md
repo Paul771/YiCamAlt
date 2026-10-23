@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-10-23T06:03:32.770Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-10-23T06:17:54.248Z"
 last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 33
+  completed_plans: 34
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 03 (live-view) — EXECUTING
-Plan: 9 of 14
+Plan: 10 of 14
 Status: Ready to execute
 Last activity: 2026-10-23
 
@@ -73,6 +73,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P08 | 15min | 2 tasks | 10 files |
 | Phase 03 P09 | 10min | 2 tasks | 7 files |
 | Phase 03 P04 | 25min | 2 tasks | 4 files |
+| Phase 03 P06 | 30min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,7 @@ Recent decisions affecting current work:
 - [Phase 03]: SnapshotStore owns the bitmap; failed insert/compress/write deletes the row and returns WriteFailed(class)
 - [Phase 03]: ZoomMath.doubleTap: scale>1 -> fit; fill<=1 -> 2x
 - [Phase 03]: TUTK tx and rxc start after a successful 8190/511; rxa and 768 only with an audio sink set before start; audio/IOCTRL errors end only their loop
+- [Phase 03]: LiveSessionSupervisor: run token under lock closes late opens; watch ends on terminal or own close; wrong-password/kick retries advance attempt, only NETWORK checks maxAttempts; healthy 30 s resets attempt and allowances
 
 ### Pending Todos
 
@@ -135,6 +137,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T06:03:32.764Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-10-23T06:17:54.242Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
