@@ -100,7 +100,7 @@ Plans:
 - [x] 03-02-PLAN.md — TNP: ch1-аудио в AudioUnitSink, requestResolution через txQueue, abilityRet 4882 (wave 2)
 - [x] 03-03-PLAN.md — TUTK-шим: avRecvAudioData / avRecvIOCtrl / avClientCleanAudioBuf, проверка экспортов обеих ABI (wave 2)
 - [x] 03-05-PLAN.md — TDD: QualityController (HD/SD, D-06/D-07) + ResumePolicy (5 мин, D-10) (wave 2)
-- [ ] 03-08-PLAN.md — NetStateTracker + AndroidNetworkMonitor, VideoDecoder.videoSize (wave 2)
+- [x] 03-08-PLAN.md — NetStateTracker + AndroidNetworkMonitor, VideoDecoder.videoSize (wave 2)
 - [ ] 03-09-PLAN.md — Снимок в галерею (MediaStore Pictures/YiCamAlt) + ZoomMath (wave 2)
 - [ ] 03-04-PLAN.md — TUTK: потоки tx/rxc/rxa, 768, 4881 LE, расширенный teardown (wave 3)
 - [ ] 03-06-PLAN.md — TDD: LiveSessionSupervisor (backoff 2/5/10/20, пароль/kick, сеть, stall, drain, resume) (wave 3)

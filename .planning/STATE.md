@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-10-23T05:37:31.710Z"
+stopped_at: Completed 03-08-PLAN.md
+last_updated: "2026-10-23T05:44:47.612Z"
 last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 30
+  completed_plans: 31
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 03 (live-view) — EXECUTING
-Plan: 6 of 14
+Plan: 7 of 14
 Status: Ready to execute
 Last activity: 2026-10-23
 
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-live-view P02 | 25min | 2 tasks | 4 files |
 | Phase 03-live-view P03 | 15min | 2 tasks | 5 files |
 | Phase 03 P05 | 6min | 2 tasks | 4 files |
+| Phase 03 P08 | 15min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,8 @@ Recent decisions affecting current work:
 - [Phase 03]: TUTK audio/IOCTRL readers: avRecvAudioData / avRecvIOCtrl on the same AV channel, exports verified on both ABIs; fake recvInFlight covers all readers
 - [Phase 03]: QualityController: needsAutoRequest requires no pending request; beginRequest (also null useCount) marks the per-link auto request done
 - [Phase 03]: ResumePolicy: shouldAutoResume consumes the pending resume even after the window expired
+- [Phase 03]: NetStateTracker keeps the last network key after onLost; same network back keeps generation
+- [Phase 03]: VideoDecoder.videoSize seeded from key-frame size at codec creation, then crop-aware output format size
 
 ### Pending Todos
 
@@ -127,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T05:37:31.704Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-10-23T05:44:47.606Z
+Stopped at: Completed 03-08-PLAN.md
 Resume file: None
