@@ -95,7 +95,7 @@ Plans:
 **Plans:** 14 plans
 
 Plans:
-- [ ] 03-00-PLAN.md — Wave 0: порт-типы (AudioUnit, CameraLink.setAudioSink/requestResolution/capabilities, SupervisorState, MediaSession, NetworkMonitor), configChanges + WRITE_EXTERNAL_STORAGE max 28, GRACE-узлы (wave 1)
+- [x] 03-00-PLAN.md — Wave 0: порт-типы (AudioUnit, CameraLink.setAudioSink/requestResolution/capabilities, SupervisorState, MediaSession, NetworkMonitor), configChanges + WRITE_EXTERNAL_STORAGE max 28, GRACE-узлы (wave 1)
 - [ ] 03-01-PLAN.md — TDD: AdtsParser + AudioPipeline (расшифровка TNP-аудио, mute, доступность звука) (wave 2)
 - [ ] 03-02-PLAN.md — TNP: ch1-аудио в AudioUnitSink, requestResolution через txQueue, abilityRet 4882 (wave 2)
 - [ ] 03-03-PLAN.md — TUTK-шим: avRecvAudioData / avRecvIOCtrl / avClientCleanAudioBuf, проверка экспортов обеих ABI (wave 2)

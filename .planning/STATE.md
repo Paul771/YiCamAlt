@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-10-21T19:49:51.523Z"
-last_activity: 2026-10-16
+stopped_at: Completed 03-00-PLAN.md
+last_updated: "2026-10-23T05:09:03.934Z"
+last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 26
-  completed_plans: 25
+  total_plans: 40
+  completed_plans: 26
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 02 — p2p
+**Current focus:** Phase 03 — live-view
 
 ## Current Position
 
-Phase: 02 (p2p) — EXECUTING
-Plan: 13 of 13
+Phase: 03 (live-view) — EXECUTING
+Plan: 2 of 14
 Status: Ready to execute
-Last activity: 2026-10-16
+Last activity: 2026-10-23
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P09 | 35min | 2 tasks | 8 files |
 | Phase 02-p2p P10 | 35min | 3 tasks | 17 files |
 | Phase 02-p2p P11 | 40min | 2 tasks | 9 files |
+| Phase 03-live-view P00 | 20min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: TUTK shim omits DeInitialize natives; names pinned from .so strings (12 classes/interfaces)
 - [Phase 02-p2p]: 02-11: TransportLinkFactory bound as CameraLinkFactory; TUTK connect timer covers connect+check+clientStart; teardown frees sid0 via stop(-1, sid0) after a failed/aborted connect
 - [Phase 02-p2p]: 02-11: TUTK -20012 polling bounded at 300 x 30 ms -> Failed(TIMEOUT, -20012), no vendor auto-reconnect
+- [Phase 03]: Phase 3 CameraLink members have default bodies so TNP/TUTK links and fakes compile unchanged
+- [Phase 03]: M-UI-LIVEVIEW rewritten: no PTZ/camera selector (v2), depends on M-LIVE-SESSION
 
 ### Pending Todos
 
@@ -114,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-21T19:49:51.510Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-live-view/03-CONTEXT.md
+Last session: 2026-10-23T05:09:03.928Z
+Stopped at: Completed 03-00-PLAN.md
+Resume file: None
