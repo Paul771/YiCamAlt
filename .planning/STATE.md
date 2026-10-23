@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-10-23T05:27:48.142Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-10-23T05:32:58.950Z"
 last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 28
+  completed_plans: 29
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 03 (live-view) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 Last activity: 2026-10-23
 
@@ -68,6 +68,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-live-view P00 | 20min | 2 tasks | 9 files |
 | Phase 03 P01 | 25min | 2 tasks | 7 files |
 | Phase 03-live-view P02 | 25min | 2 tasks | 4 files |
+| Phase 03-live-view P03 | 15min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,7 @@ Recent decisions affecting current work:
 - [Phase 03]: Audio availability: valid frame -> true; non-AAC codec -> false; else null until 6 s after streaming, then false
 - [Phase 03]: AudioPipeline decryptOk only set when a decrypt ran; fail-open units leave it null
 - [Phase 03-live-view]: TNP requestResolution returns null until the start burst is queued; audio sink exceptions logged once and dropped
+- [Phase 03]: TUTK audio/IOCTRL readers: avRecvAudioData / avRecvIOCtrl on the same AV channel, exports verified on both ABIs; fake recvInFlight covers all readers
 
 ### Pending Todos
 
@@ -122,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T05:27:48.136Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-10-23T05:32:58.944Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
