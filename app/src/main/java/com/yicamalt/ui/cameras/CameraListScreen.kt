@@ -1,20 +1,21 @@
 // FILE: CameraListScreen.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Compose screen listing the user's cameras (name, model, online/offline, transport, shared mark).
 //   SCOPE: renders every CameraListUiState (loading / content + stale banner / empty / error) inside one LazyColumn
 //     under a material3 1.2.0 pull-to-refresh container; retry buttons and the pull call CameraListViewModel.refresh;
-//     an expired session offers a way back to login; a row tap calls onOpenCamera (debug live screen).
+//     an expired session offers a way back to login; a row tap calls onOpenCamera (live view), a long press calls onLongPressCamera (debug probe).
 //     Never renders device id / serial / DID (SEC-01).
 //   DEPENDS: M-UI-SHELL (host), M-CAMERA-LIST (via ViewModel)
-//   LINKS: M-UI-SHELL, M-CAMERA-LIST, V-M-UI-SHELL, M-UI-LIVE-PROBE
+//   LINKS: M-UI-SHELL, M-CAMERA-LIST, V-M-UI-SHELL, M-UI-LIVEVIEW, M-UI-LIVE-PROBE
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
 package com.yicamalt.ui.cameras
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,12 +56,15 @@ import kotlinx.coroutines.flow.first
 
 // START_MODULE_MAP
 //   CameraListScreen - camera list UI: pull-to-refresh, loading / content + stale banner / empty / error, retry;
-//     onSessionExpired is offered on UNAUTHORIZED (host routes it to logout -> login screen); onOpenCamera on row tap.
+//     onSessionExpired is offered on UNAUTHORIZED (host routes it to logout -> login screen); onOpenCamera on row tap;
+//     onLongPressCamera on row long press.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 02-09: row tap opens the debug live screen (onOpenCamera(CameraInfo)).
-//   PREV_CHANGE: v0.2.0 - CAM-01/04/05: pull-to-refresh (material3 1.2.0 PullToRefreshContainer), Empty/Error screens
+//   LAST_CHANGE: v0.4.0 - GSD plan 03-11: long-press opens the debug probe (onLongPressCamera); tap now opens the
+//     live view (routing in AppShellScreen).
+//   PREV_CHANGE: v0.3.0 - GSD plan 02-09: row tap opens the debug live screen (onOpenCamera(CameraInfo)).
+//   OLDER_CHANGE: v0.2.0 - CAM-01/04/05: pull-to-refresh (material3 1.2.0 PullToRefreshContainer), Empty/Error screens
 //     with retry, stale banner, transport + shared in the row; device id removed from the UI (SEC-01);
 //     UNAUTHORIZED offers "Войти снова" (onSessionExpired).
 //   OLDER_CHANGE: v0.1.0 - loading / error / content, row subtitle showed the device id.
@@ -72,6 +76,7 @@ fun CameraListScreen(
     viewModel: CameraListViewModel = hiltViewModel(),
     onSessionExpired: () -> Unit = {},
     onOpenCamera: (CameraInfo) -> Unit = {},
+    onLongPressCamera: (CameraInfo) -> Unit = {},
 ) {
     // START_BLOCK_RENDER_CAMERA_LIST
     val state by viewModel.state.collectAsState()
@@ -104,7 +109,7 @@ fun CameraListScreen(
                             )
                         }
                     }
-                    items(s.cameras, key = { it.deviceId }) { CameraRow(it, onOpenCamera) }
+                    items(s.cameras, key = { it.deviceId }) { CameraRow(it, onOpenCamera, onLongPressCamera) }
                 }
                 is CameraListUiState.Empty -> item {
                     CenteredMessage(Modifier.fillParentMaxSize()) {
@@ -169,13 +174,14 @@ private fun StaleBanner(kind: ErrorKind, onRetry: () -> Unit, onSessionExpired: 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CameraRow(camera: CameraInfo, onClick: (CameraInfo) -> Unit) {
+private fun CameraRow(camera: CameraInfo, onClick: (CameraInfo) -> Unit, onLongClick: (CameraInfo) -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable { onClick(camera) },
+            .combinedClickable(onClick = { onClick(camera) }, onLongClick = { onLongClick(camera) }),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
