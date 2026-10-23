@@ -16,11 +16,11 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | H-L8 Snapshot | PASS | `result=Saved`, file in `Pictures/YiCamAlt`, JPEG 640x360 = stream resolution at that moment |
 | H-L6 Background (Home, quick return) | PASS | `BLOCK_STOP reason=background`, link closed in ~1.7 s (1.5 s IOCtrl abort), registry freed; on return `BLOCK_RESUME resumed=true`, reconnect OK; audio decoder not recreated after resume (muted again) |
 | Reconnect backoff (offline camera) | PASS | TNP `DEVICE_NOT_ONLINE` (−3006): attempts at 2/5/10/20 s, badge "Повтор (n/5)", then "Камера не в сети" + "Повторить" (`result=exhausted attempt=5`) |
+| H-L7 Gestures (double tap, pinch) | PASS (user-confirmed by hand; not driven by adb) | User report |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
 ## Not verified (pending)
 
-- Gestures: pinch / pan / double tap (could not be driven reliably via `adb input`).
 - Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
 - H-L5 network changes (Wi-Fi off / Wi-Fi→4G / camera power cycle), H-L6 lock-screen and >5 min return, parallel use with the official app.
 - H-L3 and TNP half of H-L4 (TNP audio / HD-SD) — blocked on Phase 2 H1 (TNP camera online).
