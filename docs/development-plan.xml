@@ -1061,6 +1061,7 @@
         <source>app/src/main/java/com/yicamalt/media/DecoderPolicy.kt</source>
         <source>app/src/main/java/com/yicamalt/media/VideoDecoder.kt</source>
         <tests>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/media/VideoSizeTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Media]</log-prefix>

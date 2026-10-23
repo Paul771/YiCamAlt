@@ -1,5 +1,5 @@
 // FILE: VideoDecoder.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Render a DecodableFrame stream (H.264 / H.265) to a Surface with MediaCodec in async mode.
 //   SCOPE: decoder creation on the first key frame (csd from that frame), input feeding from the FrameQueue,
@@ -40,10 +40,15 @@ import java.util.concurrent.TimeUnit
 //   VideoDecoder.attachSurface(surface) / detachSurface() - surface lifecycle; detach releases the codec only.
 //   VideoDecoder.onFrame(frame) / onUnsupportedCodec(codecId) - DecodableFrameSink.
 //   VideoDecoder.release() - idempotent teardown.
+//   VideoDecoder.videoSize - StateFlow<VideoSize?>: frame size at codec creation, then crop-aware output size.
+//   VideoSize - visible width x height.
+//   visibleSize(width, height, cropLeft, cropRight, cropTop, cropBottom) - pure crop-aware size (JVM-tested).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - device fix: no spurious reason=queue-overflow reset at stream start. The FrameQueue is
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-08: videoSize from onOutputFormatChanged (crop-aware) for the live screen
+//     aspect ratio; seeded from the key frame size at codec creation (BLOCK_FORMAT_CHANGED). No other behaviour change.
+//   PREVIOUS: v0.2.0 - device fix: no spurious reason=queue-overflow reset at stream start. The FrameQueue is
 //     told codecRunning=true right after codec start and false on every releaseCodec; while false it holds up to
 //     HOLD_CAPACITY frames (latest key frame chain, BLOCK_STARTUP_HOLD debug log) instead of resetting.
 //   PREVIOUS: v0.1.0 - GSD plan 02-08: created. All codec work runs on the decoder HandlerThread; callers only
@@ -54,8 +59,24 @@ import java.util.concurrent.TimeUnit
 
 data class VideoSize(val width: Int, val height: Int)
 
-fun visibleSize(width: Int, height: Int, cropLeft: Int?, cropRight: Int?, cropTop: Int?, cropBottom: Int?): VideoSize? =
-    error("RED stub")
+// START_CONTRACT: visibleSize
+//   PURPOSE: Visible picture size from decoder output format values (crop rectangle is inclusive).
+//   INPUTS: { width, height: Int - KEY_WIDTH / KEY_HEIGHT; cropLeft, cropRight, cropTop, cropBottom: Int? - optional
+//     "crop-*" keys, null when absent }
+//   OUTPUTS: { VideoSize? - crop size when all four crop keys exist and are sane, else width x height; null when
+//     width or height <= 0 }
+//   SIDE_EFFECTS: none (pure; top-level so JVM tests never load MediaCodec)
+//   LINKS: M-MEDIA-RENDER, V-M-MEDIA-RENDER
+// END_CONTRACT: visibleSize
+fun visibleSize(width: Int, height: Int, cropLeft: Int?, cropRight: Int?, cropTop: Int?, cropBottom: Int?): VideoSize? {
+    if (width <= 0 || height <= 0) return null
+    if (cropLeft != null && cropRight != null && cropTop != null && cropBottom != null) {
+        val w = cropRight - cropLeft + 1
+        val h = cropBottom - cropTop + 1
+        if (w > 0 && h > 0) return VideoSize(w, h)
+    }
+    return VideoSize(width, height)
+}
 
 class VideoDecoder(
     private val catalog: (String, Int, Int) -> DecoderChoice = DecoderCatalog::find,
@@ -63,6 +84,9 @@ class VideoDecoder(
 
     private val _status = MutableStateFlow<DecoderStatus>(DecoderStatus.Idle)
     val status: StateFlow<DecoderStatus> = _status.asStateFlow()
+
+    private val _videoSize = MutableStateFlow<VideoSize?>(null)
+    val videoSize: StateFlow<VideoSize?> = _videoSize.asStateFlow()
 
     private val _resetEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val resetEvents: SharedFlow<Unit> = _resetEvents.asSharedFlow()
@@ -284,6 +308,8 @@ class VideoDecoder(
         createdWidth = w
         createdHeight = h
         createdCsd = csd
+        // Provisional size from the stream until onOutputFormatChanged reports the crop-aware one.
+        if (frame.width > 0 && frame.height > 0) _videoSize.value = VideoSize(frame.width, frame.height)
         rendered = 0
         windowFrames = 0
         windowStartNs = 0
@@ -367,8 +393,36 @@ class VideoDecoder(
             codecError()
         }
 
-        override fun onOutputFormatChanged(mc: MediaCodec, format: MediaFormat) = Unit
+        override fun onOutputFormatChanged(mc: MediaCodec, format: MediaFormat) {
+            if (mc !== codec) return
+            onFormatChanged(format)
+        }
     }
+
+    // START_BLOCK_FORMAT_CHANGED
+    // Decoder thread: publish the crop-aware visible size of the decoded picture (aspect ratio of the live screen).
+    private fun onFormatChanged(format: MediaFormat) {
+        fun opt(key: String): Int? = if (format.containsKey(key)) format.getInteger(key) else null
+        val size = try {
+            visibleSize(
+                opt(MediaFormat.KEY_WIDTH) ?: 0,
+                opt(MediaFormat.KEY_HEIGHT) ?: 0,
+                opt(KEY_CROP_LEFT), opt(KEY_CROP_RIGHT), opt(KEY_CROP_TOP), opt(KEY_CROP_BOTTOM),
+            )
+        } catch (e: RuntimeException) {
+            // A key of an unexpected type (ClassCastException) must not break decoding.
+            Timber.w("[Media][decoder][BLOCK_FORMAT_CHANGED] result=unreadable error=%s", e.javaClass.simpleName)
+            null
+        } ?: return
+        publishSize(size)
+    }
+
+    private fun publishSize(size: VideoSize) {
+        if (_videoSize.value == size) return
+        _videoSize.value = size
+        Timber.i("[Media][decoder][BLOCK_FORMAT_CHANGED] w=%d h=%d", size.width, size.height)
+    }
+    // END_BLOCK_FORMAT_CHANGED
 
     // START_BLOCK_FIRST_RENDER
     private fun onRendered() {
@@ -463,5 +517,9 @@ class VideoDecoder(
         const val DEFAULT_HEIGHT = 1080
         const val FPS_WINDOW_NS = 2_000_000_000L
         const val BLOCKING_WAIT_MS = 1_000L
+        const val KEY_CROP_LEFT = "crop-left"
+        const val KEY_CROP_RIGHT = "crop-right"
+        const val KEY_CROP_TOP = "crop-top"
+        const val KEY_CROP_BOTTOM = "crop-bottom"
     }
 }

@@ -539,11 +539,13 @@
       <depends>M-STREAM-CORE</depends>
       <verification-ref>V-M-MEDIA-RENDER</verification-ref>
       <annotations>
-        <export-VideoDecoder PURPOSE="DecodableFrameSink over MediaCodec async on the media-decoder HandlerThread; status / resetEvents; NoDecoder explicit (BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET, BLOCK_NO_DECODER, BLOCK_FEED_INPUT, BLOCK_PUMP)" />
+        <export-VideoDecoder PURPOSE="DecodableFrameSink over MediaCodec async on the media-decoder HandlerThread; status / resetEvents; NoDecoder explicit (BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET, BLOCK_NO_DECODER, BLOCK_FEED_INPUT, BLOCK_PUMP, BLOCK_FORMAT_CHANGED); videoSize StateFlow (plan 03-08)" />
+        <export-visibleSize PURPOSE="Pure crop-aware visible size from output format values (VideoSize)" />
         <export-DecoderCatalog PURPOSE="MediaCodecList query (BLOCK_QUERY_DECODERS)" />
         <export-DecoderPolicy PURPOSE="Pure rules: FrameQueue (key gate, oldest-first overflow), ResetCounter, CsdBuilder, PtsGuard, DecoderStatus texts" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/media/VideoSizeTest.kt</tests>
       <change-summary phase="02-p2p" plan="02-08" verification="jvm-passed">VideoDecoder (MediaCodec async to Surface) and JVM-tested DecoderPolicy; device proof in plan 02-12.</change-summary>
       <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented; DecoderPolicyTest 9; device check 1 lists hardware AVC and HEVC decoders; device proof in 02-DEVICE-VERIFICATION.md.</change-summary>
     </M-MEDIA-RENDER>

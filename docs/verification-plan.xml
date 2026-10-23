@@ -808,6 +808,7 @@
     <V-M-MEDIA-RENDER MODULE="M-MEDIA-RENDER" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/media/VideoSizeTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.media.*"</check-1>
@@ -831,6 +832,7 @@
         <marker-4>[Media][decoder][BLOCK_DECODER_RESET] reason=&lt;codec-error|surface-lost|queue-overflow|format-change|oversize-frame&gt; resets=&lt;n&gt;</marker-4>
         <marker-5>[Media][decoder][BLOCK_NO_DECODER] mime=&lt;mime&gt;</marker-5>
         <marker-6>[Media][decoder][BLOCK_STARTUP_HOLD] result=&lt;HELD_TRIMMED|DROPPED_HOLD_FULL&gt; queued=&lt;n&gt; (debug; frames held while the codec is created, never a reset)</marker-6>
+        <marker-7>[Media][decoder][BLOCK_FORMAT_CHANGED] w=&lt;n&gt; h=&lt;n&gt; (once per visible size change, plan 03-08; VideoSizeTest proves the crop rule)</marker-7>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
