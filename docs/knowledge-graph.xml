@@ -626,10 +626,13 @@
         <export-LiveSessionSupervisor PURPOSE="Session state machine (BLOCK_OPEN_LINK, BLOCK_CLASSIFY, BLOCK_SCHEDULE, BLOCK_DRAIN, BLOCK_STALL, BLOCK_NETWORK, BLOCK_STOP, BLOCK_QUALITY, BLOCK_RESUME)" />
         <export-QualityController PURPOSE="HD/SD policy and confirmation" />
         <export-ResumePolicy PURPOSE="onStart resume rule (D-10)" />
+        <export-NetStateTracker PURPOSE="Pure default-network rules: generation bumps on a different network, stale onLost ignored" />
+        <export-AndroidNetworkMonitor PURPOSE="@Singleton NetworkMonitor over registerDefaultNetworkCallback, no VALIDATED gate (BLOCK_NETWORK_EVENT); bound in LiveModule" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/live/NetStateTrackerTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: port types in LiveSessionTypes.kt; implementation in later Phase 3 plans.</change-summary>
     </M-LIVE-SESSION>

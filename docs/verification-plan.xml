@@ -1115,6 +1115,7 @@
         <file>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</file>
         <file>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</file>
         <file>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/NetStateTrackerTest.kt</file>
         <file>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</file>
       </test-files>
       <module-checks>

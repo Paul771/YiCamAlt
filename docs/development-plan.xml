@@ -1151,6 +1151,7 @@
         <tests>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/live/NetStateTrackerTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</tests>
       </target>
       <observability>
