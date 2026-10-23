@@ -927,6 +927,9 @@
         <scenario-13 kind="success" evidence-type="deterministic">avClientStart2 that returns an AV channel after close() already released the session: stop(-1, sid) then stop(av, -1), avClientStop exactly once (Phase 2 review MED-6)</scenario-13>
         <scenario-14 kind="failure" evidence-type="deterministic">Thread guard: a sink throwing an Error -> Failed(INTERNAL, 0) with the vendor stop; empty encrypted password -> Failed(INTERNAL, 0) without clientStart; the factory refuses it as NO_CREDENTIALS (Phase 2 review MED-7)</scenario-14>
         <scenario-15 kind="success" evidence-type="deterministic">A connect that ignores connectStop keeps the registry entry until it returns (registry=deferred); the vendor stop runs with no avRecvFrameData2 in flight and none after it (Phase 2 review LOW-8 / LOW-9)</scenario-15>
+        <scenario-16 kind="success" evidence-type="trace">With an audio sink: 8190 then 768 on tutk-&lt;n&gt;-tx, cleanAudioBuf before the first recvAudio, LE audio units (encrypted false) on tutk-&lt;n&gt;-rxa; without a sink no 768 and no rxa; audio -20012 sleeps audioNoDataSleepMs (120); audio / IOCTRL end codes end only their loop (TutkCameraLinkTest, plan 03-04)</scenario-16>
+        <scenario-17 kind="success" evidence-type="deterministic">requestResolution queues LE 4881 [res, useCount] on tutk-&lt;n&gt;-tx with useCount 2, 3; null before the start command and after close; 4882 replies consumed by tutk-&lt;n&gt;-rxc without affecting the link (TutkCameraLinkTest, plan 03-04)</scenario-17>
+        <scenario-18 kind="success" evidence-type="deterministic">Teardown joins rx, rxa, rxc, tx before stop (no recv / send in flight at stop); a tx blocked in sendIoCtrl does not block close (within joinMs + 300 ms) and keeps ALREADY_OPEN until it exits (registry=deferred) (TutkCameraLinkTest, plan 03-04)</scenario-18>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -937,6 +940,10 @@
         <marker-6>[P2P][tutk][BLOCK_INIT_TUTK]</marker-6>
         <marker-7>[P2P][factory][BLOCK_DISPATCH_LINK]</marker-7>
         <marker-8>[P2P][tutk][BLOCK_THREAD_GUARD]</marker-8>
+        <marker-9>[P2P][tutk][BLOCK_TX_LOOP]</marker-9>
+        <marker-10>[P2P][tutk][BLOCK_IOCTRL_LOOP]</marker-10>
+        <marker-11>[P2P][tutk][BLOCK_AUDIO_LOOP]</marker-11>
+        <marker-12>[P2P][tutk][BLOCK_SET_RESOLUTION]</marker-12>
       </required-log-markers>
       <device-log-markers>
         <marker-1>[P2P][tutk][BLOCK_INIT_TUTK] iotc=&lt;code&gt; av=&lt;code&gt; iotcVer=0x&lt;HEX&gt; avVer=0x&lt;HEX&gt; result=ready</marker-1>

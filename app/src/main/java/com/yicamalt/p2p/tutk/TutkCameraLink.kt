@@ -1,10 +1,12 @@
 // FILE: TutkCameraLink.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One TUTK IOTC/AV session per camera behind the shared CameraLink port, vendor call order.
 //   SCOPE: TutkCameraLink (IOTC_Get_SessionID -> IOTC_Connect_ByUID_Parallel with the cloud uid -> Session_Check
 //     mode mapping -> avClientStart2 with nonce + HMAC (or admin) -> 8190 / 511 start -> avRecvFrameData2 loop with
-//     little-endian FrameInfo and the vendor fatal-code list, connect and first-frame timers, thread guard, bounded
+//     little-endian FrameInfo and the vendor fatal-code list; after the start command a single IOCTRL writer
+//     (tutk-<n>-tx: 768 with an audio sink, LE 4881 from requestResolution), an avRecvIOCtrl reader (tutk-<n>-rxc)
+//     and, with an audio sink, an avRecvAudioData reader (tutk-<n>-rxa); connect and first-frame timers, thread guard, bounded
 //     idempotent teardown with separate AV / session release) and TutkLinkFactory (credential checks, process-once
 //     TutkRuntime init, one session per camera).
 //   DEPENDS: M-TUTK-LINK (TutkNative, TutkCodes, TutkRuntime), M-STREAM-CORE (CameraLink, FrameHeadCodec,
@@ -18,6 +20,8 @@ package com.yicamalt.p2p.tutk
 import com.yicamalt.camera.P2pCredentials
 import com.yicamalt.camera.TransportType
 import com.yicamalt.p2p.tnp.FailedLink
+import com.yicamalt.stream.AudioUnit
+import com.yicamalt.stream.AudioUnitSink
 import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.CameraLinkFactory
 import com.yicamalt.stream.FrameHeadCodec
@@ -40,6 +44,7 @@ import java.security.SecureRandom
 import java.util.Random
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -47,9 +52,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   TutkCameraLink - CameraLink over TutkNative: start(sink) spawns tutk-<n>-watch / -connect (-rx later), close(reason).
+//   TutkCameraLink - CameraLink over TutkNative: start(sink) spawns tutk-<n>-watch / -connect (-rx, -tx, -rxc, -rxa
+//     later), close(reason), setAudioSink(sink) before start, requestResolution(res) -> useCount 2, 3, ... or null.
 //   TutkCameraLink.Timeouts - connectMs 30000, firstFrameMs 20000, clientStartS 15, noDataSleepMs 30,
-//     maxNoDataPolls 300, joinMs 2000, pollMs 20, ioJoinMarginMs 200.
+//     maxNoDataPolls 300, joinMs 2000, pollMs 20, ioJoinMarginMs 200, audioNoDataSleepMs 120, ioCtrlPollMs 50,
+//     txPollMs 50.
+//   TutkCameraLink.AUDIO_BUF_SIZE / IOCTRL_BUF_SIZE / FRAME_INFO_SIZE - 1024, 1024, 24.
+//   TutkCameraLink.AUDIO_END_CODES / IOCTRL_END_CODES - codes that end only the audio / IOCTRL loops.
 //   TutkCameraLink.modeOf - vendor Session_Check mode 0 P2P, 1 RELAY, 2 LAN, else UNKNOWN.
 //   TutkCameraLink.AV_CHANNEL / FRAME_BUF_SIZE / LARGE_FRAME_BUF_SIZE / NONCE_LEN / PLAIN_USER - 0, 300000, 1000000,
 //     15, "admin".
@@ -58,7 +67,11 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review fixes.
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-04: tx/rxc/rxa threads (768 only with an audio sink), requestResolution LE 4881
+//     via tx (useCount continues from 2), teardown joins all io threads (rx, rxa, rxc, tx; bounded by their longest
+//     sleep + ioJoinMarginMs) before releaseOnce. Audio / IOCTRL reader errors end only their own loop; the video
+//     reader alone decides session loss. Without an audio sink the start sequence and behaviour are Phase 2's.
+//   PREVIOUS: v0.2.0 - Phase 2 review fixes.
 //     MED-5: the read loop ends the session only on the vendor fatal codes -20015, -20016, -20010, -20000, -20018,
 //       -20019, -20025, -20026 (FATAL_READ_CODES); any other negative code is logged once per code (symbolic name)
 //       and reading continues after noDataSleepMs; maxNoDataPolls such codes in a row end the session. -20001 (buffer
@@ -75,7 +88,7 @@ import javax.inject.Singleton
 //     INVARIANTS: one connectByUid per start(), no reconnect and no retry inside the link (the single automatic retry
 //       on WRONG_PASSWORD lives in LiveProbeViewModel); -20012 polls sleep noDataSleepMs and end the session as
 //       TIMEOUT(-20012) after maxNoDataPolls in a row; -20013 / -20014 drop frames until the next key frame without
-//       leaving Streaming; every native call runs on a named thread of this link (tutk-<n>-connect | -rx | -close);
+//       leaving Streaming; every native call runs on a named thread of this link (tutk-<n>-connect | -rx | -tx | -rxc | -rxa | -close);
 //       the cloud uid, password, nonce and HMAC never reach logs, LinkError, LinkInfo or toString; cam=<n> is a
 //       per-process counter. LinkOptions.forceRelay has no IOTC equivalent and is ignored.
 //   PREVIOUS: v0.1.0 - GSD plan 02-11: created from 02-RESEARCH.md Pattern 8, mirroring TnpCameraLink.
@@ -101,7 +114,12 @@ internal class TutkCameraLink(
         val joinMs: Long = 2_000,
         val pollMs: Long = 20,
         val ioJoinMarginMs: Long = 200,
+        val audioNoDataSleepMs: Long = 120,
+        val ioCtrlPollMs: Long = 50,
+        val txPollMs: Long = 50,
     )
+
+    private class TxCmd(val type: Int, val payload: ByteArray)
 
     override val deviceId: String = credentials.deviceId
 
@@ -130,6 +148,42 @@ internal class TutkCameraLink(
     @Volatile private var streaming = false
     @Volatile private var startMs = 0L
     @Volatile private var startCmdAtMs = -1L
+    @Volatile private var audioSink: AudioUnitSink? = null
+    private val txQueue = LinkedBlockingQueue<TxCmd>()
+    private val txRunning = AtomicBoolean(false)
+    private val resolutionUseCount = AtomicInteger(START_USE_COUNT)
+    private val audioUnits = AtomicInteger(0)
+
+    // START_CONTRACT: setAudioSink
+    //   PURPOSE: Register the receiver of TUTK audio units; effective only when called before start().
+    //   INPUTS: { sink: AudioUnitSink? - null = no 768 and no tutk-<n>-rxa (Phase 2 behaviour) }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: none until start(); units arrive on tutk-<n>-rxa with encrypted = false
+    //   LINKS: M-TUTK-LINK, M-MEDIA-AUDIO
+    // END_CONTRACT: setAudioSink
+    override fun setAudioSink(sink: AudioUnitSink?) {
+        audioSink = sink
+    }
+
+    // START_CONTRACT: requestResolution
+    //   PURPOSE: Queue IOCTRL 4881 [resolution, useCount] little-endian for tutk-<n>-tx; never a native call here.
+    //   INPUTS: { resolution: Int - IoCtrlMessages.RESOLUTION_HD (1) | RESOLUTION_SD (2) }
+    //   OUTPUTS: { Int? - the useCount queued (2, 3, ... after the start command's 1); null before the start command
+    //     was sent, while stopping or after close }
+    //   SIDE_EFFECTS: one TxCmd on txQueue; one BLOCK_SET_RESOLUTION log line
+    //   LINKS: IoCtrlMessages.setResolution, BLOCK_TX_LOOP
+    // END_CONTRACT: requestResolution
+    override fun requestResolution(resolution: Int): Int? {
+        // START_BLOCK_SET_RESOLUTION
+        if (!txRunning.get() || stopping || closing.get()) return null
+        val uc = resolutionUseCount.incrementAndGet()
+        txQueue.offer(
+            TxCmd(IoCtrlMessages.SET_RESOLUTION, IoCtrlMessages.setResolution(resolution, uc, bigEndian = false)),
+        )
+        Timber.d("[P2P][tutk][BLOCK_SET_RESOLUTION] cam=%d res=%d useCount=%d", camIndex, resolution, uc)
+        return uc
+        // END_BLOCK_SET_RESOLUTION
+    }
 
     // START_CONTRACT: start
     //   PURPOSE: Begin the session without blocking the caller.
@@ -260,6 +314,143 @@ internal class TutkCameraLink(
         )
         if (sent < 0 && !stopping && !closing.get()) failWith(LinkError(TutkCodes.classify(sent), sent), REASON_ERROR)
         // END_BLOCK_CLIENT_START
+        if (sent >= 0 && !stopping && !closing.get()) startIoThreads()
+    }
+
+    // Phase 3: writer + IOCTRL reply reader always; 768 + audio reader only with an audio sink.
+    private fun startIoThreads() {
+        txRunning.set(true)
+        spawn("tx") { txLoop() }
+        spawn("rxc") { ioCtrlLoop() }
+        if (audioSink != null) {
+            txQueue.offer(TxCmd(IoCtrlMessages.AUDIO_START, IoCtrlMessages.audioStart()))
+            spawn("rxa") { audioLoop() }
+        }
+    }
+
+    // START_CONTRACT: txLoop
+    //   PURPOSE: tutk-<n>-tx: the single IOCTRL writer after the start command (768, 4881).
+    //   INPUTS: none (txQueue)
+    //   OUTPUTS: { Unit - ends on stop or an IOCTRL_END_CODES result; never fails the link }
+    //   SIDE_EFFECTS: native.sendIoCtrl on the captured av; one BLOCK_TX_LOOP log line per command
+    //   LINKS: TutkNative.sendIoCtrl
+    // END_CONTRACT: txLoop
+    private fun txLoop() {
+        // START_BLOCK_TX_LOOP
+        val avLocal = av
+        while (!stopping && !closing.get() && !avReleased.get()) {
+            val c = try {
+                txQueue.poll(timeouts.txPollMs, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                break
+            } ?: continue
+            if (stopping || closing.get() || avReleased.get()) break
+            val r = native.sendIoCtrl(avLocal, c.type, c.payload)
+            Timber.d(
+                "[P2P][tutk][BLOCK_TX_LOOP] cam=%d type=%d result=%s",
+                camIndex, c.type, if (r >= 0) "ok" else TutkCodes.name(r),
+            )
+            if (r in IOCTRL_END_CODES) break
+        }
+        txRunning.set(false)
+        // END_BLOCK_TX_LOOP
+    }
+
+    // START_CONTRACT: ioCtrlLoop
+    //   PURPOSE: tutk-<n>-rxc: vendor avRecvIOCtrl(av, type, buf[1024], 1024, 0) polling, sleep ioCtrlPollMs.
+    //   INPUTS: none
+    //   OUTPUTS: { Unit - >= 0 consumes one reply (4882 logged with its size); IOCTRL_END_CODES end this loop only;
+    //     never fails the link (the video reader decides session loss) }
+    //   SIDE_EFFECTS: one BLOCK_IOCTRL_LOOP log line per 4882 and on exit
+    //   LINKS: TutkNative.recvIoCtrl
+    // END_CONTRACT: ioCtrlLoop
+    private fun ioCtrlLoop() {
+        // START_BLOCK_IOCTRL_LOOP
+        val avLocal = av
+        val buf = ByteArray(IOCTRL_BUF_SIZE)
+        var replies = 0
+        var exit = 0
+        while (!stopping && !closing.get() && !avReleased.get()) {
+            val r = native.recvIoCtrl(avLocal, buf, 0)
+            if (r.code >= 0) {
+                replies++
+                if (r.type == IoCtrlMessages.SET_RESOLUTION_RESP) {
+                    Timber.d("[P2P][tutk][BLOCK_IOCTRL_LOOP] cam=%d type=%d size=%d", camIndex, r.type, r.code)
+                }
+                continue
+            }
+            if (r.code in IOCTRL_END_CODES) {
+                exit = r.code
+                break
+            }
+            if (!nap(timeouts.ioCtrlPollMs)) break
+        }
+        Timber.d(
+            "[P2P][tutk][BLOCK_IOCTRL_LOOP] cam=%d exit=%s replies=%d",
+            camIndex, if (exit == 0) EXIT_CLOSED else TutkCodes.name(exit), replies,
+        )
+        // END_BLOCK_IOCTRL_LOOP
+    }
+
+    // START_CONTRACT: audioLoop
+    //   PURPOSE: tutk-<n>-rxa: avClientCleanAudioBuf once, then avRecvAudioData polling into the audio sink.
+    //   INPUTS: none (audioSink)
+    //   OUTPUTS: { Unit - > 0: one AudioUnit (FrameInfo little-endian, encrypted = false); -20012: sleep
+    //     audioNoDataSleepMs; -20013 / -20014: skip; AUDIO_END_CODES or any other negative code: end this loop only,
+    //     never fail the link }
+    //   SIDE_EFFECTS: BLOCK_AUDIO_LOOP log lines on the first unit and on exit; a throwing sink is logged once by class
+    //   LINKS: TutkNative.cleanAudioBuf, TutkNative.recvAudio, FrameHeadCodec.parse, AudioUnitSink.onAudioUnit
+    // END_CONTRACT: audioLoop
+    private fun audioLoop() {
+        // START_BLOCK_AUDIO_LOOP
+        val avLocal = av
+        native.cleanAudioBuf(avLocal)
+        val buf = ByteArray(AUDIO_BUF_SIZE)
+        val head = ByteArray(FRAME_INFO_SIZE)
+        var sinkErrorLogged = false
+        var exit = 0
+        while (!stopping && !closing.get() && !avReleased.get()) {
+            val r = native.recvAudio(avLocal, buf, head)
+            when {
+                r.code > 0 -> {
+                    val size = r.code.coerceAtMost(buf.size)
+                    val fi = FrameHeadCodec.parse(head, 0, bigEndian = false)
+                    if (audioUnits.incrementAndGet() == 1) {
+                        Timber.d("[P2P][tutk][BLOCK_AUDIO_LOOP] cam=%d first=true codecId=%d", camIndex, fi.codecId)
+                    }
+                    try {
+                        audioSink?.onAudioUnit(AudioUnit(AV_CHANNEL, fi, buf.copyOf(size), encrypted = false))
+                    } catch (e: Exception) {
+                        if (!sinkErrorLogged) {
+                            sinkErrorLogged = true
+                            Timber.w(
+                                "[P2P][tutk][BLOCK_AUDIO_LOOP] cam=%d sinkError=%s",
+                                camIndex, e.javaClass.simpleName,
+                            )
+                        }
+                    }
+                }
+                r.code == TutkCodes.AV_DATA_NOREADY -> if (!nap(timeouts.audioNoDataSleepMs)) break
+                r.code == TutkCodes.AV_INCOMPLETE_FRAME || r.code == TutkCodes.AV_LOSED_THIS_FRAME -> Unit
+                else -> {
+                    exit = r.code
+                    break
+                }
+            }
+        }
+        Timber.d(
+            "[P2P][tutk][BLOCK_AUDIO_LOOP] cam=%d exit=%s units=%d",
+            camIndex, if (exit == 0) EXIT_CLOSED else TutkCodes.name(exit), audioUnits.get(),
+        )
+        // END_BLOCK_AUDIO_LOOP
+    }
+
+    // Interruptible sleep for the io loops; false when interrupted.
+    private fun nap(ms: Long): Boolean = try {
+        if (ms > 0) Thread.sleep(ms)
+        true
+    } catch (e: InterruptedException) {
+        false
     }
 
     // START_BLOCK_READ_LOOP
@@ -412,7 +603,7 @@ internal class TutkCameraLink(
     //   INPUTS: { reason: String - BLOCK_CLOSE reason; final: LinkState - Closed(reason) or Failed(error) }
     //   OUTPUTS: { Unit - external callers wait for tutk-<n>-close up to joinMs; link threads do not wait }
     //   SIDE_EFFECTS: on tutk-<n>-close: stop flag; connectStop(sid0) while connectByUid is still blocking; join of
-    //     tutk-<n>-rx bounded by noDataSleepMs + ioJoinMarginMs; vendor stop for what exists (AV channel and session
+    //     tutk-<n>-rx / -rxa / -rxc / -tx bounded by their longest sleep + ioJoinMarginMs; vendor stop for what exists (AV channel and session
     //     released independently, each at most once; stop also aborts a blocking clientStart); bounded join (joinMs
     //     in total); stop(-1, sid0) once when only the pre-allocated session id exists; onClosed once every link
     //     thread has exited (else deferred to tutk-<n>-reap); final state.
@@ -436,12 +627,18 @@ internal class TutkCameraLink(
                 threads.toList()
             }
             if (connectAttempted && !connectReturned) native.connectStop(sid0)
-            // The reader leaves at its next flag check (<= one no-data sleep); join it before the AV channel goes.
+            // The io threads leave at their next flag check (<= their longest sleep); join them before the AV channel
+            // goes. A writer stuck in avSendIOCtrl is aborted by releaseOnce (avSendIOCtrlExit) afterwards.
+            val ioSleepMs = maxOf(
+                maxOf(timeouts.noDataSleepMs, timeouts.audioNoDataSleepMs),
+                maxOf(timeouts.ioCtrlPollMs, timeouts.txPollMs),
+            )
             val ioDeadline = minOf(
                 deadline,
-                System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeouts.noDataSleepMs + timeouts.ioJoinMarginMs),
+                System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(ioSleepMs + timeouts.ioJoinMarginMs),
             )
-            joinUntil(snapshot.filter { it.name == "tutk-$camIndex-rx" }, ioDeadline)
+            val ioNames = IO_THREADS.map { "tutk-$camIndex-$it" }.toSet()
+            joinUntil(snapshot.filter { it.name in ioNames }, ioDeadline)
             if (sid >= 0 || av >= 0) releaseOnce()
             joinUntil(snapshot, deadline)
             releaseOnce()
@@ -550,6 +747,17 @@ internal class TutkCameraLink(
             TutkCodes.AV_INVALID_ARG, TutkCodes.AV_CLIENT_EXIT, TutkCodes.AV_NOT_INITIALIZED,
             TutkCodes.AV_IOTC_SESSION_CLOSED, TutkCodes.AV_IOTC_DEINITIALIZED,
         )
+
+        const val AUDIO_BUF_SIZE = 1024
+        const val IOCTRL_BUF_SIZE = 1024
+        const val FRAME_INFO_SIZE = 24
+        private val IO_THREADS = listOf("rx", "rxa", "rxc", "tx")
+
+        // Vendor audio loop ends on these avRecvAudioData codes; the IOCTRL loops also on avSendIOCtrlExit.
+        val AUDIO_END_CODES: Set<Int> = setOf(
+            TutkCodes.AV_INVALID_SID, TutkCodes.AV_SESSION_CLOSE_BY_REMOTE, TutkCodes.AV_REMOTE_TIMEOUT_DISCONNECT,
+        )
+        val IOCTRL_END_CODES: Set<Int> = AUDIO_END_CODES + TutkCodes.AV_SENDIOCTRL_EXIT
 
         // Vendor Session_Check mode: 0 P2P, 1 Relay, 2 LAN.
         fun modeOf(mode: Int): LinkMode = when (mode) {
