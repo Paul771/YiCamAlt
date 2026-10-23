@@ -705,6 +705,9 @@
         <scenario-15 kind="failure" evidence-type="deterministic">Thread guard: a sink throwing an Error and an empty encrypted password end in Failed(INTERNAL, 0) with ForceClose and onClosed, never an uncaught thread death; TnpLinkFactory refuses an empty encrypted password as NO_CREDENTIALS (Phase 2 review MED-7)</scenario-15>
         <scenario-16 kind="success" evidence-type="deterministic">A connect thread that ignores Connect_Break keeps the registry entry (onClosed deferred, registry=deferred) until it exits, while close() still returns within joinMs with Closed (Phase 2 review LOW-8)</scenario-16>
         <scenario-17 kind="success" evidence-type="deterministic">ForceClose runs with no PPPP_Read in flight and no read after it; order STOP -> Connect_Break -> ForceClose kept (5 rounds; Phase 2 review LOW-9)</scenario-17>
+        <scenario-18 kind="success" evidence-type="deterministic">ch1 audio (ioType 2, body &gt; 24) reaches the AudioUnitSink with encrypted = header version &gt;= 2 (true at 2, false after adopting 1), never the video sink; without a sink it is discarded; a throwing audio sink is logged once (sinkError=&lt;Class&gt;) and video keeps streaming (plan 03-02, LIVE-06)</scenario-18>
+        <scenario-19 kind="success" evidence-type="deterministic">requestResolution queues 4881 [res, useCount 3, 4, ...] through the single writer (header version 2, next command numbers 4, 5); burst bytes unchanged; null and no write before connect or after close (plan 03-02, LIVE-07)</scenario-19>
+        <scenario-20 kind="success" evidence-type="deterministic">4882 with TNPHead abilityRet 1 sets capabilities.resolutionSwitch=false; abilityRet 0 keeps null; abilityRet logged on BLOCK_AUTH_REPLY (plan 03-02, D-07)</scenario-20>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -718,6 +721,8 @@
         <marker-9>[P2P][tnp][BLOCK_HEADER_VERSION] version=&lt;n&gt; resent=4881,9029,768 reply=skipped</marker-9>
         <marker-10>[P2P][tnp][BLOCK_KICKED] code=&lt;NAME&gt;</marker-10>
         <marker-11>[P2P][tnp][BLOCK_THREAD_GUARD] thread=&lt;suffix&gt; error=&lt;ExceptionClass&gt;</marker-11>
+        <marker-12>[P2P][tnp][BLOCK_AUDIO_UNIT] first=true codecId=&lt;n&gt; enc=&lt;b&gt; | sinkError=&lt;Class&gt; (once each)</marker-12>
+        <marker-13>[P2P][tnp][BLOCK_SET_RESOLUTION] res=&lt;n&gt; useCount=&lt;n&gt; queued=&lt;b&gt;</marker-13>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -726,16 +731,19 @@
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK] cam=&lt;n&gt; transport=&lt;T&gt; result=&lt;started|NAME&gt;</marker-1>
         <marker-2>[P2P][tnp][BLOCK_CONNECT] cam=&lt;n&gt; relayForced=&lt;b&gt; wakeup=&lt;b&gt; result=&lt;ok|NAME&gt; ms=&lt;n&gt;</marker-2>
         <marker-3>[P2P][tnp][BLOCK_CHECK_SESSION] cam=&lt;n&gt; mode=&lt;MODE&gt; lan=&lt;b&gt; connectMs=&lt;n&gt;</marker-3>
-        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; type=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY&gt; version=&lt;n&gt; | cam=&lt;n&gt; outcome=UNKNOWN action=ignored (once)</marker-4>
+        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; type=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY&gt; version=&lt;n&gt; abilityRet=&lt;n&gt; | cam=&lt;n&gt; outcome=UNKNOWN action=ignored (once)</marker-4>
         <marker-5>[P2P][tnp][BLOCK_FIRST_VIDEO] cam=&lt;n&gt; ch=&lt;n&gt; codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt;</marker-5>
         <marker-6>[P2P][tnp][BLOCK_READ_LOOP] cam=&lt;n&gt; ch=&lt;n&gt; exit=&lt;closed|error|dirty&gt; code=&lt;NAME&gt; units=&lt;n&gt;</marker-6>
         <marker-7>[P2P][tnp][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;reason&gt; units=&lt;n&gt; joinMs=&lt;n&gt; registry=&lt;now|deferred&gt;</marker-7>
         <marker-8>[P2P][tnp][BLOCK_HEADER_VERSION] cam=&lt;n&gt; version=&lt;n&gt; resent=4881,9029,768 reply=skipped</marker-8>
+        <marker-9>[P2P][tnp][BLOCK_AUDIO_UNIT] cam=&lt;n&gt; first=true codecId=&lt;n&gt; enc=&lt;b&gt;</marker-9>
+        <marker-10>[P2P][tnp][BLOCK_SET_RESOLUTION] cam=&lt;n&gt; res=&lt;n&gt; useCount=&lt;n&gt; queued=&lt;b&gt;</marker-10>
       </device-log-markers>
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TnpCameraLinkTest 19, TnpLinkFactoryTest 5</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); TnpCameraLinkTest 27, TnpLinkFactoryTest 5</evidence-3>
+        <evidence-4>2026-10-23 plan 03-02 gate: :app:testDebugUnitTest --tests com.yicamalt.p2p.* --rerun-tasks green 3 times in a row (gradle exit=0); :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 43 suites, 558 tests, 1 skipped, 0 failures; TnpCameraLinkTest 33 (6 new tests failed against v0.2.0)</evidence-4>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
       <note-1>2026-10-15 GSD plan 02-07: JVM evidence over FakePpppNative (TnpCameraLinkTest 18, TnpLinkFactoryTest 5); STATUS stays planned until the device checkpoint of plan 02-12.</note-1>

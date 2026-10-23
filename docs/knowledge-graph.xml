@@ -467,7 +467,7 @@
       <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
       <verification-ref>V-M-TNP-LINK</verification-ref>
       <annotations>
-        <export-TnpCameraLink PURPOSE="Internal CameraLink for TNP: connect 0x49 / relay 0xDF with the device_info DID, check, five readers before the 4881/9029/768 burst, authResult on every ch0 reply, header version (whole start sequence re-sent once), 9033 kick, 30 s / 20 s timers, thread guard, bounded teardown on p2p-&lt;n&gt;-close (BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_HEADER_VERSION, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_THREAD_GUARD)" />
+        <export-TnpCameraLink PURPOSE="Internal CameraLink for TNP: connect 0x49 / relay 0xDF with the device_info DID, check, five readers before the 4881/9029/768 burst, authResult on every ch0 reply, header version (whole start sequence re-sent once), 9033 kick, 30 s / 20 s timers, thread guard, bounded teardown on p2p-&lt;n&gt;-close (BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_HEADER_VERSION, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_THREAD_GUARD, BLOCK_AUDIO_UNIT, BLOCK_SET_RESOLUTION); setAudioSink (ch1 audio, encrypted = header version &gt;= 2), requestResolution (4881 useCount 3.. via the writer), capabilities (4882 abilityRet 1 -&gt; resolutionSwitch=false)" />
         <export-TnpLinkFactory PURPOSE="CameraLinkFactory: typed refusals, PpppRuntime init once, one session per camera (BLOCK_OPEN_LINK)" />
         <export-P2pLinkModule PURPOSE="Hilt: @Binds CameraLinkFactory to TransportLinkFactory" />
       </annotations>
@@ -476,6 +476,7 @@
       <change-summary phase="02-p2p" plan="02-07" commits="fc90ee7, d86c641" verification="passed">TnpCameraLink + TnpLinkFactory + P2pLinkModule on FakePpppNative (JVM only); TnpCameraLinkTest 18, TnpLinkFactoryTest 5.</change-summary>
       <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 Race fix (TnpCameraLink v0.1.1): auth reply and first video unit publish Streaming.authOk under one lock; regression test added (TnpCameraLinkTest 19). Device proof: 02-DEVICE-VERIFICATION.md.</change-summary>
       <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes (TnpCameraLink v0.2.0): HIGH-2 whole start sequence re-sent once on a header version mismatch, mismatched reply skipped; MED-3 authResult on every ch0 reply; MED-7 thread guard and empty-password refusal; LOW-8 registry released after the link threads exited; LOW-9 ForceClose after the readers left. TnpCameraLinkTest 27, TnpLinkFactoryTest 5. See 02-REVIEW-FIXES.md.</change-summary>
+      <change-summary phase="03-live-view" plan="03-02" verification="jvm-passed">2026-10-23 TnpCameraLink v0.3.0: ch1 audio -&gt; AudioUnitSink, requestResolution through txQueue (useCount from 3, only after the start burst was queued), 4882 abilityRet 1 -&gt; resolutionSwitch=false; burst and header version resend unchanged. TnpCameraLinkTest 33. Device proof deferred to H-L3/H-L4.</change-summary>
     </M-TNP-LINK>
 
     <M-STREAM-CORE NAME="StreamCore" TYPE="CORE_LOGIC" STATUS="implemented">
