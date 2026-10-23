@@ -52,6 +52,11 @@ import java.util.concurrent.TimeUnit
 //     INVARIANT: logs carry mime, decoder name, flags, sizes, counts and ms only; never frame bytes.
 // END_CHANGE_SUMMARY
 
+data class VideoSize(val width: Int, val height: Int)
+
+fun visibleSize(width: Int, height: Int, cropLeft: Int?, cropRight: Int?, cropTop: Int?, cropBottom: Int?): VideoSize? =
+    error("RED stub")
+
 class VideoDecoder(
     private val catalog: (String, Int, Int) -> DecoderChoice = DecoderCatalog::find,
 ) : DecodableFrameSink {
