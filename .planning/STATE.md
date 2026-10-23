@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-10-PLAN.md
-last_updated: "2026-10-23T09:37:26.548Z"
+stopped_at: Completed 03-11-PLAN.md
+last_updated: "2026-10-23T09:44:01.152Z"
 last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 36
+  completed_plans: 37
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 03 (live-view) — EXECUTING
-Plan: 12 of 14
+Plan: 13 of 14
 Status: Ready to execute
 Last activity: 2026-10-23
 
@@ -76,6 +76,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P06 | 30min | 2 tasks | 5 files |
 | Phase 03 P07 | 25min | 2 tasks | 6 files |
 | Phase 03 P10 | 45min | 2 tasks | 7 files |
+| Phase 03 P11 | 20min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-10: re-open of the same camera keeps the session (title only); another camera closes the screen first
 - [Phase 03]: 03-10: LiveVideoOutput.resetEvents -> DefaultMediaSession.resetPipeline (decoder reset re-arms the key-frame gate)
 - [Phase 03]: 03-10: WRONG_PASSWORD/KICK waits show Подключение…; NETWORK waits and Connecting(n>1) show Повтор (n/5)
+- [Phase 03]: 03-11: video slot stable across portrait/fullscreen; fullscreen exit forces PORTRAIT then OrientationEventListener restores UNSPECIFIED
+- [Phase 03]: 03-11: camera tap opens LiveViewScreen, long press opens the debug LiveProbeScreen
 
 ### Pending Todos
 
@@ -143,6 +146,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T09:37:26.539Z
-Stopped at: Completed 03-10-PLAN.md
+Last session: 2026-10-23T09:44:01.146Z
+Stopped at: Completed 03-11-PLAN.md
 Resume file: None
