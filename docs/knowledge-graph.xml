@@ -641,7 +641,7 @@
       <change-summary phase="03-live-view" plan="03-06" verification="unit">2026-10-23: LiveSessionSupervisor implemented (classify / classifyClosed top-level functions; backoff 2/5/10/20 s x5, one wrong-password and one kick retry, NoNetwork, 1.5 s network-change debounce, 10 s stall, 5 s drain, stop/resume, quality requests). Test fakes in app/src/test/java/com/yicamalt/live/LiveFakes.kt.</change-summary>
     </M-LIVE-SESSION>
 
-    <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" STATUS="planned">
+    <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" STATUS="implemented">
       <purpose>Live audio: MediaCodec audio/mp4a-latm decode to AudioTrack; local mute.</purpose>
       <path>app/src/main/java/com/yicamalt/media/AacDecoder.kt</path>
       <path>app/src/main/java/com/yicamalt/media/AudioFrameQueue.kt</path>
@@ -652,6 +652,7 @@
         <export-AudioFrameQueue PURPOSE="Bounded audio queue between link thread and decoder" />
       </annotations>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: planned module.</change-summary>
+      <change-summary phase="03-live-view" plan="03-07" verification="unit">2026-10-23: AudioFrameQueue (drop-oldest, capacity 6, JVM-tested) and AacDecoder (AacFrameSink; MediaCodec audio/mp4a-latm async on "media-audio", AudioTrack from the output format, WRITE_NON_BLOCKING, AudioOutStatus Idle/Playing/Failed, idempotent bounded release). Device proof in H-L2/H-L3.</change-summary>
     </M-MEDIA-AUDIO>
 
     <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" STATUS="implemented">

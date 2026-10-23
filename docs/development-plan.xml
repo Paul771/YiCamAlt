@@ -1165,18 +1165,18 @@
       </notes>
     </M-LIVE-SESSION>
 
-    <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" LAYER="2" ORDER="20" STATUS="planned">
+    <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" LAYER="2" ORDER="20" STATUS="implemented">
       <contract>
-        <purpose>Live audio: AAC units (ADTS from AudioPipeline) decoded by MediaCodec audio/mp4a-latm and played through AudioTrack; local mute, explicit unavailable outcome</purpose>
+        <purpose>Live audio: raw AAC access units + AacConfig (csd-0) from AudioPipeline (AacFrameSink) decoded by MediaCodec audio/mp4a-latm and played through AudioTrack; local mute, explicit unavailable outcome</purpose>
         <inputs>
-          <param name="AudioUnit" type="AudioUnit (via AudioPipeline)" />
+          <param name="frame" type="AacFrameSink.onAacFrame(config: AacConfig, frame: ByteArray, ptsUs: Long)" />
         </inputs>
         <outputs>
           <param name="playback" type="AudioTrack output" />
         </outputs>
       </contract>
       <interface>
-        <export-AacDecoder PURPOSE="MediaCodec audio/mp4a-latm -> AudioTrack; mute / unmute / release" />
+        <export-AacDecoder PURPOSE="MediaCodec audio/mp4a-latm -> AudioTrack; unmute = create, mute = release(); status StateFlow&lt;AudioOutStatus&gt;" />
         <export-AudioFrameQueue PURPOSE="Bounded audio frame queue between the link thread and the decoder" />
       </interface>
       <depends>M-STREAM-CORE</depends>
@@ -1381,7 +1381,7 @@
       <step-12 module="M-UI-LIVE-PROBE" status="implemented" verification="V-M-UI-LIVE-PROBE">Debug live probe screen</step-12>
       <step-13 module="M-TUTK-LINK" status="implemented" verification="V-M-TUTK-LINK">TUTK adapter (conditional on device check 02-06)</step-13>
       <step-14 module="M-LIVE-SESSION" status="pending" verification="V-M-LIVE-SESSION">Live session supervisor: retries, stall, network, lifecycle, quality</step-14>
-      <step-15 module="M-MEDIA-AUDIO" status="pending" verification="V-M-MEDIA-AUDIO">AAC audio decode and playback</step-15>
+      <step-15 module="M-MEDIA-AUDIO" status="implemented" verification="V-M-MEDIA-AUDIO">AAC audio decode and playback</step-15>
       <step-16 module="M-MEDIA-SNAPSHOT" status="pending" verification="V-M-MEDIA-SNAPSHOT">Snapshot to MediaStore</step-16>
       <phase-note>2026-09-28: M-EVENT done (23 unit tests; suite 91/91 green; assembleDebug OK). Endpoint paths and request signing are PROVISIONAL — they are isolated in EventPaths/EventSigner so a live capture only needs constants edited, not restructuring. Exports getLocalTimeline and EventTimelinePort were added beyond the planned contract because syncEventsToDb/getLocalEventCount were otherwise write-only. Errors Unauthorized and NotFound were added alongside the planned EVENT_FETCH_FAILED/EVENT_NO_RECORDING. Remaining steps stay blocked on the stream protocol capture.</phase-note>
       <phase-note>2026-10-12: GSD Phase 2 (02-p2p) replaces the cloud-stream design: steps 1-2 superseded by steps 8-13 (P2P via the vendor PPPP/TUTK libraries).</phase-note>
