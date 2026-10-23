@@ -19,16 +19,18 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | H-L7 Gestures (double tap, pinch) | PASS (user-confirmed by hand; not driven by adb) | User report |
 | H-L5 Wi-Fi off (user report, second phone with 4G, no logs) | REPORTED OK | A couple of reconnect attempts, then the camera came back in P2P mode; not corroborated by logs (the USB phone has no 4G) |
 | H-L6 Parallel use with the official app (user report, second phone, no logs) | REPORTED OK | Both apps showed video at the same time; not corroborated by logs |
+| H-L6 Screen lock, return after >5 min | PASS | Lock: `BLOCK_STOP reason=background`, closed in ~1.7 s. Return after 446 s: `BLOCK_RESUME resumed=false`, no new link, badge "Не подключено" + "Подключить"; pressing it connected in ~1.2 s (LAN) |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
 ## Not verified (pending)
 
 - Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
-- H-L5 with logs on the USB phone (it has Wi-Fi only, no 4G): Wi-Fi→4G and camera power cycle; H-L6 lock-screen and >5 min return.
+- H-L5 with logs on the USB phone (it has Wi-Fi only, no 4G): Wi-Fi→4G and camera power cycle; 
 - H-L3 and TNP half of H-L4 (TNP audio / HD-SD) — blocked on Phase 2 H1 (TNP camera online).
 - Phase 2 H1–H7 on the TNP camera.
 
 ## Observations
 
+- UX defect: after a stop (background > 5 min) the last video frame stays on screen behind "Не подключено"; it looks like a frozen picture. Consider clearing the surface on stop.
 - TUTK camera audio is 8 kHz stereo AAC, not the 16 kHz mono the research assumed; the decoder follows the stream format.
 - The cloud list marks "Спальня" online while PPPP reports `DEVICE_NOT_ONLINE`: the cloud flag is not a reachability signal.
