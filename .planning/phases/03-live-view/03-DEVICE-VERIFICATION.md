@@ -31,6 +31,6 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 
 ## Observations
 
-- UX defect: after a stop (background > 5 min) the last video frame stays on screen behind "Не подключено"; it looks like a frozen picture. Consider clearing the surface on stop.
+- UX defect found and FIXED (LiveViewScreen: video layer alpha 0 while Connect/Retry is shown): after a stop the last frame no longer stays behind "Не подключено"; verified on the device (black box, no frozen frame, return after 36 min, `resumed=false`).
 - TUTK camera audio is 8 kHz stereo AAC, not the 16 kHz mono the research assumed; the decoder follows the stream format.
 - The cloud list marks "Спальня" online while PPPP reports `DEVICE_NOT_ONLINE`: the cloud flag is not a reachability signal.

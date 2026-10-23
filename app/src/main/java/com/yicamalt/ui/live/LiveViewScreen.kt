@@ -327,6 +327,8 @@ fun LiveViewScreen(
                     },
                     update = { it.keepScreenOn = ui.videoRendering },
                     modifier = Modifier.fillMaxSize().graphicsLayer {
+                        // Stopped / given-up session: hide the last decoded frame so it does not look like live video.
+                        alpha = if (ui.showConnect || ui.showRetry) 0f else 1f
                         scaleX = zoom.scale
                         scaleY = zoom.scale
                         translationX = zoom.tx
