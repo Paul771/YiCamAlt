@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-06-PLAN.md
-last_updated: "2026-10-23T06:17:54.248Z"
+stopped_at: Completed 03-07-PLAN.md
+last_updated: "2026-10-23T09:07:44.796Z"
 last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 34
+  completed_plans: 35
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 03 (live-view) — EXECUTING
-Plan: 10 of 14
+Plan: 11 of 14
 Status: Ready to execute
 Last activity: 2026-10-23
 
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P09 | 10min | 2 tasks | 7 files |
 | Phase 03 P04 | 25min | 2 tasks | 4 files |
 | Phase 03 P06 | 30min | 2 tasks | 5 files |
+| Phase 03 P07 | 25min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,7 @@ Recent decisions affecting current work:
 - [Phase 03]: ZoomMath.doubleTap: scale>1 -> fit; fill<=1 -> 2x
 - [Phase 03]: TUTK tx and rxc start after a successful 8190/511; rxa and 768 only with an audio sink set before start; audio/IOCTRL errors end only their loop
 - [Phase 03]: LiveSessionSupervisor: run token under lock closes late opens; watch ends on terminal or own close; wrong-password/kick retries advance attempt, only NETWORK checks maxAttempts; healthy 30 s resets attempt and allowances
+- [Phase 03]: AacDecoder: failures terminal (Failed, no retry); no-decoder/codec/channels/<class> reasons; AudioTrack from codec output format; queue 6 drop-oldest
 
 ### Pending Todos
 
@@ -137,6 +139,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T06:17:54.242Z
-Stopped at: Completed 03-06-PLAN.md
+Last session: 2026-10-23T09:07:44.790Z
+Stopped at: Completed 03-07-PLAN.md
 Resume file: None
