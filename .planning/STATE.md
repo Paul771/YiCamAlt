@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-00-PLAN.md
-last_updated: "2026-10-23T05:09:03.934Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-10-23T05:17:36.431Z"
 last_activity: 2026-10-23
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 40
-  completed_plans: 26
+  completed_plans: 27
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 03 (live-view) — EXECUTING
-Plan: 2 of 14
+Plan: 3 of 14
 Status: Ready to execute
 Last activity: 2026-10-23
 
@@ -66,6 +66,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P10 | 35min | 3 tasks | 17 files |
 | Phase 02-p2p P11 | 40min | 2 tasks | 9 files |
 | Phase 03-live-view P00 | 20min | 2 tasks | 9 files |
+| Phase 03 P01 | 25min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,8 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: 02-11: TUTK -20012 polling bounded at 300 x 30 ms -> Failed(TIMEOUT, -20012), no vendor auto-reconnect
 - [Phase 03]: Phase 3 CameraLink members have default bodies so TNP/TUTK links and fakes compile unchanged
 - [Phase 03]: M-UI-LIVEVIEW rewritten: no PTZ/camera selector (v2), depends on M-LIVE-SESSION
+- [Phase 03]: Audio availability: valid frame -> true; non-AAC codec -> false; else null until 6 s after streaming, then false
+- [Phase 03]: AudioPipeline decryptOk only set when a decrypt ran; fail-open units leave it null
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T05:09:03.928Z
-Stopped at: Completed 03-00-PLAN.md
+Last session: 2026-10-23T05:17:36.426Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
