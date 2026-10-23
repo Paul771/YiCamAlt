@@ -102,7 +102,7 @@ Plans:
 - [x] 03-05-PLAN.md — TDD: QualityController (HD/SD, D-06/D-07) + ResumePolicy (5 мин, D-10) (wave 2)
 - [x] 03-08-PLAN.md — NetStateTracker + AndroidNetworkMonitor, VideoDecoder.videoSize (wave 2)
 - [x] 03-09-PLAN.md — Снимок в галерею (MediaStore Pictures/YiCamAlt) + ZoomMath (wave 2)
-- [ ] 03-04-PLAN.md — TUTK: потоки tx/rxc/rxa, 768, 4881 LE, расширенный teardown (wave 3)
+- [x] 03-04-PLAN.md — TUTK: потоки tx/rxc/rxa, 768, 4881 LE, расширенный teardown (wave 3)
 - [ ] 03-06-PLAN.md — TDD: LiveSessionSupervisor (backoff 2/5/10/20, пароль/kick, сеть, stall, drain, resume) (wave 3)
 - [ ] 03-07-PLAN.md — AacDecoder (MediaCodec → AudioTrack) + AudioFrameQueue (wave 3)
 - [ ] 03-10-PLAN.md — DefaultMediaSession + LiveViewModel (плашка, звук, HD/SD, снимок, жизненный цикл) (wave 4)
