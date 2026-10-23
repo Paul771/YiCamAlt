@@ -631,6 +631,7 @@
         <export-ResumePolicy PURPOSE="onStart resume rule (D-10)" />
         <export-NetStateTracker PURPOSE="Pure default-network rules: generation bumps on a different network, stale onLost ignored" />
         <export-AndroidNetworkMonitor PURPOSE="@Singleton NetworkMonitor over registerDefaultNetworkCallback, no VALIDATED gate (BLOCK_NETWORK_EVENT); bound in LiveModule" />
+        <export-DefaultMediaSession PURPOSE="Production MediaSession: key-frame tee into FramePipeline, AudioPipeline with mute gate, resetPipeline hook for decoder resets, release ignores later units" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</tests>
@@ -639,6 +640,7 @@
       <tests>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: port types in LiveSessionTypes.kt; implementation in later Phase 3 plans.</change-summary>
       <change-summary phase="03-live-view" plan="03-06" verification="unit">2026-10-23: LiveSessionSupervisor implemented (classify / classifyClosed top-level functions; backoff 2/5/10/20 s x5, one wrong-password and one kick retry, NoNetwork, 1.5 s network-change debounce, 10 s stall, 5 s drain, stop/resume, quality requests). Test fakes in app/src/test/java/com/yicamalt/live/LiveFakes.kt.</change-summary>
+      <change-summary phase="03-live-view" plan="03-10" verification="unit">2026-10-23: DefaultMediaSession (FramePipeline + AudioPipeline + key-frame tee, setMuted, resetPipeline, stats, audioAvailability); DefaultMediaSessionTest 7.</change-summary>
     </M-LIVE-SESSION>
 
     <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" STATUS="implemented">
