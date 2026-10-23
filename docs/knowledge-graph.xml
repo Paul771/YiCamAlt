@@ -269,6 +269,7 @@
       <tests>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: rewritten for GSD Phase 3; PTZ and camera selector moved to v2; depends on M-LIVE-SESSION instead of M-TNP-LINK / M-CAMERA-CMD / M-CAMERA-LIST.</change-summary>
+      <change-summary phase="03-live-view" plan="03-09" verification="jvm-passed">2026-10-23: ZoomMath (clamp 1..4x, pan bounds, fill/fit, double tap fit-fill or 2x, isFullscreen, CONTROLS_AUTO_HIDE_MS 4 s); ZoomMathTest 6. Screen still planned (03-11).</change-summary>
     </M-UI-LIVEVIEW>
 
     <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" STATUS="planned">
