@@ -1,5 +1,5 @@
 // FILE: FakeTutkNative.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scriptable JVM fake of TutkNative: records every call (with the calling thread name) and returns
 //     configured codes, so runtime and link tests run without the vendor libraries.
@@ -33,10 +33,17 @@ import java.util.concurrent.TimeUnit
 //   audioQueue - scripted recvAudio frames; empty queue returns AV_ER_DATA_NOREADY, or audioEndCode when set.
 //   ioCtrlQueue / IoCtrlReply - scripted recvIoCtrl replies (type + payload); empty queue returns AV_ER_TIMEOUT.
 //   cleanAudioBufResult - return code of cleanAudioBuf.
+//   ioCtrlEndCode - recvIoCtrl returns this code once ioCtrlQueue is drained (else AV_ER_TIMEOUT).
+//   recvAudioAtNs - System.nanoTime() of every recvAudio call (poll pacing assertions).
+//   sendIoCtrlBlock / sendThreads / sendInFlight / sendInFlightAtStop - a latch that holds every sendIoCtrl except
+//     767 (a writer blocked in avSendIOCtrl), the calling thread name per sendIoCtrl, sends running now / at the
+//     first stop call.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 03-03: audioQueue / audioEndCode, ioCtrlQueue / IoCtrlReply, cleanAudioBuf;
+//   LAST_CHANGE: v0.5.0 - GSD plan 03-04: sendIoCtrlBlock latch, sendThreads, sendInFlight(AtStop), ioCtrlEndCode,
+//     recvAudioAtNs for the TUTK tx / rxc / rxa thread tests.
+//   PREVIOUS: v0.4.0 - GSD plan 03-03: audioQueue / audioEndCode, ioCtrlQueue / IoCtrlReply, cleanAudioBuf;
 //     in-flight tracking covers recvAudio and recvIoCtrl.
 //   PREVIOUS: v0.3.0 - Phase 2 review MED-5 / MED-6 / LOW-8 / LOW-9: abortedClientStartResult, connectIgnoresStop,
 //     recvDelayMs with in-flight tracking, recorded buffer sizes.
@@ -92,6 +99,16 @@ class FakeTutkNative : TutkNative {
     // When set, recvAudio returns this code once audioQueue is drained (e.g. AV_ER_SESSION_CLOSE_BY_REMOTE).
     @Volatile var audioEndCode: Int? = null
     @Volatile var cleanAudioBufResult: Int = TutkCodes.OK
+
+    // When set, recvIoCtrl returns this code once ioCtrlQueue is drained (e.g. AV_ER_SESSION_CLOSE_BY_REMOTE).
+    @Volatile var ioCtrlEndCode: Int? = null
+    val recvAudioAtNs = CopyOnWriteArrayList<Long>()
+
+    // When set, every sendIoCtrl except 767 waits on it (bounded 10 s): a writer blocked inside avSendIOCtrl.
+    @Volatile var sendIoCtrlBlock: CountDownLatch? = null
+    val sendThreads = CopyOnWriteArrayList<String>()
+    val sendInFlight = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile var sendInFlightAtStop = -1
 
     val calls = CopyOnWriteArrayList<String>()
     val threads = CopyOnWriteArrayList<String>()
@@ -158,9 +175,16 @@ class FakeTutkNative : TutkNative {
     }
 
     override fun sendIoCtrl(av: Int, type: Int, payload: ByteArray): Int {
-        record("sendIoCtrl av=$av type=$type size=${payload.size}")
-        sentIoCtrl += type to payload.copyOf()
-        return sendIoCtrlResult
+        sendInFlight.incrementAndGet()
+        try {
+            record("sendIoCtrl av=$av type=$type size=${payload.size}")
+            sendThreads += Thread.currentThread().name
+            sentIoCtrl += type to payload.copyOf()
+            if (type != STOP_TYPE) sendIoCtrlBlock?.await(10, TimeUnit.SECONDS)
+            return sendIoCtrlResult
+        } finally {
+            sendInFlight.decrementAndGet()
+        }
     }
 
     override fun recvFrame(av: Int, buf: ByteArray, frameInfo: ByteArray): RecvResult {
@@ -191,6 +215,7 @@ class FakeTutkNative : TutkNative {
         recvInFlight.incrementAndGet()
         try {
             record("recvAudio av=$av")
+            recvAudioAtNs += System.nanoTime()
             if (recvDelayMs > 0) Thread.sleep(recvDelayMs)
             val next = audioQueue.poll()
                 ?: return RecvResult(audioEndCode ?: TutkCodes.AV_DATA_NOREADY, 0)
@@ -207,7 +232,7 @@ class FakeTutkNative : TutkNative {
         try {
             record("recvIoCtrl av=$av timeoutMs=$timeoutMs")
             if (recvDelayMs > 0) Thread.sleep(recvDelayMs)
-            val next = ioCtrlQueue.poll() ?: return IoCtrlResult(TutkCodes.AV_TIMEOUT, 0)
+            val next = ioCtrlQueue.poll() ?: return IoCtrlResult(ioCtrlEndCode ?: TutkCodes.AV_TIMEOUT, 0)
             val n = minOf(next.payload.size, buf.size)
             next.payload.copyInto(buf, 0, 0, n)
             return IoCtrlResult(n, next.type)
@@ -218,10 +243,15 @@ class FakeTutkNative : TutkNative {
 
     override fun stop(av: Int, sid: Int) {
         if (recvInFlightAtStop < 0) recvInFlightAtStop = recvInFlight.get()
+        if (sendInFlightAtStop < 0) sendInFlightAtStop = sendInFlight.get()
         record("stop av=$av sid=$sid")
         if (sid >= 0) {
             clientAborted = true
             clientStartGate?.countDown()
         }
+    }
+
+    private companion object {
+        const val STOP_TYPE = 767
     }
 }
