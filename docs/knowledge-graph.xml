@@ -638,6 +638,7 @@
       <tests>app/src/test/java/com/yicamalt/live/NetStateTrackerTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: port types in LiveSessionTypes.kt; implementation in later Phase 3 plans.</change-summary>
+      <change-summary phase="03-live-view" plan="03-06" verification="unit">2026-10-23: LiveSessionSupervisor implemented (classify / classifyClosed top-level functions; backoff 2/5/10/20 s x5, one wrong-password and one kick retry, NoNetwork, 1.5 s network-change debounce, 10 s stall, 5 s drain, stop/resume, quality requests). Test fakes in app/src/test/java/com/yicamalt/live/LiveFakes.kt.</change-summary>
     </M-LIVE-SESSION>
 
     <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" STATUS="planned">

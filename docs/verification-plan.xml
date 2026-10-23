@@ -1142,6 +1142,12 @@
         <marker-1>[LiveSession][supervisor][BLOCK_OPEN_LINK]</marker-1>
         <marker-2>[LiveSession][supervisor][BLOCK_SCHEDULE]</marker-2>
         <marker-3>[LiveSession][supervisor][BLOCK_STALL]</marker-3>
+        <marker-4>[LiveSession][supervisor][BLOCK_CLASSIFY]</marker-4>
+        <marker-5>[LiveSession][supervisor][BLOCK_DRAIN]</marker-5>
+        <marker-6>[LiveSession][supervisor][BLOCK_NETWORK]</marker-6>
+        <marker-7>[LiveSession][supervisor][BLOCK_STOP]</marker-7>
+        <marker-8>[LiveSession][supervisor][BLOCK_QUALITY]</marker-8>
+        <marker-9>[LiveSession][supervisor][BLOCK_RESUME]</marker-9>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean (no DID, password, nonce, InitString, IP, SSID, network handle)</assertion-1>
