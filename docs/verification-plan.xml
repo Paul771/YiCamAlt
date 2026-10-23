@@ -1111,8 +1111,11 @@
       <required-log-markers>
         <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
         <marker-2>[LiveView][vm][BLOCK_BADGE]</marker-2>
-        <marker-3>[LiveView][quality][BLOCK_QUALITY_SWITCH]</marker-3>
+        <marker-3>[LiveView][vm][BLOCK_QUALITY_SWITCH]</marker-3>
         <marker-4>[LiveView][vm][BLOCK_LIFECYCLE]</marker-4>
+        <marker-5>[LiveView][vm][BLOCK_OPEN_LIVE]</marker-5>
+        <marker-6>[LiveView][vm][BLOCK_TOGGLE_AUDIO]</marker-6>
+        <marker-7>[LiveView][vm][BLOCK_SNAPSHOT]</marker-7>
       </required-log-markers>
       <wave-follow-up>JVM only (no emulator): LiveViewModel over a fake supervisor; ZoomMath pure.</wave-follow-up>
       <phase-follow-up>Device follow-up H-L1 (live video on open), H-L6 (rotation and fullscreen keep the session), H-L7 (zoom gestures), H-L8 (snapshot in Pictures/YiCamAlt). No PTZ, no camera selector (v2).</phase-follow-up>

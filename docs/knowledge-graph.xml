@@ -264,12 +264,15 @@
         <export-LiveViewModel PURPOSE="Screen state over LiveSessionSupervisor (BLOCK_OPEN_LIVE, BLOCK_BADGE, BLOCK_TOGGLE_AUDIO, BLOCK_QUALITY_SWITCH, BLOCK_SNAPSHOT, BLOCK_LIFECYCLE)" />
         <export-LiveViewUi PURPOSE="Value-free UI snapshot" />
         <export-badgeFor PURPOSE="SupervisorState to badge (D-04)" />
+        <export-LiveEnvironment PURPOSE="Injectable io dispatcher, clock, LiveVideoOutput / LiveAudioOutput factories (VideoDecoder, AacDecoder adapters)" />
+        <export-LiveEvent PURPOSE="One-shot Toast messages (snapshot results)" />
         <export-ZoomMath PURPOSE="Pure pinch / pan / double-tap zoom math (D-09)" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: rewritten for GSD Phase 3; PTZ and camera selector moved to v2; depends on M-LIVE-SESSION instead of M-TNP-LINK / M-CAMERA-CMD / M-CAMERA-LIST.</change-summary>
       <change-summary phase="03-live-view" plan="03-09" verification="jvm-passed">2026-10-23: ZoomMath (clamp 1..4x, pan bounds, fill/fit, double tap fit-fill or 2x, isFullscreen, CONTROLS_AUTO_HIDE_MS 4 s); ZoomMathTest 6. Screen still planned (03-11).</change-summary>
+      <change-summary phase="03-live-view" plan="03-10" verification="jvm-passed">2026-10-23: LiveViewModel over a real LiveSessionSupervisor + DefaultMediaSession: auto-connect on open (same camera re-open keeps the session), badgeFor, retry / connect, muted on open and after onStop, AudioSwitch to the LiveAudioOutput, HD/SD via setQuality, snapshot toasts, background stop / 5 min resume, screen-left releases the decoder, value-free debug line, video size / aspect; ports LiveVideoOutput (incl. resetEvents -> DefaultMediaSession.resetPipeline), LiveAudioOutput, LiveEnvironment. LiveViewModelTest 23.</change-summary>
     </M-UI-LIVEVIEW>
 
     <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" STATUS="planned">

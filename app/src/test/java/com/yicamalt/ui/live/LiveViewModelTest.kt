@@ -111,6 +111,7 @@ private class FakeAudioOutput : LiveAudioOutput {
     }
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 private class FakeLiveEnvironment(
     private val dispatcher: CoroutineDispatcher,
     private val scheduler: TestCoroutineScheduler,
@@ -174,6 +175,17 @@ class LiveViewModelTest {
         links = FakeLinkFactory { testScheduler.currentTime }
         env = FakeLiveEnvironment(dispatcher, testScheduler)
         return LiveViewModel(creds, links, net, store, env).also { vm = it }
+    }
+
+    // runTest that closes the view model inside the test body: the per-open ticker and the supervisor loops share
+    // the test scheduler, so an open view model would keep runTest's final drain advancing virtual time forever.
+    private fun vmTest(body: suspend TestScope.() -> Unit) = runTest(dispatcher) {
+        try {
+            body()
+        } finally {
+            vm?.closeScreen()
+            runCurrent()
+        }
     }
 
     private fun LiveViewModel.snap(): LiveViewUi = ui.value.also { seenUi += it.toString() }
@@ -245,7 +257,7 @@ class LiveViewModelTest {
 
     // START_BLOCK_OPEN_AND_RETRY
     @Test
-    fun `open connects without any user action`() = runTest(dispatcher) {
+    fun `open connects without any user action`() = vmTest {
         val v = newVm()
         v.open(LIVE_DEVICE_ID, "Кухня")
         runCurrent()
@@ -263,7 +275,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `re-open of the same camera keeps the session, another camera restarts`() = runTest(dispatcher) {
+    fun `re-open of the same camera keeps the session, another camera restarts`() = vmTest {
         val v = liveVm()
         v.open(LIVE_DEVICE_ID, "Кухня")
         runCurrent()
@@ -278,7 +290,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `fatal shows retry with the error text and retry opens again`() = runTest(dispatcher) {
+    fun `fatal shows retry with the error text and retry opens again`() = vmTest {
         val v = newVm()
         links.defaultInitial = LinkState.Failed(LinkError(LinkErrorKind.NATIVE_UNAVAILABLE, 0))
         v.open(LIVE_DEVICE_ID, "Кухня")
@@ -294,7 +306,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `auth failed, kicked and exhausted show retry`() = runTest(dispatcher) {
+    fun `auth failed, kicked and exhausted show retry`() = vmTest {
         val v = newVm()
         links.defaultInitial = LinkState.Failed(LinkError(LinkErrorKind.WRONG_PASSWORD, -1))
         v.open(LIVE_DEVICE_ID, "Кухня")
@@ -321,7 +333,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `idle and stopped show connect and connect opens`() = runTest(dispatcher) {
+    fun `idle and stopped show connect and connect opens`() = vmTest {
         val fresh = newVm()
         assertTrue(fresh.snap().showConnect)
         assertEquals("Не подключено", fresh.snap().badge.text)
@@ -343,7 +355,7 @@ class LiveViewModelTest {
 
     // START_BLOCK_SOUND
     @Test
-    fun `muted after open, sound shown once audio was recognised`() = runTest(dispatcher) {
+    fun `muted after open, sound shown once audio was recognised`() = vmTest {
         val v = liveVm()
         assertTrue(v.snap().muted)
         advance(1_000)
@@ -356,7 +368,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `toggleMute creates the audio output once and releases it on mute`() = runTest(dispatcher) {
+    fun `toggleMute creates the audio output once and releases it on mute`() = vmTest {
         val v = liveVm()
         v.toggleMute()
         runCurrent()
@@ -371,7 +383,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `unmute reaches the audio output`() = runTest(dispatcher) {
+    fun `unmute reaches the audio output`() = vmTest {
         val v = liveVm()
         v.toggleMute()
         link.audioSinkSet!!.onAudioUnit(aacUnit())
@@ -383,7 +395,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `reconnect after unmute keeps sound on`() = runTest(dispatcher) {
+    fun `reconnect after unmute keeps sound on`() = vmTest {
         val v = liveVm()
         v.toggleMute()
         link.flow.value = LinkState.Failed(LinkError(LinkErrorKind.TIMEOUT, -1))
@@ -396,7 +408,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `lifecycle calls before open are no-ops`() = runTest(dispatcher) {
+    fun `lifecycle calls before open are no-ops`() = vmTest {
         val v = newVm()
         v.onStart()
         v.onStop()
@@ -409,7 +421,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `onStop mutes and releases the audio output, onStart keeps it muted`() = runTest(dispatcher) {
+    fun `onStop mutes and releases the audio output, onStart keeps it muted`() = vmTest {
         val v = liveVm()
         v.toggleMute()
         runCurrent()
@@ -429,7 +441,7 @@ class LiveViewModelTest {
 
     // START_BLOCK_QUALITY
     @Test
-    fun `quality shown after the first key frame and toggle asks for SD`() = runTest(dispatcher) {
+    fun `quality shown after the first key frame and toggle asks for SD`() = vmTest {
         val v = liveVm()
         assertFalse(v.snap().qualityVisible)
         link.videoSink!!.onVideoUnit(keyUnit(seq = 1, width = 1920, height = 1080))
@@ -445,7 +457,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `quality hidden when the link cannot switch`() = runTest(dispatcher) {
+    fun `quality hidden when the link cannot switch`() = vmTest {
         val v = liveVm()
         link.videoSink!!.onVideoUnit(keyUnit(seq = 1))
         advance(1_000)
@@ -458,7 +470,7 @@ class LiveViewModelTest {
 
     // START_BLOCK_SNAPSHOT_TESTS
     @Test
-    fun `snapshot messages`() = runTest(dispatcher) {
+    fun `snapshot messages`() = vmTest {
         val v = liveVm()
         val events = mutableListOf<LiveEvent>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { v.events.collect { events += it } }
@@ -495,7 +507,7 @@ class LiveViewModelTest {
 
     // START_BLOCK_LIFECYCLE_TESTS
     @Test
-    fun `background stops the link and a return within 5 minutes resumes`() = runTest(dispatcher) {
+    fun `background stops the link and a return within 5 minutes resumes`() = vmTest {
         val v = liveVm()
         v.onStop()
         runCurrent()
@@ -509,7 +521,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `return after 6 minutes does not resume`() = runTest(dispatcher) {
+    fun `return after 6 minutes does not resume`() = vmTest {
         val v = liveVm()
         v.onStop()
         runCurrent()
@@ -521,7 +533,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `closeScreen stops with screen-left and releases the decoder`() = runTest(dispatcher) {
+    fun `closeScreen stops with screen-left and releases the decoder`() = vmTest {
         val v = liveVm()
         v.closeScreen()
         runCurrent()
@@ -537,7 +549,7 @@ class LiveViewModelTest {
 
     // START_BLOCK_DEBUG_AND_VIDEO
     @Test
-    fun `debug line is value-free and toggles`() = runTest(dispatcher) {
+    fun `debug line is value-free and toggles`() = vmTest {
         val v = liveVm()
         assertFalse(v.snap().debugExpanded)
         link.videoSink!!.onVideoUnit(keyUnit(seq = 1))
@@ -561,7 +573,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `video size, aspect and rendering come from the video output`() = runTest(dispatcher) {
+    fun `video size, aspect and rendering come from the video output`() = vmTest {
         val v = liveVm()
         assertNull(v.snap().videoWidth)
         assertNull(v.snap().videoHeight)
@@ -578,7 +590,7 @@ class LiveViewModelTest {
     }
 
     @Test
-    fun `decoder reset re-arms the media session pipeline`() = runTest(dispatcher) {
+    fun `decoder reset re-arms the media session pipeline`() = vmTest {
         liveVm()
         link.videoSink!!.onVideoUnit(keyUnit(seq = 1))
         assertEquals(1, env.videos[0].frames.size)
