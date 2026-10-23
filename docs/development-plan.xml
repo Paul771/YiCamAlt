@@ -538,8 +538,10 @@
         <export-BottomNavBar PURPOSE="Bottom navigation bar with tabs" />
         <export-CameraListScreen PURPOSE="Cameras tab (plan 01-10): pull-to-refresh, Loading / Content + stale banner / Empty / Error with retry; UNAUTHORIZED -> onSessionExpired (logout -> login); never renders device id" />
         <export-CameraListViewModel PURPOSE="Cache-first start then one network refresh; refresh only on screen open and explicit pull/retry (no timers); single-flight" />
+        <fn-onOpenCamera PURPOSE="Camera row tap -> LiveViewScreen (M-UI-LIVEVIEW) overlay; [Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live" STATUS="implemented" />
+        <fn-onLongPressCamera PURPOSE="Camera row long press (combinedClickable) -> LiveProbeScreen (M-UI-LIVE-PROBE, debug, relay-only); [Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=probe" STATUS="implemented" />
       </interface>
-      <depends>M-AUTH, M-CAMERA-LIST</depends>
+      <depends>M-AUTH, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVEVIEW, M-UI-LIVE-PROBE</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</source>
         <source>app/src/main/java/com/yicamalt/ui/cameras/CameraListScreen.kt</source>
@@ -555,21 +557,28 @@
       <notes>
         <note-1>Plan 01-10: cache-first start ([Cameras][load][BLOCK_LOAD_CAMERAS] source=cache count=N, then source=network result=content|empty|stale|error); Empty (20200) is not an error; a failed refresh over a non-empty list keeps it under a stale banner. AppShellScreenTest.kt does not exist yet (no emulator); the JVM evidence is CameraListViewModelTest.</note-1>
         <note-2>2026-10-16 (GSD Phase 2, plan 02-09): tapping a camera row (CameraListScreen onOpenCamera) opens the debug live probe (M-UI-LIVE-PROBE) as an AppShellScreen overlay; top and bottom bars are hidden while it is shown, back returns to the list; [Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live.</note-2>
+        <note-3>2026-10-23 (GSD Phase 3, plan 03-11): row tap now opens LiveViewScreen (M-UI-LIVEVIEW); long press keeps the debug probe (M-UI-LIVE-PROBE) reachable. Both overlays are plain remember state (lost on process death by design); a tab switch clears both; navigation markers tab=live|probe are value-free. Device check H-L1.</note-3>
       </notes>
     </M-UI-SHELL>
 
-    <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="2" STATUS="planned">
+    <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="2" STATUS="implemented">
       <contract>
         <purpose>Live view screen over LiveSessionSupervisor: TextureView video, connection badge (D-04), sound (D-05), HD/SD (D-06/D-07), snapshot, fullscreen + pinch/pan/double-tap zoom (D-08/D-09), lifecycle stop/resume (D-10); no PTZ, no camera selector (v2: CTRL-01, LIVE-13)</purpose>
       </contract>
       <interface>
-        <export-LiveViewScreen PURPOSE="Compose screen: TextureView video, badge, sound / HD-SD / snapshot / fullscreen controls, zoom gestures" />
-        <export-LiveViewModel PURPOSE="Screen state over LiveSessionSupervisor: badge, audio toggle (muted by default), quality, snapshot result, lifecycle stop/resume" />
-        <export-LiveViewUi PURPOSE="Value-free UI snapshot rendered by LiveViewScreen" />
-        <export-badgeFor PURPOSE="Pure SupervisorState -> badge text/colour mapping (D-04)" />
-        <export-ZoomMath PURPOSE="Pure pinch / pan / double-tap zoom math with clamping (D-09)" />
+        <export-LiveViewScreen PURPOSE="Compose screen (deviceId, title, onClose, viewModel): TextureView in one stable slot, badge and sound / HD-SD / snapshot / fullscreen controls over the picture, fullscreen by button or rotation with hidden bars and 4 s control auto-hide, pinch / pan / double-tap zoom, keepScreenOn while rendering, getBitmap(videoWidth, videoHeight) snapshot with the API 26-28 permission, ON_STOP / ON_START binding" STATUS="implemented" />
+        <export-LiveViewModel PURPOSE="Screen state over a real LiveSessionSupervisor + DefaultMediaSession: open (auto-connect; same camera re-open keeps the session), closeScreen, onStop, onStart, connect, retry, toggleMute (muted on open and after onStop), toggleQuality, toggleDebug, attachSurface, detachSurface, saveSnapshot" STATUS="implemented" />
+        <export-LiveViewUi PURPOSE="Value-free UI snapshot rendered by LiveViewScreen (badge, controls visibility, video size, debug line)" STATUS="implemented" />
+        <export-LiveBadge PURPOSE="Badge text + BadgeTone (NEUTRAL | OK | WARN | ERROR)" STATUS="implemented" />
+        <export-LiveEvent PURPOSE="One-shot Toast messages (snapshot results)" STATUS="implemented" />
+        <export-LiveViewTexts PURPOSE="Russian badge and snapshot texts shared with tests" STATUS="implemented" />
+        <export-LiveEnvironment PURPOSE="Injectable io dispatcher, clock and LiveVideoOutput / LiveAudioOutput factories (VideoDecoder, AacDecoder adapters)" STATUS="implemented" />
+        <export-LiveVideoOutput PURPOSE="Video decoder port: status, videoSize, resetEvents, surface attach / detach, release" STATUS="implemented" />
+        <export-LiveAudioOutput PURPOSE="AAC output port: status, release" STATUS="implemented" />
+        <fn-badgeFor PURPOSE="Pure SupervisorState -> LiveBadge mapping (D-04): Waiting after WRONG_PASSWORD / KICK = 'Подключение…' NEUTRAL, NETWORK waits = 'Повтор (n/5)' WARN" STATUS="implemented" />
+        <export-ZoomMath PURPOSE="Pure Zoom (scale + translation) math: clamp 1..4x, applyGesture, fillScale, doubleTap fit/fill or 2x, isFullscreen, CONTROLS_AUTO_HIDE_MS 4000 (D-09)" STATUS="implemented" />
       </interface>
-      <depends>M-UI-SHELL, M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT</depends>
+      <depends>M-UI-SHELL, M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-STREAM-CORE, M-P2P-CREDS</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/ui/live/LiveViewScreen.kt</source>
         <source>app/src/main/java/com/yicamalt/ui/live/LiveViewModel.kt</source>
@@ -579,12 +588,13 @@
       </target>
       <observability>
         <log-prefix>[LiveView]</log-prefix>
-        <critical-block>BLOCK_OPEN_LIVE, BLOCK_BADGE, BLOCK_TOGGLE_AUDIO, BLOCK_QUALITY_SWITCH, BLOCK_SNAPSHOT, BLOCK_LIFECYCLE, BLOCK_RENDER_VIDEO_SURFACE, BLOCK_FULLSCREEN</critical-block>
+        <critical-block>BLOCK_OPEN_LIVE, BLOCK_BADGE, BLOCK_TOGGLE_AUDIO, BLOCK_QUALITY_SWITCH, BLOCK_SNAPSHOT, BLOCK_LIFECYCLE, BLOCK_REFRESH (view model); BLOCK_RENDER_VIDEO_SURFACE, BLOCK_FULLSCREEN, BLOCK_GESTURES, BLOCK_OVERLAYS, BLOCK_BIND_LIVE, BLOCK_SNAPSHOT_CAPTURE, BLOCK_LIFECYCLE (screen)</critical-block>
       </observability>
       <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
       <notes>
         <note-1>2026-10-12: the full live view screen is GSD Phase 3; GSD Phase 2 ships only the debug M-UI-LIVE-PROBE screen over M-TNP-LINK + M-MEDIA-RENDER.</note-1>
         <note-2>2026-10-22 (GSD Phase 3, plan 03-00): rewritten. PTZ (CTRL-01) and the camera selector (LIVE-13) are v2; dependencies M-CAMERA-CMD and M-CAMERA-LIST dropped. JVM tests only (no emulator); device evidence H-L1, H-L6, H-L7, H-L8. MainActivity declares configChanges so rotation keeps the open session.</note-2>
+        <note-3>2026-10-23 (plans 03-09, 03-10, 03-11): implemented. ZoomMath (ZoomMathTest 6), LiveViewModel (LiveViewModelTest 23, virtual time, RedactionScanner over logs and every LiveViewUi.toString()), LiveViewScreen (compile-only on the JVM; no Compose UI test, no emulator). Mute is restored on every onStop, so sound is off again after returning from background (stricter than D-05; to be confirmed on the phone in H-L5 / H-L6). Device checks H-L1, H-L4, H-L6, H-L7, H-L8 pending (03-HUMAN-UAT.md).</note-3>
       </notes>
     </M-UI-LIVEVIEW>
 
@@ -942,6 +952,9 @@
         <export-TnpCameraLink PURPOSE="Internal CameraLink for TNP: connect (flag 0x49, relay 0xDF) with the device_info DID, check, five readers (ch 0/1/2/3/6) primed before the 4881/9029/768 burst from one writer, authResult check on every ch0 reply, header version (whole start sequence re-sent once, mismatched reply skipped), 9033 kick, connect 30 s and first-frame 20 s timers, 300 ms reads, thread guard; close(reason) runs on p2p-&lt;n&gt;-close (STOP 767 + Connect_Break + reader join + ForceClose, bounded join; registry released only after the link threads exited)" STATUS="implemented" />
         <export-TnpLinkFactory PURPOSE="CameraLinkFactory for TNP: credential checks, PpppRuntime init once, one session per camera; refusals are links in Failed (UNSUPPORTED_TRANSPORT, NO_CREDENTIALS, NATIVE_UNAVAILABLE, ALREADY_OPEN), never exceptions" STATUS="implemented" />
         <export-P2pLinkModule PURPOSE="Hilt: @Binds CameraLinkFactory -> TransportLinkFactory (TNP and TUTK dispatch, M-TUTK-LINK)" STATUS="implemented" />
+        <fn-setAudioSink PURPOSE="TnpCameraLink override (plan 03-02): ch1 units with ioType 2 and body &gt; 24 -> AudioUnit(encrypted = header version &gt;= 2) to the AudioUnitSink, never the video sink; no sink = discarded; a throwing sink is logged once (BLOCK_AUDIO_UNIT)" STATUS="implemented" />
+        <fn-requestResolution PURPOSE="TnpCameraLink override (plan 03-02): enqueue 4881 [res, useCount 3, 4, ...] on the single writer; null before Connected/Streaming, before the start burst is queued, or once closing (BLOCK_SET_RESOLUTION)" STATUS="implemented" />
+        <fn-capabilities PURPOSE="TnpCameraLink override (plan 03-02): 4882 TNPHead abilityRet 1 -> LinkCapabilities(resolutionSwitch=false); abilityRet logged on BLOCK_AUTH_REPLY" STATUS="implemented" />
       </interface>
       <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
       <target>
@@ -953,12 +966,13 @@
       </target>
       <observability>
         <log-prefix>[P2P]</log-prefix>
-        <critical-block>BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_OPEN_LINK</critical-block>
+        <critical-block>BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_OPEN_LINK, BLOCK_HEADER_VERSION, BLOCK_THREAD_GUARD, BLOCK_AUDIO_UNIT, BLOCK_SET_RESOLUTION</critical-block>
       </observability>
       <verification-ref>V-M-TNP-LINK</verification-ref>
       <notes>
         <note-1>2026-10-16: implemented by plan 02-07 (JVM against FakePpppNative only). Plan 02-12 fixed a race between the auth reply (rx0) and the first video unit (rx2/3/6) on Streaming.authOk (TnpCameraLink v0.1.1). Device proof: 02-DEVICE-VERIFICATION.md.</note-1>
         <note-2>2026-10-16 Phase 2 review fixes (TnpCameraLink v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: "9029 is never re-sent / only 4881 is re-sent" is replaced by vendor TnpCamera behaviour: when the first ch0 reply carries another header version (1..3) the version is adopted, the whole start sequence 4881 / 9029 / 768 is queued again once (same resolution and useCounts) and that reply is skipped unparsed, so the start sequence (9029 included) goes out at most twice per connection. authResult is checked on every ch0 reply (1|2 wrong password, 4 manual retry, unknown ignored). Any Throwable on a link thread -> Failed(INTERNAL, 0). Registry released only after every link thread exited; ForceClose only after the readers left PPPP_Read. "No retry" now reads: no retry and no reconnect inside the link; the live screen may open ONE new link after WRONG_PASSWORD (M-UI-LIVE-PROBE).</note-2>
+        <note-3>2026-10-23 (GSD Phase 3, plan 03-02, TnpCameraLink v0.3.0): setAudioSink, requestResolution and capabilities overrides; start burst and header-version resend unchanged. Still no retry inside the link: all reconnect policy lives in M-LIVE-SESSION. TNP behaviour is JVM-only (FakePpppNative) until Phase 2 device check H1 passes; device checks H-L3 and the TNP half of H-L4 pending.</note-3>
       </notes>
     </M-TNP-LINK>
 
@@ -995,6 +1009,16 @@
         <export-NalUtils PURPOSE="detectFraming, toAnnexB, splitAnnexB, nalType(s), parameterSets (AVC SPS+PPS, HEVC VPS+SPS+PPS), isKeyStart" STATUS="implemented" />
         <export-FrameAssembler PURPOSE="Keyframe gate, P-frame sequence reorder (MAX_PENDING 100), useCount generation filter; P frames that overtake their I frame wait and are drained after it (an I drops only stale pending)" STATUS="implemented" />
         <export-FramePipeline PURPOSE="VideoUnitSink -> DecodableFrameSink; waits for the first key frame; stats() PipelineStats (framesIn, keyFrames, emitted, dropped, decryptOk, framing, unsupportedCodec); reset()" STATUS="implemented" />
+        <type-LinkCapabilities PURPOSE="CameraLink.capabilities (plan 03-00): resolutionSwitch Boolean? (null = unknown, false = camera refuses 4881); UNKNOWN default" STATUS="implemented" />
+        <type-AudioCodec PURPOSE="Wire audio codec id (AAC = 138)" STATUS="implemented" />
+        <type-AudioUnit PURPOSE="Audio transport unit: channel, FrameInfo, payload, encrypted flag (TNP header version &gt;= 2; TUTK false)" STATUS="implemented" />
+        <type-AudioUnitSink PURPOSE="fun interface onAudioUnit(unit); CameraLink.setAudioSink (default no-op)" STATUS="implemented" />
+        <fn-requestResolution PURPOSE="CameraLink.requestResolution(resolution): Int? useCount of the queued 4881, null when not possible (default null)" STATUS="implemented" />
+        <fn-setResolution PURPOSE="IoCtrlMessages.setResolution(resolution, useCount, bigEndian): 4881 payload in TNP big-endian or TUTK little-endian order; AUDIO_STOP 769 defined, never sent" STATUS="implemented" />
+        <export-AdtsParser PURPOSE="ADTS header parse(b, off) / parseAll(b) -> AdtsFrame, sampleRate(freqIndex), audioSpecificConfig(frame) 2-byte csd-0 (AAC-LC 16 kHz mono = 0x14 0x08)" STATUS="implemented" />
+        <export-AudioPipeline PURPOSE="AudioUnitSink: TNP full-block AES-ECB decrypt with password + '0' (fail-open), codec gate, ADTS split, mute gate (muted by default, D-05), availability (true on first valid frame, false on non-AAC or none within AUDIO_PROBE_MS 6000), AudioStats; AacConfig + raw frames to an AacFrameSink" STATUS="implemented" />
+        <type-AacConfig PURPOSE="objectType, sampleRate, channels, csd0 (toString without bytes)" STATUS="implemented" />
+        <type-AacFrameSink PURPOSE="fun interface onAacFrame(config, frame, ptsUs) (implemented by AacDecoder, M-MEDIA-AUDIO)" STATUS="implemented" />
       </interface>
       <depends>M-P2P-CREDS</depends>
       <target>
@@ -1024,7 +1048,7 @@
       </target>
       <observability>
         <log-prefix>[Stream]</log-prefix>
-        <critical-block>BLOCK_BUILD_AUTH_INFO, BLOCK_ENCODE_COMMAND, BLOCK_VALIDATE_HEAD, BLOCK_PARSE_UNIT, BLOCK_PARSE_FRAME_HEAD, BLOCK_DECRYPT_IFRAME, BLOCK_SPLIT_NALS, BLOCK_ASSEMBLE_FRAMES, BLOCK_FIRST_KEYFRAME, BLOCK_MAP_CODEC, BLOCK_EMIT_FRAME, BLOCK_ADTS_HEADER, BLOCK_AUDIO_DECRYPT, BLOCK_AUDIO_SPLIT, BLOCK_AUDIO_FIRST, BLOCK_AUDIO_BAD</critical-block>
+        <critical-block>BLOCK_BUILD_AUTH_INFO, BLOCK_ENCODE_COMMAND, BLOCK_VALIDATE_HEAD, BLOCK_PARSE_UNIT, BLOCK_PARSE_FRAME_HEAD, BLOCK_DECRYPT_IFRAME, BLOCK_SPLIT_NALS, BLOCK_ASSEMBLE_FRAMES, BLOCK_FIRST_KEYFRAME, BLOCK_MAP_CODEC, BLOCK_EMIT_FRAME, BLOCK_ADTS_HEADER, BLOCK_ADTS_WALK, BLOCK_AUDIO_DECRYPT, BLOCK_AUDIO_CODEC_GATE, BLOCK_AUDIO_SPLIT, BLOCK_AUDIO_AVAILABILITY, BLOCK_AUDIO_FIRST, BLOCK_AUDIO_BAD</critical-block>
       </observability>
       <verification-ref>V-M-STREAM-CORE</verification-ref>
       <notes>
@@ -1033,6 +1057,7 @@
         <note-3>2026-10-16 Phase 2 review fixes: FrameAssembler v0.2.0 no longer clears pending on an I-frame (vendor TnpCamera.handleVideoFrame: drop seq &lt;= I, drain I+1..); IoCtrlMessages v0.2.0 reads the kick reason from payload[0] and treats an unknown authResult as not fatal; P2pCredentialsSource gains suspend refreshCredentials (default = credentialsFor) for the single WRONG_PASSWORD retry.</note-3>
         <note-4>2026-10-22 (GSD Phase 3, plan 03-00): port extensions with default bodies: CameraLink.setAudioSink / requestResolution / capabilities (LinkCapabilities), AudioCodec / AudioUnit / AudioUnitSink, IoCtrlMessages.AUDIO_STOP (769, never sent) and setResolution(resolution, useCount, bigEndian) for the TUTK LE 4881. AdtsParser and AudioPipeline are planned Phase 3 audio sources.</note-4>
         <note-5>2026-10-23 (plan 03-01): AdtsParser (ADTS header checks, parseAll, 2-byte AudioSpecificConfig csd-0) and AudioPipeline (TNP audio AES-ECB on every full 16-byte block with key password + '0', fail-open; muted by default D-05; availability true after the first valid frame, false on a non-AAC codec or no valid frame within AUDIO_PROBE_MS 6000 after streaming D-07; no dropping, never routed to FramePipeline) implemented and JVM-tested.</note-5>
+        <note-6>2026-10-23 (plan 03-12 GRACE sync): Phase 3 exports listed in the interface (LinkCapabilities, AudioCodec, AudioUnit, AudioUnitSink, requestResolution, setResolution, AdtsParser, AudioPipeline, AacConfig, AacFrameSink). Real TNP / TUTK audio format is device-only (H-L2, H-L3 pending).</note-6>
       </notes>
     </M-STREAM-CORE>
 
@@ -1051,7 +1076,9 @@
         </errors>
       </contract>
       <interface>
-        <export-VideoDecoder PURPOSE="DecodableFrameSink -> MediaCodec (async, media-decoder HandlerThread) -> Surface; codec created on the first key frame with its csd; status StateFlow of DecoderStatus, resetEvents SharedFlow; attachSurface / detachSurface / release; recreates on mime, size or csd change" STATUS="implemented" />
+        <export-VideoDecoder PURPOSE="DecodableFrameSink -> MediaCodec (async, media-decoder HandlerThread) -> Surface; codec created on the first key frame with its csd; status StateFlow of DecoderStatus, resetEvents SharedFlow, videoSize StateFlow&lt;VideoSize?&gt; (key-frame size at creation, then crop-aware output format size, published on change; plan 03-08); attachSurface / detachSurface / release; recreates on mime, size or csd change" STATUS="implemented" />
+        <type-VideoSize PURPOSE="Top-level width x height of the visible picture (live screen aspect ratio and snapshot size)" STATUS="implemented" />
+        <fn-visibleSize PURPOSE="Pure crop-aware visible size from output format values (crop-right/left/bottom/top or width/height), VideoSizeTest" STATUS="implemented" />
         <export-DecoderPolicy PURPOSE="Pure rules: FrameQueue (key gate, overflow), ResetCounter (3 errors -> Failed), CsdBuilder, PtsGuard, DecoderStatus (Idle | Ready | Rendering | NoDecoder | Unsupported | Failed, Russian userText)" STATUS="implemented" />
         <export-DecoderCatalog PURPOSE="find(mime, w, h) -> DecoderChoice(mime, name, hardware, lowLatency) and summary() over MediaCodecList (AVC / HEVC)" STATUS="implemented" />
       </interface>
@@ -1065,11 +1092,12 @@
       </target>
       <observability>
         <log-prefix>[Media]</log-prefix>
-        <critical-block>BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET, BLOCK_NO_DECODER, BLOCK_FEED_INPUT, BLOCK_PUMP, BLOCK_QUERY_DECODERS</critical-block>
+        <critical-block>BLOCK_CREATE_DECODER, BLOCK_FIRST_RENDER, BLOCK_DECODER_RESET, BLOCK_NO_DECODER, BLOCK_FEED_INPUT, BLOCK_PUMP, BLOCK_QUERY_DECODERS, BLOCK_FORMAT_CHANGED, BLOCK_STARTUP_HOLD (log marker only, no START/END pair)</critical-block>
       </observability>
       <verification-ref>V-M-MEDIA-RENDER</verification-ref>
       <notes>
         <note-1>2026-10-16: implemented by plans 02-03 (DecoderCatalog) and 02-08 (DecoderPolicy, VideoDecoder). Device check 1: AVC and HEVC hardware decoders present on the user's phone. BLOCK_QUERY_DECODERS is only written by summary(), which no caller uses yet (02-DEVICE-CHECK-1 observation).</note-1>
+        <note-2>2026-10-23 (GSD Phase 3, plan 03-08): videoSize StateFlow from onOutputFormatChanged (old-codec callbacks ignored, mistyped format keys caught), top-level VideoSize + visibleSize (VideoSizeTest 4). The live screen renders to a TextureView Surface (M-UI-LIVEVIEW); MIUI rendering check H-L1 pending.</note-2>
       </notes>
     </M-MEDIA-RENDER>
 
@@ -1111,10 +1139,11 @@
       <notes>
         <note-1>2026-10-16: implemented by plan 02-09. One factory.open + one start per Connect press, off Main; the session closes on back, ON_STOP and leaving composition; no auto-reconnect. Status line: transport= state= mode= lan= relayForced= codec= decoder= hw= fps= frames= keyFrames= decryptOk= auth= error= (value-free). Opened from the camera row (M-UI-SHELL); TUTK cameras reach TutkCameraLink through TransportLinkFactory without UI change (plan 02-11).</note-1>
         <note-2>2026-10-16 Phase 2 review fixes (LiveProbeViewModel v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: "no retry" becomes "exactly one automatic retry per press, only after WRONG_PASSWORD": the camera once answered -20009 and accepted the same password moments later; the vendor treats -20009 as possibly temporary. Retry = 2 s pause ("Повторная попытка…"), P2pCredentialsSource.refreshCredentials (CameraRegistry: one list refresh), new session; never more than 2 factory.open per press, cancelled by Stop / leaving; no retry for other errors. Connect stays disabled until the closed link reports Closed / Failed. Status auth=pending until the 4882 outcome is known; TUTK codes named with TutkCodes.</note-2>
+        <note-3>2026-10-23 (GSD Phase 3, plan 03-11): kept as debug screen, reachable by long-press on a camera row (tap opens M-UI-LIVEVIEW). LiveProbeViewModel / LiveProbeScreen unchanged in Phase 3; SurfaceView with setZOrderOnTop stays here only.</note-3>
       </notes>
     </M-UI-LIVE-PROBE>
 
-    <M-LIVE-SESSION NAME="LiveSessionSupervisor" TYPE="CORE_LOGIC" LAYER="1" ORDER="19" STATUS="planned">
+    <M-LIVE-SESSION NAME="LiveSessionSupervisor" TYPE="CORE_LOGIC" LAYER="1" ORDER="19" STATUS="implemented">
       <contract>
         <purpose>One live session per screen above CameraLink: opens links, classifies failures, schedules bounded retries (5 attempts), detects stalls, follows network changes, stops/resumes with the screen lifecycle, drives HD/SD quality</purpose>
         <inputs>
@@ -1135,9 +1164,16 @@
         <export-NetworkMonitor PURPOSE="Port: StateFlow of NetState (AndroidNetworkMonitor over ConnectivityManager)" />
         <export-MediaSession PURPOSE="One link attempt's media plumbing: videoSink, audioSink, framesIn, lastKeyFrame, release" />
         <export-MediaSessionFactory PURPOSE="create(credentials) -> MediaSession" />
-        <export-LiveSessionSupervisor PURPOSE="Session state machine over CameraLinkFactory" />
-        <export-QualityController PURPOSE="HD/SD policy, manual choice, 4881 confirmation by key-frame width" />
-        <export-ResumePolicy PURPOSE="Whether onStart resumes after onStop (D-10)" />
+        <type-KeyFrameObservation PURPOSE="useCount + width / height of the last key frame seen by the media session" />
+        <export-LiveSessionSupervisor PURPOSE="Session state machine over CameraLinkFactory: state, qualityState, currentLinkState; start, retry, stop, onForeground, setQuality; backoff 2/5/10/20 s for at most 5 attempts then Exhausted, one WRONG_PASSWORD retry with refreshed credentials, one kick retry after 10 s, Fatal immediately, NoNetwork without consuming attempts, 1.5 s debounced reconnect on a default-network change, 10 s stall watchdog, 5 s drain before every new open, 30 s Live resets the counters" STATUS="implemented" />
+        <fn-classify PURPOSE="Top-level LinkError -> ErrorClass (every LinkErrorKind mapped)" STATUS="implemented" />
+        <fn-classifyClosed PURPOSE="Closed(reason) -> ErrorClass, null for our own stops (user / screen-left / background); unknown reasons = NETWORK" STATUS="implemented" />
+        <export-QualityController PURPOSE="HD/SD policy: target, observe, needsAutoRequest, beginRequest, tick, onUnsupported, setManual; manual over mode, observed quality by key-frame width &gt;= 1280, confirmation by useCount or width class, SWITCH_TIMEOUT_MS 8000 / null useCount / unsupported hide the switch" STATUS="implemented" />
+        <export-ResumePolicy PURPOSE="onStopped / onStarted / shouldAutoResume: single-use resume within RESUME_WINDOW_MS 300000 after a REASON_BACKGROUND stop (D-10)" STATUS="implemented" />
+        <export-NetStateTracker PURPOSE="Pure default-network rules: generation bumps on a different network, stale onLost ignored, same network back keeps the generation" STATUS="implemented" />
+        <export-AndroidNetworkMonitor PURPOSE="@Singleton NetworkMonitor over registerDefaultNetworkCallback, no VALIDATED gate; SecurityException / RuntimeException on registration logged by class, seeded state kept" STATUS="implemented" />
+        <export-LiveModule PURPOSE="Hilt: @Binds NetworkMonitor -> AndroidNetworkMonitor" STATUS="implemented" />
+        <export-DefaultMediaSession PURPOSE="Production MediaSession: key-frame tee into FramePipeline, AudioPipeline with mute gate (setMuted), resetPipeline for decoder resets, stats, audioAvailability; release ignores later units" STATUS="implemented" />
       </interface>
       <depends>M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-P2P-CREDS</depends>
       <target>
@@ -1154,14 +1190,16 @@
         <tests>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/NetStateTrackerTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/live/LiveFakes.kt</tests>
       </target>
       <observability>
         <log-prefix>[LiveSession]</log-prefix>
-        <critical-block>BLOCK_OPEN_LINK, BLOCK_CLASSIFY, BLOCK_SCHEDULE, BLOCK_DRAIN, BLOCK_STALL, BLOCK_NETWORK, BLOCK_STOP, BLOCK_QUALITY, BLOCK_RESUME</critical-block>
+        <critical-block>BLOCK_OPEN_LINK, BLOCK_CLASSIFY, BLOCK_SCHEDULE, BLOCK_DRAIN, BLOCK_STALL, BLOCK_NETWORK, BLOCK_NETWORK_WATCH, BLOCK_STOP, BLOCK_QUALITY, BLOCK_RESUME (supervisor); BLOCK_NETWORK_EVENT (AndroidNetworkMonitor); BLOCK_KEYFRAME_TEE, BLOCK_AUDIO_ROUTE (DefaultMediaSession); BLOCK_OBSERVE_KEY_FRAME, BLOCK_SWITCH_TIMEOUT (QualityController); BLOCK_RESUME_DECISION (ResumePolicy)</critical-block>
       </observability>
       <verification-ref>V-M-LIVE-SESSION</verification-ref>
       <notes>
         <note-1>2026-10-22 (GSD Phase 3, plan 03-00): port types in live/LiveSessionTypes.kt exist first so plans 03-01..03-13 compile against one set of names. Links still never retry; all retry policy lives here.</note-1>
+        <note-2>2026-10-23 (plans 03-05, 03-06, 03-08, 03-10): implemented and JVM-verified in virtual time (LiveSessionSupervisorTest 38, QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7). M-TNP-LINK / M-TUTK-LINK are reached only through the CameraLinkFactory port (TransportLinkFactory binding). Device checks H-L4 (HD/SD), H-L5 (reconnect), H-L6 (background) pending.</note-2>
       </notes>
     </M-LIVE-SESSION>
 
@@ -1176,19 +1214,24 @@
         </outputs>
       </contract>
       <interface>
-        <export-AacDecoder PURPOSE="MediaCodec audio/mp4a-latm -> AudioTrack; unmute = create, mute = release(); status StateFlow&lt;AudioOutStatus&gt;" />
-        <export-AudioFrameQueue PURPOSE="Bounded audio frame queue between the link thread and the decoder" />
+        <export-AacDecoder PURPOSE="AacFrameSink: MediaCodec audio/mp4a-latm (async on the media-audio HandlerThread) -> AudioTrack built from the output format (WRITE_NON_BLOCKING, ~250 ms buffer); codec re-created on an AacConfig change; unmute = create, mute = release() (idempotent, waits at most 1 s); status StateFlow&lt;AudioOutStatus&gt;" STATUS="implemented" />
+        <type-AudioOutStatus PURPOSE="Idle | Playing(sampleRate, channels, codecName) | Failed(reason: no-decoder | codec | channels | exception class); failure is terminal" STATUS="implemented" />
+        <export-AudioFrameQueue PURPOSE="Bounded drop-oldest audio frame queue (DEFAULT_CAPACITY 6) between the link thread and the decoder; dropped counter survives clear()" STATUS="implemented" />
       </interface>
       <depends>M-STREAM-CORE</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/media/AacDecoder.kt</source>
         <source>app/src/main/java/com/yicamalt/media/AudioFrameQueue.kt</source>
+        <tests>app/src/test/java/com/yicamalt/media/AudioFrameQueueTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Media]</log-prefix>
-        <critical-block>BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK, BLOCK_AUDIO_RELEASE</critical-block>
+        <critical-block>BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK, BLOCK_AUDIO_PUMP, BLOCK_AUDIO_RELEASE, BLOCK_AUDIO_QUEUE_OFFER</critical-block>
       </observability>
       <verification-ref>V-M-MEDIA-AUDIO</verification-ref>
+      <notes>
+        <note-1>2026-10-23 (plan 03-07): AacDecoder is Android-only (MediaCodec / AudioTrack, no JVM test); JVM evidence is AudioFrameQueueTest 5. Device checks H-L2 (TUTK sound) and H-L3 (TNP sound, after Phase 2 H1) pending.</note-1>
+      </notes>
     </M-MEDIA-AUDIO>
 
     <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" LAYER="2" ORDER="21" STATUS="implemented">
@@ -1202,7 +1245,12 @@
         </outputs>
       </contract>
       <interface>
-        <export-SnapshotSaver PURPOSE="Bitmap -> JPEG in MediaStore Pictures/YiCamAlt; value-free result" />
+        <export-SnapshotSaver PURPOSE="File media/SnapshotSaver.kt: Bitmap -> JPEG in MediaStore Pictures/YiCamAlt; value-free result" STATUS="implemented" />
+        <type-SnapshotResult PURPOSE="Saved | NotReady | PermissionDenied | WriteFailed(errorClass)" STATUS="implemented" />
+        <export-SnapshotSpec PURPOSE="Pure rules: RELATIVE_PATH Pictures/YiCamAlt, MIME image/jpeg, JPEG_QUALITY 90, fileName(time) YiCamAlt_yyyyMMdd_HHmmss.jpg, target(sdkInt) scoped + IS_PENDING (29+) vs legacy permission (26-28)" STATUS="implemented" />
+        <export-SnapshotStore PURPOSE="Port: suspend save(bitmap): SnapshotResult (takes ownership of the bitmap, always recycled)" STATUS="implemented" />
+        <export-MediaStoreSnapshotStore PURPOSE="MediaStore implementation; deletes the gallery row on any failed write (exception or compress=false); insert null = WriteFailed(insert)" STATUS="implemented" />
+        <export-SnapshotModule PURPOSE="Hilt: @Binds SnapshotStore -> MediaStoreSnapshotStore" STATUS="implemented" />
       </interface>
       <depends>none</depends>
       <target>
@@ -1214,6 +1262,9 @@
         <critical-block>BLOCK_SAVE_SNAPSHOT</critical-block>
       </observability>
       <verification-ref>V-M-MEDIA-SNAPSHOT</verification-ref>
+      <notes>
+        <note-1>2026-10-23 (plan 03-09): implemented; JVM evidence SnapshotSaverTest 4 (pure SnapshotSpec). The MediaStore write itself is device-only: H-L8 (picture in the gallery, full resolution, taken while zoomed) pending.</note-1>
+      </notes>
     </M-MEDIA-SNAPSHOT>
 
     <M-TUTK-LINK NAME="TutkCameraLink" TYPE="CORE_LOGIC" LAYER="1" ORDER="18" STATUS="implemented">
@@ -1233,6 +1284,9 @@
         <export-TutkNative PURPOSE="12-call seam in the vendor client order + TutkCheck / ClientStart / RecvResult; TutkCodes name, classify, iotcInitOk, avInitOk (FakeTutkNative on the JVM)" STATUS="implemented" />
         <export-AndroidTutkNative PURPOSE="TutkNative over the com.tutk.IOTC shim; stop(av, sid) runs the vendor teardown order" STATUS="implemented" />
         <export-TutkRuntime PURPOSE="ensureInitialized(): IOTC_Initialize2 + avInitialize once per process on the tutk-runtime thread, 10 s bound; TutkRuntimeState NotStarted | Unavailable | InitFailed | Ready(iotcVersion, avVersion); TutkRuntimeModule binds TutkNative" STATUS="implemented" />
+        <fn-setAudioSink PURPOSE="TutkCameraLink override (plan 03-04), set before start: 768 on tutk-&lt;n&gt;-tx after 8190/511, cleanAudioBuf then avRecvAudioData reader tutk-&lt;n&gt;-rxa (LE FrameInfo, encrypted false); audio errors end only that loop (BLOCK_AUDIO_LOOP)" STATUS="implemented" />
+        <fn-requestResolution PURPOSE="TutkCameraLink override (plan 03-04): LE 4881 [res, useCount 2, 3, ...] on tutk-&lt;n&gt;-tx; null before the start command and after close (BLOCK_SET_RESOLUTION, BLOCK_TX_LOOP)" STATUS="implemented" />
+        <fn-recvIoCtrl PURPOSE="TutkNative.cleanAudioBuf / recvAudio / recvIoCtrl + IoCtrlResult over the vendor avClientCleanAudioBuf / avRecvAudioData / avRecvIOCtrl (plan 03-03, exports checked on arm64-v8a and armeabi-v7a); 4882 replies read by tutk-&lt;n&gt;-rxc (BLOCK_IOCTRL_LOOP)" STATUS="implemented" />
       </interface>
       <depends>M-P2P-NATIVE, M-STREAM-CORE, M-P2P-CREDS</depends>
       <target>
@@ -1257,7 +1311,7 @@
       </target>
       <observability>
         <log-prefix>[P2P]</log-prefix>
-        <critical-block>BLOCK_INIT_TUTK, BLOCK_CLASSIFY_TUTK_CODE, BLOCK_OPEN_TUTK_LINK, BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_CLIENT_START, BLOCK_READ_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_STOP_SESSION, BLOCK_DISPATCH_LINK</critical-block>
+        <critical-block>BLOCK_INIT_TUTK, BLOCK_CLASSIFY_TUTK_CODE, BLOCK_OPEN_TUTK_LINK, BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_CLIENT_START, BLOCK_READ_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_STOP_SESSION, BLOCK_DISPATCH_LINK, BLOCK_THREAD_GUARD, BLOCK_TX_LOOP, BLOCK_IOCTRL_LOOP, BLOCK_AUDIO_LOOP, BLOCK_SET_RESOLUTION</critical-block>
       </observability>
       <verification-ref>V-M-TUTK-LINK</verification-ref>
       <notes>
@@ -1266,6 +1320,7 @@
         <note-3>Plan 02-11 done: TutkCameraLink (tutk-&lt;n&gt;-connect / -rx / -watch / -close threads, one connectByUid per open, no reconnect, -20012 bound 300 x 30 ms), TutkLinkFactory (one session per camera), TransportLinkFactory bound as CameraLinkFactory in P2pLinkModule.</note-3>
         <note-4>2026-10-16: STATUS implemented (plans 02-10 + 02-11, JVM only). Gate line from 02-DEVICE-CHECK-1.md: "GATE_2B: needed". Device proof: 02-DEVICE-VERIFICATION.md.</note-4>
         <note-5>2026-10-16 Phase 2 review fixes (TutkCameraLink v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: the read loop no longer ends on any unexpected code; only -20015, -20016, -20010, -20000, -20018, -20019, -20025, -20026 are fatal (vendor TutkCamera), other codes are logged once and skipped (300 in a row end the session); -20001 grows the buffer once to 1000000. avReleased / sidReleased replace the single released flag (late avClientStart2 after close gets avClientStop). Thread guard -> Failed(INTERNAL, 0); empty encrypted password refused. Registry released only after the link threads exited; vendor stop only after the reader was joined. "No retry" now reads: none inside the link; the live screen may open ONE new link after WRONG_PASSWORD.</note-5>
+        <note-6>2026-10-23 (GSD Phase 3, plans 03-03 / 03-04): shim natives avClientCleanAudioBuf / avRecvAudioData / avRecvIOCtrl (AVAPIs 8 -> 11 natives), single IOCTRL writer tutk-&lt;n&gt;-tx, readers tutk-&lt;n&gt;-rxa (audio) and tutk-&lt;n&gt;-rxc (IOCTRL); teardown joins rx, rxa, rxc, tx before releasing the AV channel; Phase 2 start sequence byte-identical. JVM-only (FakeTutkNative, TutkCameraLinkTest 38); device checks H-L2 (audio) and H-L4 (HD/SD) pending.</note-6>
       </notes>
     </M-TUTK-LINK>
 
@@ -1297,7 +1352,18 @@
       <step-6>Link state (Connecting / Connected / Streaming / Failed / Closed) reported back to the probe status line</step-6>
       <evidence>V-M-TNP-LINK, V-M-STREAM-CORE, V-M-MEDIA-RENDER; log markers [P2P][tnp][BLOCK_CHECK_SESSION], [Stream][pipeline][BLOCK_FIRST_KEYFRAME], [Media][decoder][BLOCK_FIRST_RENDER]</evidence>
       <note>2026-10-12: replaces the cloud-stream flow through M-STREAM-LIVE / M-STREAM-DECODE (superseded, GSD Phase 2).</note>
+      <note>2026-10-23 (GSD Phase 3): the probe is now reached by a long press on the camera row; the production path is DF-LIVE-VIEW.</note>
     </DF-LIVE-STREAM>
+
+    <DF-LIVE-VIEW NAME="LiveViewSession" TRIGGER="User taps a camera row">
+      <step-1>M-UI-SHELL opens LiveViewScreen (M-UI-LIVEVIEW); LiveViewModel.open auto-connects (muted, no persisted HD/SD choice)</step-1>
+      <step-2>LiveSessionSupervisor (M-LIVE-SESSION) reads P2pCredentials (M-P2P-CREDS via P2pCredentialsSource), drains any previous link, opens a CameraLink through CameraLinkFactory (M-STREAM-CORE port; TransportLinkFactory -> M-TNP-LINK or M-TUTK-LINK)</step-2>
+      <step-3>DefaultMediaSession tees key frames (KeyFrameObservation) into FramePipeline (M-STREAM-CORE) -> VideoDecoder (M-MEDIA-RENDER) -> TextureView Surface; audio units go to AudioPipeline -> AacDecoder (M-MEDIA-AUDIO) only while unmuted</step-3>
+      <step-4>Supervisor state -> badgeFor -> badge; failures classified (NETWORK backoff 2/5/10/20 s x5, one WRONG_PASSWORD retry, one kick retry, Fatal), stall 10 s and default-network changes reconnect</step-4>
+      <step-5>HD/SD: QualityController target -> link.requestResolution (4881) -> confirmation by useCount or key-frame width; snapshot: TextureView.getBitmap -> SnapshotStore (M-MEDIA-SNAPSHOT)</step-5>
+      <step-6>ON_STOP stops the session (background), ON_START resumes once within 5 min (ResumePolicy); leaving the screen releases everything</step-6>
+      <evidence>V-M-LIVE-SESSION, V-M-UI-LIVEVIEW, V-M-MEDIA-AUDIO, V-M-MEDIA-SNAPSHOT (JVM); device checks H-L1..H-L9 pending (03-HUMAN-UAT.md); log markers [LiveSession][supervisor][BLOCK_OPEN_LINK], [LiveView][vm][BLOCK_BADGE], [LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</evidence>
+    </DF-LIVE-VIEW>
 
     <DF-EVENT-LIST NAME="EventTimelineLoad" TRIGGER="User navigates to Events tab">
       <step-1>M-UI-EVENTS requests events via M-EVENT</step-1>
@@ -1369,7 +1435,7 @@
       <goal>Live stream and event playback working — the most critical and risky phase.</goal>
       <step-1 module="M-STREAM-DECODE" status="superseded" verification="V-M-STREAM-DECODE">Implement AES decryption handshake (superseded 2026-10-12, GSD Phase 2: no cloud handshake)</step-1>
       <step-2 module="M-STREAM-LIVE" status="superseded" verification="V-M-STREAM-LIVE">Implement live stream lifecycle (superseded 2026-10-12, GSD Phase 2: P2P via vendor libs)</step-2>
-      <step-3 module="M-UI-LIVEVIEW" status="pending" verification="V-M-UI-LIVEVIEW">Build live view screen with video + controls</step-3>
+      <step-3 module="M-UI-LIVEVIEW" status="implemented" verification="V-M-UI-LIVEVIEW">Build live view screen with video + controls</step-3>
       <step-4 module="M-EVENT" status="done" verification="V-M-EVENT">Implement event timeline API</step-4>
       <step-5 module="M-EVENT-PLAYBACK" status="pending" verification="V-M-EVENT-PLAYBACK">Implement event playback pipeline</step-5>
       <step-6 module="M-UI-EVENTS" status="pending" verification="V-M-UI-EVENTS">Build events timeline screen</step-6>
@@ -1380,13 +1446,14 @@
       <step-11 module="M-MEDIA-RENDER" status="implemented" verification="V-M-MEDIA-RENDER">MediaCodec decode to Surface</step-11>
       <step-12 module="M-UI-LIVE-PROBE" status="implemented" verification="V-M-UI-LIVE-PROBE">Debug live probe screen</step-12>
       <step-13 module="M-TUTK-LINK" status="implemented" verification="V-M-TUTK-LINK">TUTK adapter (conditional on device check 02-06)</step-13>
-      <step-14 module="M-LIVE-SESSION" status="pending" verification="V-M-LIVE-SESSION">Live session supervisor: retries, stall, network, lifecycle, quality</step-14>
+      <step-14 module="M-LIVE-SESSION" status="implemented" verification="V-M-LIVE-SESSION">Live session supervisor: retries, stall, network, lifecycle, quality</step-14>
       <step-15 module="M-MEDIA-AUDIO" status="implemented" verification="V-M-MEDIA-AUDIO">AAC audio decode and playback</step-15>
-      <step-16 module="M-MEDIA-SNAPSHOT" status="pending" verification="V-M-MEDIA-SNAPSHOT">Snapshot to MediaStore</step-16>
+      <step-16 module="M-MEDIA-SNAPSHOT" status="implemented" verification="V-M-MEDIA-SNAPSHOT">Snapshot to MediaStore</step-16>
       <phase-note>2026-09-28: M-EVENT done (23 unit tests; suite 91/91 green; assembleDebug OK). Endpoint paths and request signing are PROVISIONAL — they are isolated in EventPaths/EventSigner so a live capture only needs constants edited, not restructuring. Exports getLocalTimeline and EventTimelinePort were added beyond the planned contract because syncEventsToDb/getLocalEventCount were otherwise write-only. Errors Unauthorized and NotFound were added alongside the planned EVENT_FETCH_FAILED/EVENT_NO_RECORDING. Remaining steps stay blocked on the stream protocol capture.</phase-note>
       <phase-note>2026-10-12: GSD Phase 2 (02-p2p) replaces the cloud-stream design: steps 1-2 superseded by steps 8-13 (P2P via the vendor PPPP/TUTK libraries).</phase-note>
       <phase-note>2026-10-16: GSD Phase 2 (02-p2p) implemented; device verification in 02-DEVICE-VERIFICATION.md. Plans 02-00..02-11; steps 8-13 implemented; M-TUTK-LINK needed per GATE_2B.</phase-note>
       <phase-note>2026-10-22: GSD Phase 3 (03-live-view) plans 03-00..03-13; M-UI-LIVEVIEW rewritten (no PTZ/camera selector)</phase-note>
+      <phase-note>2026-10-23: GSD Phase 3 (03-live-view) implemented, JVM-verified; device checks H-L1..H-L9 pending (03-HUMAN-UAT.md). Steps 3, 14, 15, 16 implemented (plans 03-00..03-11, GRACE sync 03-12); M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-UI-SHELL extended. TNP behaviour stays JVM-only until Phase 2 device check H1 passes. Device session: plan 03-13.</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">
