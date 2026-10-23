@@ -490,6 +490,8 @@
       <path>app/src/main/java/com/yicamalt/stream/NalUtils.kt</path>
       <path>app/src/main/java/com/yicamalt/stream/FrameAssembler.kt</path>
       <path>app/src/main/java/com/yicamalt/stream/FramePipeline.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/AdtsParser.kt</path>
+      <path>app/src/main/java/com/yicamalt/stream/AudioPipeline.kt</path>
       <depends>M-P2P-CREDS</depends>
       <verification-ref>V-M-STREAM-CORE</verification-ref>
       <annotations>
@@ -507,6 +509,8 @@
         <export-IFrameDecryptor PURPOSE="AES/ECB/NoPadding on [4,20) and [20,36), key = password + '0', fail-open (BLOCK_DECRYPT_IFRAME)" />
         <export-NalUtils PURPOSE="Framing detection, Annex-B, NAL types, parameter sets (BLOCK_SPLIT_NALS)" />
         <export-FrameAssembler PURPOSE="Keyframe gate, u16 P reorder (MAX_PENDING 100), useCount generation filter; P frames overtaking their I are drained after it (BLOCK_ASSEMBLE_FRAMES)" />
+        <export-AdtsParser PURPOSE="ADTS header parse / parseAll, sampleRate, 2-byte AudioSpecificConfig csd-0 (BLOCK_ADTS_HEADER, BLOCK_ADTS_WALK)" />
+        <export-AudioPipeline PURPOSE="AudioUnitSink: TNP full-block AES-ECB decrypt (fail-open), ADTS split, mute gate (default muted), availability (AUDIO_PROBE_MS 6000), AudioStats; AacConfig + raw frames to AacFrameSink (BLOCK_AUDIO_DECRYPT, BLOCK_AUDIO_SPLIT, BLOCK_AUDIO_FIRST, BLOCK_AUDIO_BAD)" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/stream/YiP2pAuthTest.kt</tests>
@@ -517,6 +521,8 @@
       <tests>app/src/test/java/com/yicamalt/stream/NalUtilsTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/stream/FrameAssemblerTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/stream/FramePipelineTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/AdtsParserTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/stream/AudioPipelineTest.kt</tests>
       <change-summary phase="02-p2p" plan="02-00" verification="passed">Contract-first port types StreamTypes.kt + CameraLink.kt created; protocol core follows in plans 02-04 / 02-05.</change-summary>
       <change-summary phase="02-p2p" plan="02-04" commits="8ef9894, 6f46d90" verification="passed">YiP2pAuth (RFC 2202 + frozen synthetic vector), TnpCodec (byte-exact 56/52/56), IoCtrlMessages, FrameHeadCodec; 29 JVM tests.</change-summary>
       <change-summary phase="02-p2p" plan="02-05" commits="4f4341e, 84459de" verification="passed">IFrameDecryptor (FIPS-197 C.1 through our cipher path), NalUtils, FrameAssembler, FramePipeline; 35 JVM tests.</change-summary>

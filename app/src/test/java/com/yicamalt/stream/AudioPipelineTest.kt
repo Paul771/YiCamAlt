@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import com.yicamalt.test.RedactionScanner
+import com.yicamalt.test.TraceRecorder
 import org.junit.jupiter.api.Test
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
@@ -24,7 +26,8 @@ import javax.crypto.spec.SecretKeySpec
 //   encryptFullBlocks(plain, password) - test-side AES-ECB over every full 16-byte block, tail plain.
 //   unit(payload, codecId, encrypted) - AudioUnit with a synthetic frame head.
 //   Captured - recording AacFrameSink.
-//   AudioPipelineTest - mute gate, delivery, decrypt, fail-open, codec, availability, garbage, no drop, toString.
+//   AudioPipelineTest - mute gate, delivery, decrypt, fail-open, codec, availability, garbage, no drop, toString,
+//     log hygiene (TraceRecorder + RedactionScanner, BLOCK_AUDIO_FIRST / BLOCK_AUDIO_BAD markers).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
@@ -219,5 +222,25 @@ class AudioPipelineTest {
         assertFalse(text.contains("[B@"))
         assertFalse(text.contains("csd0=["))
         assertEquals(AacConfig(2, 16000, 1, byteArrayOf(0x14, 0x08)), sink.frames[0].first)
+    }
+
+    @Test
+    fun `logs are value-free and carry the first and bad markers once`() {
+        val recorder = TraceRecorder()
+        recorder.plant()
+        try {
+            val p = AudioPipeline(pw, Captured(), clock)
+            p.muted = false
+            repeat(3) { p.onAudioUnit(unit(encryptFullBlocks(adts(30), pw), encrypted = true)) }
+            repeat(3) { p.onAudioUnit(unit(ByteArray(40) { 0x33 }, encrypted = true)) }
+            p.onAudioUnit(unit(adts(20), codecId = 140))
+            val text = recorder.bufferText()
+            assertEquals(1, Regex("BLOCK_AUDIO_FIRST").findAll(text).count())
+            assertEquals(1, Regex("BLOCK_AUDIO_BAD").findAll(text).count())
+            assertTrue(text.contains("reason=sync"))
+            RedactionScanner().assertClean(text, extraLiterals = listOf(pw))
+        } finally {
+            recorder.unplant()
+        }
     }
 }

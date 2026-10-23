@@ -1008,8 +1008,8 @@
         <source>app/src/main/java/com/yicamalt/stream/NalUtils.kt</source>
         <source>app/src/main/java/com/yicamalt/stream/FrameAssembler.kt</source>
         <source>app/src/main/java/com/yicamalt/stream/FramePipeline.kt</source>
-        <source STATUS="planned" NOTE="Phase 3 audio, planned">app/src/main/java/com/yicamalt/stream/AdtsParser.kt</source>
-        <source STATUS="planned" NOTE="Phase 3 audio, planned">app/src/main/java/com/yicamalt/stream/AudioPipeline.kt</source>
+        <source NOTE="Phase 3 audio, plan 03-01">app/src/main/java/com/yicamalt/stream/AdtsParser.kt</source>
+        <source NOTE="Phase 3 audio, plan 03-01">app/src/main/java/com/yicamalt/stream/AudioPipeline.kt</source>
         <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/stream/YiP2pAuthTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/stream/TnpCodecTest.kt</tests>
@@ -1019,10 +1019,12 @@
         <tests>app/src/test/java/com/yicamalt/stream/NalUtilsTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/stream/FrameAssemblerTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/stream/FramePipelineTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/AdtsParserTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/stream/AudioPipelineTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Stream]</log-prefix>
-        <critical-block>BLOCK_BUILD_AUTH_INFO, BLOCK_ENCODE_COMMAND, BLOCK_VALIDATE_HEAD, BLOCK_PARSE_UNIT, BLOCK_PARSE_FRAME_HEAD, BLOCK_DECRYPT_IFRAME, BLOCK_SPLIT_NALS, BLOCK_ASSEMBLE_FRAMES, BLOCK_FIRST_KEYFRAME, BLOCK_MAP_CODEC, BLOCK_EMIT_FRAME</critical-block>
+        <critical-block>BLOCK_BUILD_AUTH_INFO, BLOCK_ENCODE_COMMAND, BLOCK_VALIDATE_HEAD, BLOCK_PARSE_UNIT, BLOCK_PARSE_FRAME_HEAD, BLOCK_DECRYPT_IFRAME, BLOCK_SPLIT_NALS, BLOCK_ASSEMBLE_FRAMES, BLOCK_FIRST_KEYFRAME, BLOCK_MAP_CODEC, BLOCK_EMIT_FRAME, BLOCK_ADTS_HEADER, BLOCK_AUDIO_DECRYPT, BLOCK_AUDIO_SPLIT, BLOCK_AUDIO_FIRST, BLOCK_AUDIO_BAD</critical-block>
       </observability>
       <verification-ref>V-M-STREAM-CORE</verification-ref>
       <notes>
@@ -1030,6 +1032,7 @@
         <note-2>2026-10-16: implemented by plans 02-00, 02-04 (auth, framing, IOCTRL, frame head) and 02-05 (decrypt, NAL, assembler, pipeline). Pure Kotlin, no android imports; vectors: RFC 2202 HmacSHA1, FIPS-197 C.1 through our cipher path, byte-exact 56/52/56 command units.</note-2>
         <note-3>2026-10-16 Phase 2 review fixes: FrameAssembler v0.2.0 no longer clears pending on an I-frame (vendor TnpCamera.handleVideoFrame: drop seq &lt;= I, drain I+1..); IoCtrlMessages v0.2.0 reads the kick reason from payload[0] and treats an unknown authResult as not fatal; P2pCredentialsSource gains suspend refreshCredentials (default = credentialsFor) for the single WRONG_PASSWORD retry.</note-3>
         <note-4>2026-10-22 (GSD Phase 3, plan 03-00): port extensions with default bodies: CameraLink.setAudioSink / requestResolution / capabilities (LinkCapabilities), AudioCodec / AudioUnit / AudioUnitSink, IoCtrlMessages.AUDIO_STOP (769, never sent) and setResolution(resolution, useCount, bigEndian) for the TUTK LE 4881. AdtsParser and AudioPipeline are planned Phase 3 audio sources.</note-4>
+        <note-5>2026-10-23 (plan 03-01): AdtsParser (ADTS header checks, parseAll, 2-byte AudioSpecificConfig csd-0) and AudioPipeline (TNP audio AES-ECB on every full 16-byte block with key password + '0', fail-open; muted by default D-05; availability true after the first valid frame, false on a non-AAC codec or no valid frame within AUDIO_PROBE_MS 6000 after streaming D-07; no dropping, never routed to FramePipeline) implemented and JVM-tested.</note-5>
       </notes>
     </M-STREAM-CORE>
 
