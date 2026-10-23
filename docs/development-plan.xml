@@ -560,26 +560,31 @@
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="2" STATUS="planned">
       <contract>
-        <purpose>Live view screen: video preview surface, PTZ joystick, quality selector, camera selector (multi-camera), disconnect button. Integrates with M-TNP-LINK + M-MEDIA-RENDER for video feed (was M-STREAM-LIVE (superseded 2026-10-12, GSD Phase 2)) and M-CAMERA-CMD for controls.</purpose>
+        <purpose>Live view screen over LiveSessionSupervisor: TextureView video, connection badge (D-04), sound (D-05), HD/SD (D-06/D-07), snapshot, fullscreen + pinch/pan/double-tap zoom (D-08/D-09), lifecycle stop/resume (D-10); no PTZ, no camera selector (v2: CTRL-01, LIVE-13)</purpose>
       </contract>
       <interface>
-        <export-LiveViewScreen PURPOSE="Compose screen with video + controls" />
-        <export-PtzJoystick PURPOSE="Joystick component for PTZ control" />
-        <export-QualitySelector PURPOSE="Dropdown for SD/HD quality toggle" />
-        <export-CameraSelector PURPOSE="Horizontal scroll for multi-camera switch" />
+        <export-LiveViewScreen PURPOSE="Compose screen: TextureView video, badge, sound / HD-SD / snapshot / fullscreen controls, zoom gestures" />
+        <export-LiveViewModel PURPOSE="Screen state over LiveSessionSupervisor: badge, audio toggle (muted by default), quality, snapshot result, lifecycle stop/resume" />
+        <export-LiveViewUi PURPOSE="Value-free UI snapshot rendered by LiveViewScreen" />
+        <export-badgeFor PURPOSE="Pure SupervisorState -> badge text/colour mapping (D-04)" />
+        <export-ZoomMath PURPOSE="Pure pinch / pan / double-tap zoom math with clamping (D-09)" />
       </interface>
-      <depends>M-UI-SHELL, M-TNP-LINK, M-MEDIA-RENDER, M-CAMERA-CMD, M-CAMERA-LIST</depends>
+      <depends>M-UI-SHELL, M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT</depends>
       <target>
-        <source>app/src/main/java/com/yicamalt/ui/liveview/LiveViewScreen.kt</source>
-        <tests>app/src/androidTest/java/com/yicamalt/ui/liveview/LiveViewScreenTest.kt</tests>
+        <source>app/src/main/java/com/yicamalt/ui/live/LiveViewScreen.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/live/LiveViewModel.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/live/ZoomMath.kt</source>
+        <tests>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[LiveView]</log-prefix>
-        <critical-block>BLOCK_RENDER_VIDEO_SURFACE, BLOCK_SEND_PTZ_CMD, BLOCK_QUALITY_SWITCH</critical-block>
+        <critical-block>BLOCK_OPEN_LIVE, BLOCK_BADGE, BLOCK_TOGGLE_AUDIO, BLOCK_QUALITY_SWITCH, BLOCK_SNAPSHOT, BLOCK_LIFECYCLE, BLOCK_RENDER_VIDEO_SURFACE, BLOCK_FULLSCREEN</critical-block>
       </observability>
       <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
       <notes>
         <note-1>2026-10-12: the full live view screen is GSD Phase 3; GSD Phase 2 ships only the debug M-UI-LIVE-PROBE screen over M-TNP-LINK + M-MEDIA-RENDER.</note-1>
+        <note-2>2026-10-22 (GSD Phase 3, plan 03-00): rewritten. PTZ (CTRL-01) and the camera selector (LIVE-13) are v2; dependencies M-CAMERA-CMD and M-CAMERA-LIST dropped. JVM tests only (no emulator); device evidence H-L1, H-L6, H-L7, H-L8. MainActivity declares configChanges so rotation keeps the open session.</note-2>
       </notes>
     </M-UI-LIVEVIEW>
 
@@ -1003,6 +1008,8 @@
         <source>app/src/main/java/com/yicamalt/stream/NalUtils.kt</source>
         <source>app/src/main/java/com/yicamalt/stream/FrameAssembler.kt</source>
         <source>app/src/main/java/com/yicamalt/stream/FramePipeline.kt</source>
+        <source STATUS="planned" NOTE="Phase 3 audio, planned">app/src/main/java/com/yicamalt/stream/AdtsParser.kt</source>
+        <source STATUS="planned" NOTE="Phase 3 audio, planned">app/src/main/java/com/yicamalt/stream/AudioPipeline.kt</source>
         <tests>app/src/test/java/com/yicamalt/p2p/PpppContractTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/stream/YiP2pAuthTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/stream/TnpCodecTest.kt</tests>
@@ -1022,6 +1029,7 @@
         <note-1>Port types (StreamTypes.kt, CameraLink.kt) exist since plan 02-00 so the parallel wave-1 plans compile against one set of names.</note-1>
         <note-2>2026-10-16: implemented by plans 02-00, 02-04 (auth, framing, IOCTRL, frame head) and 02-05 (decrypt, NAL, assembler, pipeline). Pure Kotlin, no android imports; vectors: RFC 2202 HmacSHA1, FIPS-197 C.1 through our cipher path, byte-exact 56/52/56 command units.</note-2>
         <note-3>2026-10-16 Phase 2 review fixes: FrameAssembler v0.2.0 no longer clears pending on an I-frame (vendor TnpCamera.handleVideoFrame: drop seq &lt;= I, drain I+1..); IoCtrlMessages v0.2.0 reads the kick reason from payload[0] and treats an unknown authResult as not fatal; P2pCredentialsSource gains suspend refreshCredentials (default = credentialsFor) for the single WRONG_PASSWORD retry.</note-3>
+        <note-4>2026-10-22 (GSD Phase 3, plan 03-00): port extensions with default bodies: CameraLink.setAudioSink / requestResolution / capabilities (LinkCapabilities), AudioCodec / AudioUnit / AudioUnitSink, IoCtrlMessages.AUDIO_STOP (769, never sent) and setResolution(resolution, useCount, bigEndian) for the TUTK LE 4881. AdtsParser and AudioPipeline are planned Phase 3 audio sources.</note-4>
       </notes>
     </M-STREAM-CORE>
 
@@ -1101,6 +1109,107 @@
         <note-2>2026-10-16 Phase 2 review fixes (LiveProbeViewModel v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: "no retry" becomes "exactly one automatic retry per press, only after WRONG_PASSWORD": the camera once answered -20009 and accepted the same password moments later; the vendor treats -20009 as possibly temporary. Retry = 2 s pause ("Повторная попытка…"), P2pCredentialsSource.refreshCredentials (CameraRegistry: one list refresh), new session; never more than 2 factory.open per press, cancelled by Stop / leaving; no retry for other errors. Connect stays disabled until the closed link reports Closed / Failed. Status auth=pending until the 4882 outcome is known; TUTK codes named with TutkCodes.</note-2>
       </notes>
     </M-UI-LIVE-PROBE>
+
+    <M-LIVE-SESSION NAME="LiveSessionSupervisor" TYPE="CORE_LOGIC" LAYER="1" ORDER="19" STATUS="planned">
+      <contract>
+        <purpose>One live session per screen above CameraLink: opens links, classifies failures, schedules bounded retries (5 attempts), detects stalls, follows network changes, stops/resumes with the screen lifecycle, drives HD/SD quality</purpose>
+        <inputs>
+          <param name="credentials" type="P2pCredentials (P2pCredentialsSource)" />
+          <param name="network" type="NetworkMonitor.state (NetState)" />
+        </inputs>
+        <outputs>
+          <param name="state" type="StateFlow of SupervisorState" />
+          <param name="quality" type="StateFlow of QualityState" />
+        </outputs>
+      </contract>
+      <interface>
+        <type-SupervisorState PURPOSE="Idle | Connecting(attempt) | Live(info, authOk) | Waiting(nextAttempt, delayMs, cause, lastError) | NoNetwork | Exhausted | AuthFailed | Kicked | Fatal | Stopped(reason)" />
+        <type-ErrorClass PURPOSE="NETWORK | WRONG_PASSWORD | KICK | FATAL" />
+        <type-Quality PURPOSE="HD | SD with 4881 resolution; forMode(LinkMode), ofWidth(width)" />
+        <type-QualityState PURPOSE="observed, pending, manual (never persisted), switchSupported" />
+        <type-NetState PURPOSE="available + generation" />
+        <export-NetworkMonitor PURPOSE="Port: StateFlow of NetState (AndroidNetworkMonitor over ConnectivityManager)" />
+        <export-MediaSession PURPOSE="One link attempt's media plumbing: videoSink, audioSink, framesIn, lastKeyFrame, release" />
+        <export-MediaSessionFactory PURPOSE="create(credentials) -> MediaSession" />
+        <export-LiveSessionSupervisor PURPOSE="Session state machine over CameraLinkFactory" />
+        <export-QualityController PURPOSE="HD/SD policy, manual choice, 4881 confirmation by key-frame width" />
+        <export-ResumePolicy PURPOSE="Whether onStart resumes after onStop (D-10)" />
+      </interface>
+      <depends>M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-P2P-CREDS</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/live/LiveSessionTypes.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/LiveSessionSupervisor.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/QualityController.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/ResumePolicy.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/NetStateTracker.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/AndroidNetworkMonitor.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/LiveModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/live/DefaultMediaSession.kt</source>
+        <tests>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[LiveSession]</log-prefix>
+        <critical-block>BLOCK_OPEN_LINK, BLOCK_CLASSIFY, BLOCK_SCHEDULE, BLOCK_DRAIN, BLOCK_STALL, BLOCK_NETWORK, BLOCK_STOP, BLOCK_QUALITY, BLOCK_RESUME</critical-block>
+      </observability>
+      <verification-ref>V-M-LIVE-SESSION</verification-ref>
+      <notes>
+        <note-1>2026-10-22 (GSD Phase 3, plan 03-00): port types in live/LiveSessionTypes.kt exist first so plans 03-01..03-13 compile against one set of names. Links still never retry; all retry policy lives here.</note-1>
+      </notes>
+    </M-LIVE-SESSION>
+
+    <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" LAYER="2" ORDER="20" STATUS="planned">
+      <contract>
+        <purpose>Live audio: AAC units (ADTS from AudioPipeline) decoded by MediaCodec audio/mp4a-latm and played through AudioTrack; local mute, explicit unavailable outcome</purpose>
+        <inputs>
+          <param name="AudioUnit" type="AudioUnit (via AudioPipeline)" />
+        </inputs>
+        <outputs>
+          <param name="playback" type="AudioTrack output" />
+        </outputs>
+      </contract>
+      <interface>
+        <export-AacDecoder PURPOSE="MediaCodec audio/mp4a-latm -> AudioTrack; mute / unmute / release" />
+        <export-AudioFrameQueue PURPOSE="Bounded audio frame queue between the link thread and the decoder" />
+      </interface>
+      <depends>M-STREAM-CORE</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/media/AacDecoder.kt</source>
+        <source>app/src/main/java/com/yicamalt/media/AudioFrameQueue.kt</source>
+      </target>
+      <observability>
+        <log-prefix>[Media]</log-prefix>
+        <critical-block>BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK, BLOCK_AUDIO_RELEASE</critical-block>
+      </observability>
+      <verification-ref>V-M-MEDIA-AUDIO</verification-ref>
+    </M-MEDIA-AUDIO>
+
+    <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" LAYER="2" ORDER="21" STATUS="planned">
+      <contract>
+        <purpose>Save the current video frame as a picture in MediaStore Pictures/YiCamAlt (WRITE_EXTERNAL_STORAGE only on API 26-28)</purpose>
+        <inputs>
+          <param name="bitmap" type="android.graphics.Bitmap (TextureView frame)" />
+        </inputs>
+        <outputs>
+          <param name="result" type="saved | no-frame | permission-denied | error" />
+        </outputs>
+      </contract>
+      <interface>
+        <export-SnapshotSaver PURPOSE="Bitmap -> JPEG in MediaStore Pictures/YiCamAlt; value-free result" />
+      </interface>
+      <depends>none</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/media/SnapshotSaver.kt</source>
+        <tests>app/src/test/java/com/yicamalt/media/SnapshotSaverTest.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Media]</log-prefix>
+        <critical-block>BLOCK_SAVE_SNAPSHOT</critical-block>
+      </observability>
+      <verification-ref>V-M-MEDIA-SNAPSHOT</verification-ref>
+    </M-MEDIA-SNAPSHOT>
 
     <M-TUTK-LINK NAME="TutkCameraLink" TYPE="CORE_LOGIC" LAYER="1" ORDER="18" STATUS="implemented">
       <contract>
@@ -1266,9 +1375,13 @@
       <step-11 module="M-MEDIA-RENDER" status="implemented" verification="V-M-MEDIA-RENDER">MediaCodec decode to Surface</step-11>
       <step-12 module="M-UI-LIVE-PROBE" status="implemented" verification="V-M-UI-LIVE-PROBE">Debug live probe screen</step-12>
       <step-13 module="M-TUTK-LINK" status="implemented" verification="V-M-TUTK-LINK">TUTK adapter (conditional on device check 02-06)</step-13>
+      <step-14 module="M-LIVE-SESSION" status="pending" verification="V-M-LIVE-SESSION">Live session supervisor: retries, stall, network, lifecycle, quality</step-14>
+      <step-15 module="M-MEDIA-AUDIO" status="pending" verification="V-M-MEDIA-AUDIO">AAC audio decode and playback</step-15>
+      <step-16 module="M-MEDIA-SNAPSHOT" status="pending" verification="V-M-MEDIA-SNAPSHOT">Snapshot to MediaStore</step-16>
       <phase-note>2026-09-28: M-EVENT done (23 unit tests; suite 91/91 green; assembleDebug OK). Endpoint paths and request signing are PROVISIONAL — they are isolated in EventPaths/EventSigner so a live capture only needs constants edited, not restructuring. Exports getLocalTimeline and EventTimelinePort were added beyond the planned contract because syncEventsToDb/getLocalEventCount were otherwise write-only. Errors Unauthorized and NotFound were added alongside the planned EVENT_FETCH_FAILED/EVENT_NO_RECORDING. Remaining steps stay blocked on the stream protocol capture.</phase-note>
       <phase-note>2026-10-12: GSD Phase 2 (02-p2p) replaces the cloud-stream design: steps 1-2 superseded by steps 8-13 (P2P via the vendor PPPP/TUTK libraries).</phase-note>
       <phase-note>2026-10-16: GSD Phase 2 (02-p2p) implemented; device verification in 02-DEVICE-VERIFICATION.md. Plans 02-00..02-11; steps 8-13 implemented; M-TUTK-LINK needed per GATE_2B.</phase-note>
+      <phase-note>2026-10-22: GSD Phase 3 (03-live-view) plans 03-00..03-13; M-UI-LIVEVIEW rewritten (no PTZ/camera selector)</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">

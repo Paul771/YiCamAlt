@@ -1065,29 +1065,99 @@
       <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" note="UI tests require emulator; slower than unit — not for tight worker loops." />
     </V-M-UI-SHELL>
 
-    <V-M-UI-LIVEVIEW MODULE="M-UI-LIVEVIEW" PRIORITY="high">
+    <V-M-UI-LIVEVIEW MODULE="M-UI-LIVEVIEW" PRIORITY="high" STATUS="planned">
       <test-files>
-        <file>app/src/androidTest/java/com/yicamalt/ui/liveview/LiveViewScreenTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:compileDebugKotlin</check-1>
-        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.liveview.*"</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.ui.live.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="integration">Video surface renders when StreamHandleFake reports playing (StreamHandleFake predates GSD Phase 2; Phase 3 live view verifies against CameraLink fakes, superseded 2026-10-12)</scenario-1>
-        <scenario-2 kind="success" evidence-type="trace">PTZ joystick sends commands to CameraCommandModule (BLOCK_SEND_PTZ_CMD)</scenario-2>
-        <scenario-3 kind="success" evidence-type="trace">Quality selector visible and toggles quality (BLOCK_QUALITY_SWITCH)</scenario-3>
-        <scenario-4 kind="success" evidence-type="trace">Disconnect button stops stream</scenario-4>
+        <scenario-1 kind="success" evidence-type="deterministic">Badge table: one badge per SupervisorState (Idle, Connecting, Live, Waiting, NoNetwork "Офлайн", Exhausted "Нет связи" + "Повторить", AuthFailed "Ошибка пароля", Kicked, Fatal, Stopped) (D-04)</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">Sound control hidden while audio is unavailable; muted by default on every open (D-05)</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">HD/SD control hidden when the link reports resolutionSwitch=false (D-07); manual choice never persisted (D-06)</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">Snapshot result messages: saved, no frame yet, permission denied, error</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic">Lifecycle: onStop stops the session (Stopped background), onStart resumes per ResumePolicy (D-10)</scenario-5>
+        <scenario-6 kind="success" evidence-type="deterministic">ZoomMath: pinch scale clamped, pan bounded by the scaled content, double-tap toggles zoom (D-09)</scenario-6>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
-        <marker-2>[LiveView][ptz][BLOCK_SEND_PTZ_CMD]</marker-2>
+        <marker-2>[LiveView][vm][BLOCK_BADGE]</marker-2>
         <marker-3>[LiveView][quality][BLOCK_QUALITY_SWITCH]</marker-3>
+        <marker-4>[LiveView][vm][BLOCK_LIFECYCLE]</marker-4>
       </required-log-markers>
-      <wave-follow-up>Live view integrated with StreamHandleFake (StreamHandleFake predates GSD Phase 2; Phase 3 live view verifies against CameraLink fakes, superseded 2026-10-12).</wave-follow-up>
-      <phase-follow-up>Multi-camera switch works; quality change mid-stream works.</phase-follow-up>
-      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+      <wave-follow-up>JVM only (no emulator): LiveViewModel over a fake supervisor; ZoomMath pure.</wave-follow-up>
+      <phase-follow-up>Device follow-up H-L1 (live video on open), H-L6 (rotation and fullscreen keep the session), H-L7 (zoom gestures), H-L8 (snapshot in Pictures/YiCamAlt). No PTZ, no camera selector (v2).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
     </V-M-UI-LIVEVIEW>
+
+    <V-M-LIVE-SESSION MODULE="M-LIVE-SESSION" PRIORITY="high" STATUS="planned">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.live.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Link opens and reaches Live; a network failure schedules Waiting with backoff, at most 5 attempts, then Exhausted</scenario-1>
+        <scenario-2 kind="failure" evidence-type="deterministic">WRONG_PASSWORD ends in AuthFailed, second kick in Kicked, fatal kinds in Fatal (manual retry only)</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic">No frames for the stall window closes the link with reason stall and retries</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic">Network loss gives NoNetwork without consuming attempts; a new network generation reconnects</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic">Quality: HD on direct paths, SD on relay; manual switch sends 4881 and is confirmed by key-frame width</scenario-5>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[LiveSession][supervisor][BLOCK_OPEN_LINK]</marker-1>
+        <marker-2>[LiveSession][supervisor][BLOCK_SCHEDULE]</marker-2>
+        <marker-3>[LiveSession][supervisor][BLOCK_STALL]</marker-3>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Every captured log line is RedactionScanner-clean (no DID, password, nonce, InitString, IP, SSID, network handle)</assertion-1>
+      </required-trace-assertions>
+      <phase-follow-up>Device follow-up H-L5 (reconnect after Wi-Fi / mobile switch).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
+    </V-M-LIVE-SESSION>
+
+    <V-M-MEDIA-AUDIO MODULE="M-MEDIA-AUDIO" PRIORITY="medium" STATUS="planned">
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-1>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="trace">Device: AAC decoder created and AudioTrack plays after unmute (BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK)</scenario-1>
+        <scenario-2 kind="success" evidence-type="trace">Device: decoder and track released when the session ends (BLOCK_AUDIO_RELEASE)</scenario-2>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Media][audio][BLOCK_AUDIO_DECODER_CREATE]</marker-1>
+        <marker-2>[Media][audio][BLOCK_AUDIO_TRACK]</marker-2>
+        <marker-3>[Media][audio][BLOCK_AUDIO_RELEASE]</marker-3>
+      </required-log-markers>
+      <phase-follow-up>Device follow-up H-L2 (sound on TNP camera), H-L3 (sound on TUTK camera).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="success-only" markers="observable" followup="present" rating="partial" />
+    </V-M-MEDIA-AUDIO>
+
+    <V-M-MEDIA-SNAPSHOT MODULE="M-MEDIA-SNAPSHOT" PRIORITY="medium" STATUS="planned">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/media/SnapshotSaverTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.media.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">Snapshot saved under Pictures/YiCamAlt with a timestamped name</scenario-1>
+        <scenario-2 kind="failure" evidence-type="deterministic">No frame or a write failure gives an explicit result, no crash</scenario-2>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Media][snapshot][BLOCK_SAVE_SNAPSHOT]</marker-1>
+      </required-log-markers>
+      <phase-follow-up>Device follow-up H-L8 (picture visible in the gallery).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
+    </V-M-MEDIA-SNAPSHOT>
 
     <V-M-UI-EVENTS MODULE="M-UI-EVENTS" PRIORITY="high">
       <test-files>
