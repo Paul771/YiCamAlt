@@ -1,5 +1,5 @@
 // FILE: AndroidTutkNative.kt
-// VERSION: 0.1.1
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: TutkNative over the JNI shim com.tutk.IOTC.IOTCAPIs / AVAPIs (device implementation of the seam).
 //   SCOPE: 1:1 mapping of the seam calls in the vendor client order; check() reduces St_SInfoEx to a value-free
@@ -24,10 +24,12 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - device finding: avSendIOCtrl(767) blocked 10-80 s with the screen off, holding the camera slot;
+//   LAST_CHANGE: v0.2.0 - GSD plan 03-03: cleanAudioBuf / recvAudio / recvIoCtrl over avClientCleanAudioBuf,
+//     avRecvAudioData, avRecvIOCtrl (direct JNI, buffers never logged).
+//   PREV_CHANGE: v0.1.1 - device finding: avSendIOCtrl(767) blocked 10-80 s with the screen off, holding the camera slot;
 //     stop now sends it on a helper thread, aborts with avSendIOCtrlExit after 1.5 s, and logs per-step timing
 //     (BLOCK_STOP_SESSION: step names and ms only). Close time on the phone: 80 s -> 1.6 s.
-//   PREV_CHANGE: v0.1.0 - GSD plan 02-10: created. UID and address bytes of St_SInfoEx never leave check(): they
+//   PREVIOUS: v0.1.0 - GSD plan 02-10: created. UID and address bytes of St_SInfoEx never leave check(): they
 //     are reduced to a boolean and zero-filled. Never logs; never de-initialises IOTC / AV.
 // END_CHANGE_SUMMARY
 
@@ -90,6 +92,20 @@ class AndroidTutkNative @Inject constructor() : TutkNative {
             frameInfo, frameInfo.size, actualInfoSize, frameIndex,
         )
         return RecvResult(code, if (code > 0) code else actualFrameSize[0])
+    }
+
+    override fun cleanAudioBuf(av: Int): Int = AVAPIs.avClientCleanAudioBuf(av)
+
+    override fun recvAudio(av: Int, buf: ByteArray, frameInfo: ByteArray): RecvResult {
+        val frameIndex = IntArray(1)
+        val code = AVAPIs.avRecvAudioData(av, buf, buf.size, frameInfo, frameInfo.size, frameIndex)
+        return RecvResult(code, if (code > 0) code else 0)
+    }
+
+    override fun recvIoCtrl(av: Int, buf: ByteArray, timeoutMs: Int): IoCtrlResult {
+        val ioType = IntArray(1)
+        val code = AVAPIs.avRecvIOCtrl(av, ioType, buf, buf.size, timeoutMs)
+        return IoCtrlResult(code, ioType[0])
     }
 
     // START_BLOCK_STOP_SESSION
