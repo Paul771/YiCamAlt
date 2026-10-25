@@ -23,12 +23,13 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | Keep screen on while video renders | PASS | `dumpsys power`: SCREEN_BRIGHT_WAKE_LOCK held with WorkSource com.yicamalt during live video |
 | Fullscreen exit by Back | PASS | Back leaves fullscreen, camera stays open, stream not interrupted |
 | H-L5 Wi-Fi off/on on the USB phone (`svc wifi`, with logs) | PASS | `BLOCK_NETWORK_EVENT available=false` then `available=true generationChanged=true`; supervisor reconnected at once, Live ~1.2 s after Wi-Fi returned; no manual action |
+| H-L5 Camera power cycle (TUTK, with logs) | PASS | 10 s stall detected (`BLOCK_STALL`), then attempts 2-4 (connect timeouts 30 s / 30 s / 10 s, 5/10 s pauses), attempt 5 hit transient `WRONG_PASSWORD -20009` right after the camera boot, one automatic retry (attempt 6) -> Live at 10:49:13, ~2 min after the stall, no user action |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
 ## Not verified (pending)
 
 - Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
-- H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only) and camera power cycle. 
+- H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only). 
 - H-L3 and TNP half of H-L4 (TNP audio / HD-SD) — blocked on Phase 2 H1 (TNP camera online).
 - Phase 2 H1–H7 on the TNP camera.
 
