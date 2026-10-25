@@ -44,7 +44,7 @@ result: passed (TUTK: AAC 8 kHz stereo, sound confirmed audible by the user)
 steps: only after H1 passes: open the TNP camera, unmute, listen 30 s.
 expected: ch1 audio decrypted with header version >= 2 gives valid ADTS (`[Stream][audio][BLOCK_AUDIO_FIRST] ... enc=true`, no `BLOCK_AUDIO_BAD`; debug row `audio=playing`) and audible sound; no decoder failure.
 markers: `[P2P][tnp][BLOCK_AUDIO_UNIT]`, `[Stream][audio][BLOCK_AUDIO_FIRST]` (enc=true), `[Media][audio][BLOCK_AUDIO_TRACK]`.
-result: partial (TNP: AAC 16 kHz mono enc=true, decoder + AudioTrack created after unmute; audibility NOT yet confirmed by a human)
+result: passed (TNP: AAC 16 kHz mono enc=true, decoder + AudioTrack created after unmute; sound confirmed audible by the user 2026-10-25)
 
 ### H-L4. HD / SD switch (TUTK now; TNP half needs Phase 2 H1)
 steps: on each camera press HD/SD a few times; note the connection mode the badge shows (on mobile data the link may be relay).
@@ -84,10 +84,10 @@ result: passed (RealLogScanTest over the pulled diag log, 849 lines)
 ## Summary
 
 total: 9
-passed: 4
+passed: 5
 issues: 0
 pending: 0
-partial: 5
+partial: 4
 skipped: 0
 blocked: 0
 

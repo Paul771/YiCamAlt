@@ -1,7 +1,7 @@
 # Phase 3 — Device verification (partial: TUTK + TNP over LAN)
 
 **Date:** 2026-10-23 · **Device:** Mi 9 (MIUI, API 30), Wi-Fi/LAN · **Build:** debug APK from `gsd/phase-3-live-view` (installed via `adb install -r`, SHA-256 prefix matches the built APK)
-**RESULT: PARTIAL** — TUTK camera (2026-10-23, 2026-10-25) and TNP camera "Спальня" over LAN (2026-10-25) verified. Still open: TNP sound audibility, Wi-Fi→4G, RELAY/mobile data, H.265, parallel use with the official app on TNP, 15+ min soak. Phase stays `human_needed`.
+**RESULT: PARTIAL** — TUTK camera (2026-10-23, 2026-10-25) and TNP camera "Спальня" over LAN (2026-10-25) verified. Still open: Wi-Fi→4G, RELAY/mobile data, H.265, parallel use with the official app on TNP, 15+ min soak. Phase stays `human_needed`.
 
 Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 
@@ -24,13 +24,13 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | Fullscreen exit by Back | PASS | Back leaves fullscreen, camera stays open, stream not interrupted |
 | H-L5 Wi-Fi off/on on the USB phone (`svc wifi`, with logs) | PASS | `BLOCK_NETWORK_EVENT available=false` then `available=true generationChanged=true`; supervisor reconnected at once, Live ~1.2 s after Wi-Fi returned; no manual action |
 | H-L5 Camera power cycle (TUTK, with logs) | PASS | 10 s stall detected (`BLOCK_STALL`), then attempts 2-4 (connect timeouts 30 s / 30 s / 10 s, 5/10 s pauses), attempt 5 hit transient `WRONG_PASSWORD -20009` right after the camera boot, one automatic retry (attempt 6) -> Live at 10:49:13, ~2 min after the stall, no user action |
-| TNP camera "Спальня" (Phase 2 H1/H2 + H-L3 + TNP half of H-L4), 2026-10-25 | PASS (LAN, no RELAY) | `BLOCK_CONNECT result=ok`, `BLOCK_AUTH_REPLY authResult=0 version=2`, burst 4881,9029,768; first video 875 ms, decoder 1920x1080 HW H.264; audio AAC 16000 Hz mono `enc=true` (AES), AAC decoder + AudioTrack created after unmute; HD->SD (decoder 640x360) and back (1920x1080) via 4881; snapshot saved (281 KB); Home: closed in 374 ms, return `resumed=true`, Live again in ~0.7 s; audio not recreated after resume |
+| TNP camera "Спальня" (Phase 2 H1/H2 + H-L3 + TNP half of H-L4), 2026-10-25 | PASS (LAN, no RELAY) | `BLOCK_CONNECT result=ok`, `BLOCK_AUTH_REPLY authResult=0 version=2`, burst 4881,9029,768; first video 875 ms, decoder 1920x1080 HW H.264; audio AAC 16000 Hz mono `enc=true` (AES), AAC decoder + AudioTrack created after unmute, sound confirmed audible by the user; HD->SD (decoder 640x360) and back (1920x1080) via 4881; snapshot saved (281 KB); Home: closed in 374 ms, return `resumed=true`, Live again in ~0.7 s; audio not recreated after resume |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
 ## Not verified (pending)
 
 - H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only). 
-- TNP: sound audibility (human), RELAY mode, TNP over mobile data, H.265, parallel use with the official app on TNP.
+- TNP: RELAY mode, TNP over mobile data, H.265, parallel use with the official app on TNP.
 - Phase 2 H1-H7: TNP LAN connection is now proven (above); the rest of H1-H7 still to be walked through and recorded in 02-DEVICE-VERIFICATION.md.
 
 ## Observations

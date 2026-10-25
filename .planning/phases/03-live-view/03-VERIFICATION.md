@@ -25,6 +25,8 @@ human_verification:
     why_human: "No H.265 camera available"
 ---
 
+> **Update 2026-10-25 (after the report):** the user confirmed TNP sound is audible, so LIVE-06 is met. Remaining partial: LIVE-07 (SD by default on relay is JVM-only), LIVE-10 (parallel use with the official app not checked on TNP).
+
 # Phase 3: Live View — Verification Report
 
 **Phase Goal:** Живое видео ведёт себя как в нормальном приложении: видно состояние связи, само восстанавливается, управляется звуком, качеством, снимком и жестами, не держит камеру в фоне.
