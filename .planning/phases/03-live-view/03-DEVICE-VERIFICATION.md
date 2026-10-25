@@ -20,17 +20,23 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | H-L5 Wi-Fi off (user report, second phone with 4G, no logs) | REPORTED OK | A couple of reconnect attempts, then the camera came back in P2P mode; not corroborated by logs (the USB phone has no 4G) |
 | H-L6 Parallel use with the official app (user report, second phone, no logs) | REPORTED OK | Both apps showed video at the same time; not corroborated by logs |
 | H-L6 Screen lock, return after >5 min | PASS | Lock: `BLOCK_STOP reason=background`, closed in ~1.7 s. Return after 446 s: `BLOCK_RESUME resumed=false`, no new link, badge "Не подключено" + "Подключить"; pressing it connected in ~1.2 s (LAN) |
+| Keep screen on while video renders | PASS | `dumpsys power`: SCREEN_BRIGHT_WAKE_LOCK held with WorkSource com.yicamalt during live video |
+| Fullscreen exit by Back | PASS | Back leaves fullscreen, camera stays open, stream not interrupted |
+| H-L5 Wi-Fi off/on on the USB phone (`svc wifi`, with logs) | PASS | `BLOCK_NETWORK_EVENT available=false` then `available=true generationChanged=true`; supervisor reconnected at once, Live ~1.2 s after Wi-Fi returned; no manual action |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
 ## Not verified (pending)
 
 - Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
-- H-L5 with logs on the USB phone (it has Wi-Fi only, no 4G): Wi-Fi→4G and camera power cycle; 
+- H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only) and camera power cycle. 
 - H-L3 and TNP half of H-L4 (TNP audio / HD-SD) — blocked on Phase 2 H1 (TNP camera online).
 - Phase 2 H1–H7 on the TNP camera.
 
 ## Observations
 
+- Unprompted TUTK/LAN stream drops recovered by the supervisor in 2-4 s (2026-10-25: REMOTE_CLOSED -20015 and a 10 s stall; 2026-10-23: a stall and a REMOTE_CLOSED). Cause not established (camera or LAN session); the reconnect path handled each one.
+- A TUTK connect attempt can hang for 30 s (`UNKNOWN_-27`, timeout) when the camera is unreachable, so exhausting 5 attempts takes minutes; TNP reports DEVICE_NOT_ONLINE in ~2.4 s.
+- Both cameras were unreachable at the start of the 2026-10-25 session (TNP `DEVICE_NOT_ONLINE`, TUTK connect timeout); TUTK came back after the user powered it on. TNP still offline.
 - UX defect found and FIXED (LiveViewScreen: video layer alpha 0 while Connect/Retry is shown): after a stop the last frame no longer stays behind "Не подключено"; verified on the device (black box, no frozen frame, return after 36 min, `resumed=false`).
 - TUTK camera audio is 8 kHz stereo AAC, not the 16 kHz mono the research assumed; the decoder follows the stream format.
 - The cloud list marks "Спальня" online while PPPP reports `DEVICE_NOT_ONLINE`: the cloud flag is not a reachability signal.
