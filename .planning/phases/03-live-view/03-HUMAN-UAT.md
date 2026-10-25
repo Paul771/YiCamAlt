@@ -1,5 +1,5 @@
 ---
-status: pending
+status: partial
 phase: 03-live-view
 source: [03-RESEARCH.md "Human checks", 03-12-PLAN.md]
 started: 2026-10-23
@@ -32,61 +32,62 @@ Markers to look for, by check: `[LiveSession][supervisor][BLOCK_*]` (OPEN_LINK, 
 steps: camera list, tap the TUTK camera, then the TNP camera (tap opens the live screen; long press still opens the debug probe).
 expected: the picture is visible with the decoded aspect ratio, no black window; the colour badge and the sound / HD-SD / snapshot / fullscreen controls are drawn over the video; badge shows LAN / P2P / Relay per camera.
 markers: `[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live`, `[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]`, `[LiveSession][supervisor][BLOCK_OPEN_LINK]`, `[Media][decoder][BLOCK_FIRST_RENDER]`, `[Media][decoder][BLOCK_FORMAT_CHANGED]`.
-result: [pending]
+result: passed (TUTK 2026-10-23, TNP 2026-10-25: white surface, video + controls over it, no window blackening)
 
 ### H-L2. Audio on the TUTK camera
 steps: open the TUTK camera, wait for video, press the sound button, listen 30 s, press it again.
 expected: sound is off on open; after unmute the camera's sound plays with low delay; mute stops it; the debug row (debug toggle) shows `audio=playing` with a growing `audioUnits=`; if the camera sends no AAC the sound button stays hidden. Record codec id and ADTS format from `[Stream][audio][BLOCK_AUDIO_FIRST] codecId= rate= ch= enc=` (research expected AAC 16000 Hz mono). Note: the research draft named the debug fields `audio=AAC/16000/1` / `audioOk`; the built debug row uses `audio=<muted|idle|playing|failed> audioUnits=<n>`.
 markers: `[P2P][tutk][BLOCK_AUDIO_LOOP]`, `[Stream][audio][BLOCK_AUDIO_FIRST]` or `[Stream][audio][BLOCK_AUDIO_BAD]`, `[Media][audio][BLOCK_AUDIO_DECODER_CREATE]`, `[Media][audio][BLOCK_AUDIO_TRACK]`, `[Media][audio][BLOCK_AUDIO_RELEASE]`, `[LiveView][vm][BLOCK_TOGGLE_AUDIO]`.
-result: [pending]
+result: passed (TUTK: AAC 8 kHz stereo, sound confirmed audible by the user)
 
 ### H-L3. Audio on the TNP camera (needs Phase 2 H1)
 steps: only after H1 passes: open the TNP camera, unmute, listen 30 s.
 expected: ch1 audio decrypted with header version >= 2 gives valid ADTS (`[Stream][audio][BLOCK_AUDIO_FIRST] ... enc=true`, no `BLOCK_AUDIO_BAD`; debug row `audio=playing`) and audible sound; no decoder failure.
 markers: `[P2P][tnp][BLOCK_AUDIO_UNIT]`, `[Stream][audio][BLOCK_AUDIO_FIRST]` (enc=true), `[Media][audio][BLOCK_AUDIO_TRACK]`.
-result: [pending]
+result: partial (TNP: AAC 16 kHz mono enc=true, decoder + AudioTrack created after unmute; audibility NOT yet confirmed by a human)
 
 ### H-L4. HD / SD switch (TUTK now; TNP half needs Phase 2 H1)
 steps: on each camera press HD/SD a few times; note the connection mode the badge shows (on mobile data the link may be relay).
 expected: the frame width changes without a reconnect (badge stays Live); relay starts in SD; if the camera refuses (abilityRet 1 / no confirmation in 8 s) the HD/SD control disappears. Record frame widths for HD and SD per camera.
 markers: `[LiveView][vm][BLOCK_QUALITY_SWITCH]`, `[LiveSession][supervisor][BLOCK_QUALITY]`, `[P2P][tutk][BLOCK_SET_RESOLUTION]` / `[P2P][tnp][BLOCK_SET_RESOLUTION]`, `[P2P][tnp][BLOCK_AUTH_REPLY] abilityRet=`.
-result: [pending]
+result: passed (TUTK and TNP: 4881, decoder 1920x1080/1280x720 <-> 640x360, no reconnect)
 
 ### H-L5. Reconnect: Wi-Fi toggle, Wi-Fi -> 4G, camera power cycle
 steps: while streaming: Wi-Fi off and on; Wi-Fi off with 4G on; unplug the camera for 30 s and plug it back. Do not tap anything.
 expected: the badge goes Офлайн / Повтор (n/5) / Подключение… and back to Live without a tap; at most 5 attempts with 2/5/10/20 s pauses, then «Нет связи» with «Повторить»; no reconnect storm in the diag log; record recovery time per case. Звук снова выключен после возврата из фона (строже D-05, подтвердить).
 markers: `[LiveSession][network][BLOCK_NETWORK_EVENT]`, `[LiveSession][supervisor][BLOCK_NETWORK]`, `[LiveSession][supervisor][BLOCK_CLASSIFY]`, `[LiveSession][supervisor][BLOCK_SCHEDULE]`, `[LiveSession][supervisor][BLOCK_DRAIN]`, `[LiveSession][supervisor][BLOCK_STALL]`, `[LiveView][vm][BLOCK_BADGE]`.
-result: [pending]
+result: partial (Wi-Fi off/on with logs, camera power cycle with logs: PASS; Wi-Fi->4G not logged, user report only)
 
 ### H-L6. Background: lock / unlock, Home, return after > 5 min (extends Phase 2 H6)
 steps: while streaming: lock and unlock within 1 min; Home and back within 1 min; Home, open the official Yi Home app on the same camera, then return to ours after more than 5 min.
 expected: our session stops on background so the official app gets video; within 5 min ours resumes on its own once; after more than 5 min it waits for a tap (Connect); rotation does not restart the session. Звук снова выключен после возврата из фона (строже D-05, подтвердить).
 markers: `[LiveView][lifecycle][BLOCK_LIFECYCLE]`, `[LiveView][vm][BLOCK_LIFECYCLE]`, `[LiveSession][supervisor][BLOCK_STOP]`, `[LiveSession][supervisor][BLOCK_RESUME]`.
-result: [pending]
+result: partial (Home, lock, >5 min return: PASS on both cameras; parallel use with the official app is a user report on TUTK, not on TNP; sound off again after return: PASS in logs, user acceptance of the stricter rule pending)
 
 ### H-L7. Fullscreen, gestures, rotation, keep-screen-on
 steps: fullscreen by button and by rotation (also with auto-rotate off); back exits fullscreen; pinch to 4x, pan, double tap; tap shows controls; leave the screen on for 2+ minutes without touching; check the notch side in landscape.
 expected: no session restart on rotation or fullscreen; zoom clamped to 1..4x and pan bounded; double tap toggles fit / fill; controls auto-hide after 4 s only in fullscreen; system bars hidden in fullscreen and restored after; screen stays on while video renders; nothing hidden under the notch.
 markers: `[LiveView][render][BLOCK_FULLSCREEN]`, `[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]`.
-result: [pending]
+result: passed (fullscreen by button/rotation, Back exit, pinch + double tap by the user, keep-screen-on via wake lock)
 
 ### H-L8. Snapshot in the gallery
 steps: zoom to 2x, press the snapshot button; open the gallery.
 expected: a JPEG `YiCamAlt_yyyyMMdd_HHmmss.jpg` appears under Pictures/YiCamAlt at the full frame resolution (not the zoomed crop); a toast confirms; no half-written gallery entry on failure.
 markers: `[LiveView][vm][BLOCK_SNAPSHOT]`, `[Media][snapshot][BLOCK_SAVE_SNAPSHOT] result=Saved sdk=30 bytes=<n>` (no URI, path, file or camera name).
-result: [pending]
+result: partial (snapshot saved on both cameras, stream resolution; not taken while zoomed, gallery view not checked by eye)
 
 ### H-L9. Log pull and redaction sweep of the new log lines (as Phase 2 H7)
 steps: pull the diag log after H-L1..H-L8 (commands above); run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks`.
 expected: RealLogScanTest executed (skipped=0) with failures=0; the Phase 3 markers listed above are present; no DID, password, nonce, InitString, IP, SSID or network handle in the log.
-result: [pending]
+result: passed (RealLogScanTest over the pulled diag log, 849 lines)
 
 ## Summary
 
 total: 9
-passed: 0
+passed: 4
 issues: 0
-pending: 9
+pending: 0
+partial: 5
 skipped: 0
 blocked: 0
 

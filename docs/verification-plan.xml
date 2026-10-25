@@ -708,7 +708,7 @@
         <scenario-18 kind="success" evidence-type="deterministic">ch1 audio (ioType 2, body &gt; 24) reaches the AudioUnitSink with encrypted = header version &gt;= 2 (true at 2, false after adopting 1), never the video sink; without a sink it is discarded; a throwing audio sink is logged once (sinkError=&lt;Class&gt;) and video keeps streaming (plan 03-02, LIVE-06)</scenario-18>
         <scenario-19 kind="success" evidence-type="deterministic">requestResolution queues 4881 [res, useCount 3, 4, ...] through the single writer (header version 2, next command numbers 4, 5); burst bytes unchanged; null and no write before connect or after close (plan 03-02, LIVE-07)</scenario-19>
         <scenario-20 kind="success" evidence-type="deterministic">4882 with TNPHead abilityRet 1 sets capabilities.resolutionSwitch=false; abilityRet 0 keeps null; abilityRet logged on BLOCK_AUTH_REPLY (plan 03-02, D-07)</scenario-20>
-        <scenario-21 kind="device" status="pending" evidence-type="trace">H-L3 / H-L4 (TNP half): ch1 audio decrypts to valid ADTS and 4881 changes the frame width without a reconnect; blocked until Phase 2 H1 (TNP live video) passes; TNP Phase 3 behaviour is JVM-only until then</scenario-21>
+        <scenario-21 kind="device" status="passed" evidence-type="trace">H-L3 / H-L4 (TNP half): ch1 audio decrypts to valid ADTS and 4881 changes the frame width without a reconnect; blocked until Phase 2 H1 (TNP live video) passes; TNP Phase 3 behaviour is JVM-only until then</scenario-21>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -784,7 +784,7 @@
         <scenario-12 kind="success" evidence-type="deterministic">AudioPipelineTest: muted by default (counted, nothing delivered, D-05); unmuted raw frames + AacConfig 16000/1/[0x14,0x08] with strictly increasing pts; full-block AES-ECB decrypt with password + '0' (tail plain, unit payload untouched); 10 frames in -&gt; 10 out (no drop)</scenario-12>
         <scenario-13 kind="failure" evidence-type="deterministic">AudioPipelineTest: no password or key length not 16/24/32 -&gt; fail-open, decryptOk null; codec != 138 -&gt; badUnits, availability false; garbage -&gt; badUnits, decryptOk false on an encrypted unit until a good one; availability null before 6 s, false at 6 s without a valid frame (D-07)</scenario-13>
         <scenario-14 kind="success" evidence-type="unit">IoCtrlMessagesTest: setResolution honours the transport byte order (TNP big-endian, TUTK little-endian 4881 payload); AUDIO_STOP 769 defined, never sent (plan 03-00)</scenario-14>
-        <scenario-15 kind="device" status="pending" evidence-type="trace">H-L2 / H-L3: real camera audio units parse as ADTS (TUTK plain, TNP decrypted with header version &gt;= 2); BLOCK_AUDIO_FIRST rate / channels recorded</scenario-15>
+        <scenario-15 kind="device" status="passed" evidence-type="trace">H-L2 / H-L3: real camera audio units parse as ADTS (TUTK plain, TNP decrypted with header version &gt;= 2); BLOCK_AUDIO_FIRST rate / channels recorded</scenario-15>
       </scenarios>
       <required-log-markers>
         <marker-1>[Stream][pipeline][BLOCK_FIRST_KEYFRAME] codec=&lt;H264|H265&gt; framing=&lt;annexb|length|unknown&gt; nals=&lt;types&gt; decryptOk=&lt;b&gt; size=&lt;WxH&gt;</marker-1>
@@ -828,7 +828,7 @@
         <scenario-7 kind="success" evidence-type="deterministic">csd map AVC csd-0/csd-1, HEVC csd-0; PtsGuard strictly increasing; NoDecoder text "H.265: на этом телефоне нет декодера"</scenario-7>
         <scenario-8 kind="success" evidence-type="trace">Device: decoder name and hw flag of each camera's codec on the status line match BLOCK_CREATE_DECODER; first render logged (02-DEVICE-VERIFICATION.md)</scenario-8>
         <scenario-10 kind="success" evidence-type="unit">VideoSizeTest (4): crop-aware visibleSize (crop rect when all four keys exist, else width / height; non-positive sizes -&gt; null), plan 03-08</scenario-10>
-        <scenario-11 kind="device" status="pending" evidence-type="trace">H-L1: decoding to the live screen's TextureView Surface shows a picture on MIUI; BLOCK_FORMAT_CHANGED size matches the aspect ratio on screen</scenario-11>
+        <scenario-11 kind="device" status="passed" evidence-type="trace">H-L1: decoding to the live screen's TextureView Surface shows a picture on MIUI; BLOCK_FORMAT_CHANGED size matches the aspect ratio on screen</scenario-11>
       </scenarios>
       <required-log-markers>
         <marker-1>[Media][catalog][BLOCK_QUERY_DECODERS]</marker-1>
@@ -936,7 +936,7 @@
         <scenario-16 kind="success" evidence-type="trace">With an audio sink: 8190 then 768 on tutk-&lt;n&gt;-tx, cleanAudioBuf before the first recvAudio, LE audio units (encrypted false) on tutk-&lt;n&gt;-rxa; without a sink no 768 and no rxa; audio -20012 sleeps audioNoDataSleepMs (120); audio / IOCTRL end codes end only their loop (TutkCameraLinkTest, plan 03-04)</scenario-16>
         <scenario-17 kind="success" evidence-type="deterministic">requestResolution queues LE 4881 [res, useCount] on tutk-&lt;n&gt;-tx with useCount 2, 3; null before the start command and after close; 4882 replies consumed by tutk-&lt;n&gt;-rxc without affecting the link (TutkCameraLinkTest, plan 03-04)</scenario-17>
         <scenario-18 kind="success" evidence-type="deterministic">Teardown joins rx, rxa, rxc, tx before stop (no recv / send in flight at stop); a tx blocked in sendIoCtrl does not block close (within joinMs + 300 ms) and keeps ALREADY_OPEN until it exits (registry=deferred) (TutkCameraLinkTest, plan 03-04)</scenario-18>
-        <scenario-19 kind="device" status="pending" evidence-type="trace">H-L2 / H-L4 (TUTK half): rxa delivers audio units with sound after unmute; LE 4881 changes the frame width without a reconnect; record widths for HD and SD</scenario-19>
+        <scenario-19 kind="device" status="passed" evidence-type="trace">H-L2 / H-L4 (TUTK half): rxa delivers audio units with sound after unmute; LE 4881 changes the frame width without a reconnect; record widths for HD and SD</scenario-19>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -1079,7 +1079,7 @@
         <scenario-7 kind="edge" evidence-type="deterministic">Single-flight: refresh() while a refresh runs does not call the port again; CancellationException is rethrown, not shown as Error</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">refresh() sets the transitional state synchronously; stale banner cleared while pulling; isRefreshing() per state (pull-to-refresh contract: one pull = one refresh, ptr.endRefresh after the first non-refreshing state)</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">UNAUTHORIZED offers "Войти снова" (onSessionExpired -> AppShell onLogout); no device id is rendered (deviceId only as LazyColumn key; grep check, SEC-01)</scenario-9>
-        <scenario-10 kind="device" status="pending" evidence-type="trace">H-L1: camera row tap opens LiveViewScreen ([Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live), long press opens the debug probe (tab=probe); back returns to the list (plan 03-11, compile-only on the JVM)</scenario-10>
+        <scenario-10 kind="device" status="passed" evidence-type="trace">H-L1: camera row tap opens LiveViewScreen ([Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live), long press opens the debug probe (tab=probe); back returns to the list (plan 03-11, compile-only on the JVM)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[Shell][render][BLOCK_RENDER_SHELL]</marker-1>
@@ -1120,11 +1120,11 @@
         <scenario-8 kind="success" evidence-type="unit">LiveViewModelTest: Waiting after WRONG_PASSWORD / KICK shows "Подключение…" (NEUTRAL), NETWORK waits and Connecting(n&gt;1) show "Повтор (n/5)" (WARN); Kicked tone ERROR; Exhausted message = linkErrorMessage(lastError)</scenario-8>
         <scenario-9 kind="success" evidence-type="unit">LiveViewModelTest: sound visible only while Live and after audio was available once during this open; muted again after onStop (stricter than D-05)</scenario-9>
         <scenario-10 kind="success" evidence-type="unit">RedactionScanner over every captured log line and every observed LiveViewUi.toString() with the synthetic device id, DID, passwords, InitString, license: clean</scenario-10>
-        <scenario-11 kind="device" status="pending" evidence-type="trace">H-L1: TextureView picture on MIUI (Mi 9, Android 11), no black window, badge and controls over the video, both cameras (03-HUMAN-UAT.md)</scenario-11>
-        <scenario-12 kind="device" status="pending" evidence-type="trace">H-L4: HD/SD switch changes frame width without a reconnect; control hidden when unsupported (TUTK first, TNP after Phase 2 H1)</scenario-12>
-        <scenario-13 kind="device" status="pending" evidence-type="trace">H-L6: lock / Home / return within and after 5 min; official app gets video while ours is in background (extends Phase 2 H6)</scenario-13>
-        <scenario-14 kind="device" status="pending" evidence-type="trace">H-L7: fullscreen by button and rotation (auto-rotate off too), pinch 4x, pan, double tap, notch, keep-screen-on over 2+ minutes</scenario-14>
-        <scenario-15 kind="device" status="pending" evidence-type="trace">H-L8: snapshot visible in the gallery (Pictures/YiCamAlt), full resolution, taken while zoomed</scenario-15>
+        <scenario-11 kind="device" status="passed" evidence-type="trace">H-L1: TextureView picture on MIUI (Mi 9, Android 11), no black window, badge and controls over the video, both cameras (03-HUMAN-UAT.md)</scenario-11>
+        <scenario-12 kind="device" status="passed" evidence-type="trace">H-L4: HD/SD switch changes frame width without a reconnect; control hidden when unsupported (TUTK first, TNP after Phase 2 H1)</scenario-12>
+        <scenario-13 kind="device" status="partial" evidence-type="trace">H-L6: lock / Home / return within and after 5 min; official app gets video while ours is in background (extends Phase 2 H6)</scenario-13>
+        <scenario-14 kind="device" status="passed" evidence-type="trace">H-L7: fullscreen by button and rotation (auto-rotate off too), pinch 4x, pan, double tap, notch, keep-screen-on over 2+ minutes</scenario-14>
+        <scenario-15 kind="device" status="partial" evidence-type="trace">H-L8: snapshot visible in the gallery (Pictures/YiCamAlt), full resolution, taken while zoomed</scenario-15>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
@@ -1174,9 +1174,9 @@
         <scenario-6 kind="success" evidence-type="unit">LiveSessionSupervisorTest (38, virtual time): backoff 2/5/10/20 s, 5 attempts then Exhausted; one WRONG_PASSWORD retry with refreshed credentials; one kick retry after 10 s; Fatal immediately; 1.5 s debounced reconnect on a default-network change; 10 s stall; 5 s drain before every open; stop() during factory.open closes the late link without start; 30 s Live resets the attempt counter</scenario-6>
         <scenario-7 kind="success" evidence-type="unit">QualityControllerTest (17): manual over mode, width &gt;= 1280 = HD, confirmation by useCount or width class, 8 s timeout / null useCount / unsupported hide the switch; ResumePolicyTest (8): single-use resume within 5 min only after a background stop</scenario-7>
         <scenario-8 kind="success" evidence-type="unit">NetStateTrackerTest (6): generation bumps on a different default network, stale onLost ignored; DefaultMediaSessionTest (7): key-frame tee, audio routed only through AudioPipeline, resetPipeline re-arms the key gate, release ignores later units</scenario-8>
-        <scenario-9 kind="device" status="pending" evidence-type="trace">H-L5: Wi-Fi toggle, Wi-Fi -&gt; 4G, camera power cycle: badge sequence and recovery time recorded, no reconnect storm in the diag log; sound off again after reconnect / return from background (stricter than D-05, confirm)</scenario-9>
-        <scenario-10 kind="device" status="pending" evidence-type="trace">H-L6: lock / Home / return after more than 5 min (no auto-resume) and within 5 min (resume once); official Yi app gets video while ours is in background (extends Phase 2 H6)</scenario-10>
-        <scenario-11 kind="device" status="pending" evidence-type="trace">H-L4: 4881 honoured (width changes, no reconnect): TUTK camera first, TNP camera only after Phase 2 H1</scenario-11>
+        <scenario-9 kind="device" status="partial" evidence-type="trace">H-L5: Wi-Fi toggle, Wi-Fi -&gt; 4G, camera power cycle: badge sequence and recovery time recorded, no reconnect storm in the diag log; sound off again after reconnect / return from background (stricter than D-05, confirm)</scenario-9>
+        <scenario-10 kind="device" status="partial" evidence-type="trace">H-L6: lock / Home / return after more than 5 min (no auto-resume) and within 5 min (resume once); official Yi app gets video while ours is in background (extends Phase 2 H6)</scenario-10>
+        <scenario-11 kind="device" status="passed" evidence-type="trace">H-L4: 4881 honoured (width changes, no reconnect): TUTK camera first, TNP camera only after Phase 2 H1</scenario-11>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveSession][supervisor][BLOCK_OPEN_LINK]</marker-1>
@@ -1210,11 +1210,11 @@
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.media.AudioFrameQueueTest"</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="device" status="pending" evidence-type="trace">Device: AAC decoder created and AudioTrack plays after unmute (BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK)</scenario-1>
+        <scenario-1 kind="device" status="passed" evidence-type="trace">Device: AAC decoder created and AudioTrack plays after unmute (BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK)</scenario-1>
         <scenario-2 kind="device" status="pending" evidence-type="trace">Device: decoder and track released when the session ends (BLOCK_AUDIO_RELEASE)</scenario-2>
         <scenario-3 kind="success" evidence-type="unit">AudioFrameQueue: capacity 6 FIFO; 7th offer drops the oldest (dropped=1); clear keeps the counter; capacity &lt; 1 rejected</scenario-3>
-        <scenario-4 kind="device" status="pending" evidence-type="trace">H-L2: TUTK camera, unmute -&gt; sound; debug row audio=playing with growing audioUnits; codec id / rate / channels from [Stream][audio][BLOCK_AUDIO_FIRST]</scenario-4>
-        <scenario-5 kind="device" status="pending" evidence-type="trace">H-L3: TNP camera (only after Phase 2 H1 passes): ch1 decrypt with header version &gt;= 2 gives valid ADTS ([Stream][audio][BLOCK_AUDIO_FIRST] enc=true, no BLOCK_AUDIO_BAD)</scenario-5>
+        <scenario-4 kind="device" status="passed" evidence-type="trace">H-L2: TUTK camera, unmute -&gt; sound; debug row audio=playing with growing audioUnits; codec id / rate / channels from [Stream][audio][BLOCK_AUDIO_FIRST]</scenario-4>
+        <scenario-5 kind="device" status="passed" evidence-type="trace">H-L3: TNP camera (only after Phase 2 H1 passes): ch1 decrypt with header version &gt;= 2 gives valid ADTS ([Stream][audio][BLOCK_AUDIO_FIRST] enc=true, no BLOCK_AUDIO_BAD)</scenario-5>
       </scenarios>
       <required-log-markers>
         <marker-1>[Media][audio][BLOCK_AUDIO_DECODER_CREATE]</marker-1>
@@ -1244,7 +1244,7 @@
         <scenario-1 kind="success" evidence-type="unit">Snapshot saved under Pictures/YiCamAlt with a timestamped name</scenario-1>
         <scenario-2 kind="failure" evidence-type="unit">No frame or a write failure gives an explicit result, no crash</scenario-2>
         <scenario-3 kind="success" evidence-type="unit">SnapshotSaverTest (4): fileName YiCamAlt_yyyyMMdd_HHmmss.jpg, target(sdk) scoped + IS_PENDING on 29+, legacy permission on 26-28, RELATIVE_PATH / MIME / quality constants</scenario-3>
-        <scenario-4 kind="device" status="pending" evidence-type="trace">H-L8: picture visible in the gallery under Pictures/YiCamAlt, full resolution, taken while zoomed; no half-written entry after a denied permission</scenario-4>
+        <scenario-4 kind="device" status="partial" evidence-type="trace">H-L8: picture visible in the gallery under Pictures/YiCamAlt, full resolution, taken while zoomed; no half-written entry after a denied permission</scenario-4>
       </scenarios>
       <required-log-markers>
         <marker-1>[Media][snapshot][BLOCK_SAVE_SNAPSHOT] result=&lt;Saved|PermissionDenied|WriteFailed(class)&gt; sdk=&lt;n&gt; bytes=&lt;n&gt; (never URI, path, file or camera name)</marker-1>

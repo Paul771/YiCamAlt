@@ -1,7 +1,7 @@
-# Phase 3 — Device verification (partial)
+# Phase 3 — Device verification (partial: TUTK + TNP over LAN)
 
 **Date:** 2026-10-23 · **Device:** Mi 9 (MIUI, API 30), Wi-Fi/LAN · **Build:** debug APK from `gsd/phase-3-live-view` (installed via `adb install -r`, SHA-256 prefix matches the built APK)
-**RESULT: PARTIAL** — TUTK camera only. The TNP camera ("Спальня") was powered off / unreachable. Phase stays `human_needed`; LIVE-04..11 are NOT marked complete.
+**RESULT: PARTIAL** — TUTK camera (2026-10-23, 2026-10-25) and TNP camera "Спальня" over LAN (2026-10-25) verified. Still open: TNP sound audibility, Wi-Fi→4G, RELAY/mobile data, H.265, parallel use with the official app on TNP, 15+ min soak. Phase stays `human_needed`.
 
 Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 
@@ -29,7 +29,6 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 
 ## Not verified (pending)
 
-- Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
 - H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only). 
 - TNP: sound audibility (human), RELAY mode, TNP over mobile data, H.265, parallel use with the official app on TNP.
 - Phase 2 H1-H7: TNP LAN connection is now proven (above); the rest of H1-H7 still to be walked through and recorded in 02-DEVICE-VERIFICATION.md.

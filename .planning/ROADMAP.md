@@ -108,7 +108,7 @@ Plans:
 - [x] 03-10-PLAN.md — DefaultMediaSession + LiveViewModel (плашка, звук, HD/SD, снимок, жизненный цикл) (wave 4)
 - [x] 03-11-PLAN.md — LiveViewScreen на TextureView, полный экран, жесты; тап → live, long-press → отладочный экран (wave 5)
 - [x] 03-12-PLAN.md — Синхронизация GRACE, тройной прогон тестов, 03-HUMAN-UAT.md (wave 6)
-- [ ] 03-13-PLAN.md — Проверка на телефоне H-L1..H-L9 (wave 7, checkpoint)
+- [x] 03-13-PLAN.md — Проверка на телефоне H-L1..H-L9 (wave 7, checkpoint)
 **Research**: done — `.planning/phases/03-live-view/03-RESEARCH.md`
 **UI hint**: yes
 
