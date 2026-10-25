@@ -24,19 +24,21 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | Fullscreen exit by Back | PASS | Back leaves fullscreen, camera stays open, stream not interrupted |
 | H-L5 Wi-Fi off/on on the USB phone (`svc wifi`, with logs) | PASS | `BLOCK_NETWORK_EVENT available=false` then `available=true generationChanged=true`; supervisor reconnected at once, Live ~1.2 s after Wi-Fi returned; no manual action |
 | H-L5 Camera power cycle (TUTK, with logs) | PASS | 10 s stall detected (`BLOCK_STALL`), then attempts 2-4 (connect timeouts 30 s / 30 s / 10 s, 5/10 s pauses), attempt 5 hit transient `WRONG_PASSWORD -20009` right after the camera boot, one automatic retry (attempt 6) -> Live at 10:49:13, ~2 min after the stall, no user action |
+| TNP camera "Спальня" (Phase 2 H1/H2 + H-L3 + TNP half of H-L4), 2026-10-25 | PASS (LAN, no RELAY) | `BLOCK_CONNECT result=ok`, `BLOCK_AUTH_REPLY authResult=0 version=2`, burst 4881,9029,768; first video 875 ms, decoder 1920x1080 HW H.264; audio AAC 16000 Hz mono `enc=true` (AES), AAC decoder + AudioTrack created after unmute; HD->SD (decoder 640x360) and back (1920x1080) via 4881; snapshot saved (281 KB); Home: closed in 374 ms, return `resumed=true`, Live again in ~0.7 s; audio not recreated after resume |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
 ## Not verified (pending)
 
 - Keep-screen-on, exit by Back. (Fullscreen by phone rotation: confirmed working by the user.)
 - H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only). 
-- H-L3 and TNP half of H-L4 (TNP audio / HD-SD) — blocked on Phase 2 H1 (TNP camera online).
-- Phase 2 H1–H7 on the TNP camera.
+- TNP: sound audibility (human), RELAY mode, TNP over mobile data, H.265, parallel use with the official app on TNP.
+- Phase 2 H1-H7: TNP LAN connection is now proven (above); the rest of H1-H7 still to be walked through and recorded in 02-DEVICE-VERIFICATION.md.
 
 ## Observations
 
 - Unprompted TUTK/LAN stream drops recovered by the supervisor in 2-4 s (2026-10-25: REMOTE_CLOSED -20015 and a 10 s stall; 2026-10-23: a stall and a REMOTE_CLOSED). Cause not established (camera or LAN session); the reconnect path handled each one.
 - A TUTK connect attempt can hang for 30 s (`UNKNOWN_-27`, timeout) when the camera is unreachable, so exhausting 5 attempts takes minutes; TNP reports DEVICE_NOT_ONLINE in ~2.4 s.
+- The TNP camera has pan/tilt (PTZ) but the live screen has no PTZ controls: out of Phase 3 scope (LIVE-xx); REQUIREMENTS lists it as CTRL-01 (v2).
 - Both cameras were unreachable at the start of the 2026-10-25 session (TNP `DEVICE_NOT_ONLINE`, TUTK connect timeout); TUTK came back after the user powered it on. TNP still offline.
 - UX defect found and FIXED (LiveViewScreen: video layer alpha 0 while Connect/Retry is shown): after a stop the last frame no longer stays behind "Не подключено"; verified on the device (black box, no frozen frame, return after 36 min, `resumed=false`).
 - TUTK camera audio is 8 kHz stereo AAC, not the 16 kHz mono the research assumed; the decoder follows the stream format.
