@@ -1,5 +1,5 @@
 // FILE: TnpCodec.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Encode TNP command units and parse TNP heads, IOCTRL replies and frame units (big-endian wire).
 //   SCOPE: 8-byte TNPHead, 40-byte TNPIOCtrlHead, per-channel size validation, frame unit split.
@@ -22,7 +22,9 @@ import java.nio.ByteOrder
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-04 from 02-RESEARCH.md Pattern 4 (VERIFIED-LOCAL layouts).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-00: record channels CH_RECORD_I 4, CH_RECORD_P 5, CH_NEW_RECORD 7 (vendor
+//     TnpCamera.startThread) with the live I / P buffer limits.
+//   PREVIOUS: v0.1.0 - GSD plan 02-04 from 02-RESEARCH.md Pattern 4 (VERIFIED-LOCAL layouts).
 //     INVARIANT: a head that fails validateHead is reported Dirty and its dataSize is never used to allocate.
 //     INVARIANT: nothing here logs; IoCtrlReply.toString prints sizes only.
 // END_CHANGE_SUMMARY
@@ -43,6 +45,9 @@ object TnpCodec {
     const val CH_IFRAME = 2
     const val CH_PFRAME = 3
     const val CH_NEW_LIVE = 6
+    const val CH_RECORD_I = 4
+    const val CH_RECORD_P = 5
+    const val CH_NEW_RECORD = 7
 
     data class TnpHead(val version: Int, val ioType: Int, val abilityRet: Int, val dataSize: Long)
 
@@ -106,8 +111,8 @@ object TnpCodec {
     fun maxDataSize(channel: Int): Int? = when (channel) {
         CH_COMMAND -> 204_800
         CH_AUDIO -> 5_120
-        CH_IFRAME, CH_NEW_LIVE -> 1_048_576
-        CH_PFRAME -> 307_200
+        CH_IFRAME, CH_NEW_LIVE, CH_RECORD_I, CH_NEW_RECORD -> 1_048_576
+        CH_PFRAME, CH_RECORD_P -> 307_200
         else -> null
     }
 
