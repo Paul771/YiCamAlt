@@ -1,10 +1,11 @@
 // FILE: LiveViewModel.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Screen state of the live view over LiveSessionSupervisor (M-UI-LIVEVIEW view model).
 //   SCOPE: badge mapping (D-04), auto-connect on open, sound (D-05, D-07), HD/SD (D-06, D-07), snapshot, debug line,
-//     lifecycle stop / resume (D-10), decoder / audio outputs behind injectable ports.
-//   DEPENDS: M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-P2P-CREDS, M-STREAM-CORE
+//     lifecycle stop / resume (D-10), decoder / audio outputs behind injectable ports; Phase 4 archive state and
+//     actions over ArchiveCoordinator (SD-01..SD-05, D-01..D-07).
+//   DEPENDS: M-LIVE-SESSION, M-SD-ARCHIVE (via ArchiveCoordinator), M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-P2P-CREDS, M-STREAM-CORE
 //   LINKS: M-UI-LIVEVIEW, V-M-UI-LIVEVIEW
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -16,6 +17,7 @@ import android.os.SystemClock
 import android.view.Surface
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yicamalt.archive.SdTime
 import com.yicamalt.camera.TransportType
 import com.yicamalt.live.DefaultMediaSession
 import com.yicamalt.live.ErrorClass
@@ -60,23 +62,31 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Locale
 import javax.inject.Inject
 
 // START_MODULE_MAP
 //   LiveVideoOutput - video decoder port (status, videoSize, resetEvents, surface attach / detach, release).
 //   LiveAudioOutput - AAC output port (status, release).
-//   LiveEnvironment - injectable io dispatcher, clock and output factories.
+//   LiveEnvironment - injectable io dispatcher, clock, wall clock, display zone (the only systemDefault read) and
+//     output factories.
 //   BadgeTone / LiveBadge / badgeFor - SupervisorState -> badge (D-04).
 //   LiveViewUi - value-free screen snapshot.
 //   LiveEvent - one-shot messages (Toast).
 //   LiveViewTexts - Russian badge and snapshot texts.
 //   LiveViewModel - open / closeScreen / onStop / onStart / connect / retry / toggleMute / toggleQuality /
-//     toggleDebug / attachSurface / detachSurface / saveSnapshot.
+//     toggleDebug / attachSurface / detachSurface / saveSnapshot; archive StateFlow + archiveSeek /
+//     archiveTogglePause / archiveGoLive / archiveRetry / archiveOpenDays / archiveCloseDays / archiveSelectDay.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 03-10 GREEN. One supervisor + one video output + one per-open scope per open();
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-06: archive state + actions (D-01..D-07). One ArchiveCoordinator per open,
+//     over sup.archivePort(transport, p2pEncrypt), in the per-open scope; forceMute = mute + release audio (D-05);
+//     onStop pauses archive playback as Paused(BACKGROUND) before the background stop; closeScreen closes the
+//     coordinator; the quality button is hidden while in the archive.
+//   PREVIOUS: v0.2.0 - GSD plan 03-10 GREEN. One supervisor + one video output + one per-open scope per open();
 //     re-open of the same camera while a supervisor exists only updates the title (rotation / recomposition keeps the
 //     session), another camera closes the screen first. INVARIANTS: muted on every open and after onStop (D-05); the
 //     session factory reads the current muted value, so a reconnect after unmute keeps sound on; the VM-owned
@@ -123,7 +133,7 @@ open class LiveEnvironment @Inject constructor() {
     open fun video(): LiveVideoOutput = VideoDecoderOutput(VideoDecoder())
     open fun audio(): LiveAudioOutput = AacDecoderOutput(AacDecoder())
     open fun wallNow(): Long = System.currentTimeMillis()
-    open fun zone(): java.time.ZoneId = java.time.ZoneId.systemDefault()
+    open fun zone(): ZoneId = ZoneId.systemDefault()
 }
 
 enum class BadgeTone { NEUTRAL, GOOD, WARN, ERROR }
@@ -227,14 +237,9 @@ class LiveViewModel @Inject constructor(
 
     private val _ui = MutableStateFlow(initialUi(LiveViewTexts.DEFAULT_TITLE))
     val ui: StateFlow<LiveViewUi> = _ui.asStateFlow()
-    val archive: StateFlow<ArchiveUi> get() = error("RED stub")
-    fun archiveSeek(ms: Long): Unit = error("RED stub")
-    fun archiveTogglePause(): Unit = error("RED stub")
-    fun archiveGoLive(): Unit = error("RED stub")
-    fun archiveRetry(): Unit = error("RED stub")
-    fun archiveOpenDays(): Unit = error("RED stub")
-    fun archiveCloseDays(): Unit = error("RED stub")
-    fun archiveSelectDay(day: java.time.LocalDate): Unit = error("RED stub")
+    private val _archive = MutableStateFlow(initialArchive())
+    val archive: StateFlow<ArchiveUi> = _archive.asStateFlow()
+    private var coordinator: ArchiveCoordinator? = null
     private val _events = MutableSharedFlow<LiveEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<LiveEvent> = _events.asSharedFlow()
 
@@ -288,6 +293,16 @@ class LiveViewModel @Inject constructor(
         }
         val sup = LiveSessionSupervisor(deviceId, credentials, factory, sessions, network, scope, env.io, env::now)
         supervisor = sup
+        val coord = ArchiveCoordinator(
+            sup.archivePort(c?.transport ?: TransportType.UNKNOWN, c?.p2pEncrypt ?: false),
+            c?.transport, scope, env::now, env::wallNow, env.zone(),
+            forceMute = {
+                muteAndReleaseAudio()
+                refresh()
+            },
+        )
+        coordinator = coord
+        _archive.value = coord.ui.value
         Timber.d("[LiveView][vm][BLOCK_OPEN_LIVE] transport=%s hasCreds=%b", c?.transport?.name ?: "-", c != null)
         scope.launch { sup.state.collect { onSupervisorState(it) } }
         scope.launch { sup.qualityState.collect { refresh() } }
@@ -301,7 +316,15 @@ class LiveViewModel @Inject constructor(
                 refresh()
             }
         }
+        scope.launch {
+            coord.ui.collect {
+                _archive.value = it
+                refresh()
+            }
+        }
         sup.start()
+        coord.start()
+        _archive.value = coord.ui.value
         refresh()
         // END_BLOCK_OPEN_LIVE
     }
@@ -328,6 +351,8 @@ class LiveViewModel @Inject constructor(
         val sup = supervisor ?: return
         Timber.d("[LiveView][vm][BLOCK_LIFECYCLE] event=screen-left")
         supervisor = null
+        coordinator?.close()
+        coordinator = null
         sup.stop(REASON_SCREEN_LEFT)
         muteAndReleaseAudio()
         current = null
@@ -336,6 +361,7 @@ class LiveViewModel @Inject constructor(
         video?.release()
         video = null
         streamingAtMs = null
+        _archive.value = initialArchive()
         refresh()
         // END_BLOCK_LIFECYCLE
     }
@@ -356,6 +382,7 @@ class LiveViewModel @Inject constructor(
         val sup = supervisor ?: return
         Timber.d("[LiveView][vm][BLOCK_LIFECYCLE] event=background")
         muteAndReleaseAudio()
+        coordinator?.onBackground()
         sup.stop(REASON_BACKGROUND)
         refresh()
     }
@@ -430,6 +457,39 @@ class LiveViewModel @Inject constructor(
         sup.setQuality(target)
         refresh()
         // END_BLOCK_QUALITY_SWITCH
+    }
+
+    // START_CONTRACT: archiveSeek
+    //   PURPOSE: Archive actions of the camera screen (D-01): seek, pause / continue, live, retry, days dialog, day.
+    //   INPUTS: { ms: Long - timeline instant (archiveSeek); day: LocalDate (archiveSelectDay) }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: ArchiveCoordinator call; archive state + screen refresh; BLOCK_ARCHIVE_ACTION log; no-op without
+    //     an open screen
+    //   LINKS: ArchiveCoordinator
+    // END_CONTRACT: archiveSeek
+    fun archiveSeek(ms: Long) = archiveAction("seek") { it.seek(ms) }
+    fun archiveTogglePause() = archiveAction("toggle-pause") { it.togglePause() }
+    fun archiveGoLive() = archiveAction("live") { it.goLive() }
+    fun archiveRetry() = archiveAction("retry") { it.retry() }
+    fun archiveOpenDays() = archiveAction("open-days") { it.openDays() }
+    fun archiveCloseDays() = archiveAction("close-days") { it.closeDays() }
+    fun archiveSelectDay(day: LocalDate) = archiveAction("select-day") { it.selectDay(day) }
+
+    private inline fun archiveAction(name: String, block: (ArchiveCoordinator) -> Unit) {
+        // START_BLOCK_ARCHIVE_ACTION
+        val c = coordinator ?: return
+        Timber.d("[LiveView][vm][BLOCK_ARCHIVE_ACTION] action=%s", name)
+        block(c)
+        _archive.value = c.ui.value
+        refresh()
+        // END_BLOCK_ARCHIVE_ACTION
+    }
+
+    private fun initialArchive(): ArchiveUi {
+        val zone = env.zone()
+        val today = SdTime.localDate(env.wallNow(), zone)
+        val bounds = SdTime.dayBounds(today, zone)
+        return ArchiveUi.initial(today, bounds.first, bounds.last + 1)
     }
 
     fun toggleDebug() {
@@ -511,7 +571,7 @@ class LiveViewModel @Inject constructor(
             message = messageFor(state) ?: if (live) decoderProblem else null,
             soundVisible = live && soundSeen,
             muted = muted,
-            qualityVisible = live && quality.switchSupported && quality.observed != null,
+            qualityVisible = live && quality.switchSupported && quality.observed != null && !_archive.value.inArchive,
             qualityLabel = quality.observed?.name,
             qualityPending = quality.pending != null,
             debugExpanded = debugExpanded,
