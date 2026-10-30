@@ -1,5 +1,5 @@
 // FILE: SdTypes.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Value types and the session port of the SD card archive.
 //   SCOPE: Segment, SdStatus, IndexResult, SeekTarget, ArchiveLinkPort (narrow view of the live session),
@@ -24,13 +24,16 @@ import kotlinx.coroutines.flow.StateFlow
 //   SdStatus - NoCard | Abnormal(tfstat) | Ok | Unknown (no 817 reply).
 //   IndexResult - Ok(segments) | Timeout | Malformed | NotReady.
 //   SeekTarget - Archive(atMs) | Live | NoRecording.
-//   ArchiveLinkPort - what the archive needs from the current session (transport, order, replies, send, generation).
+//   ArchiveLinkPort - what the archive needs from the current session (transport, order, replies, send, generation,
+//     frame observation, units received).
 //   ArchiveSupport - transports that get the archive UI.
 //   sdStatusOf - 817 DeviceInfo to SdStatus.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-03: archive types and port contract (research Patterns 3-6).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-05 (checker addendum 1): ArchiveLinkPort.framesIn() so the playback start
+//     timeout counts only while units of any generation keep arriving (no units = supervisor stall / reconnect).
+//   PREVIOUS: v0.1.0 - GSD plan 04-03: archive types and port contract (research Patterns 3-6).
 // END_CHANGE_SUMMARY
 
 data class Segment(val startMs: Long, val endMs: Long)
@@ -70,6 +73,7 @@ interface ArchiveLinkPort {
     fun liveResolution(): Int           // 1 HD / 2 SD for 9030 / 9029
     fun expectGeneration(useCount: Int?)
     fun lastFrame(): FrameObservation?
+    fun framesIn(): Long                // video units of ANY generation received by the current session (MediaSession.framesIn)
     fun setStreamMode(mode: StreamMode)
 }
 

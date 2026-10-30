@@ -1,5 +1,5 @@
 // FILE: FakeArchivePort.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scriptable in-memory ArchiveLinkPort for archive JVM tests.
 //   SCOPE: records sent commands, scripted replies via onSend, refusable send, generation / stream mode capture.
@@ -19,11 +19,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 // START_MODULE_MAP
 //   FakeArchivePort - ArchiveLinkPort fake: sent, sendResult, onSend hook, reply(type, payload), useCounter,
-//     healthy override, expected generation, frame, modes, live, resolution.
+//     healthy override, expected generation, frame, modes, live, resolution, useCountAvailable, unitsFlowing /
+//     units (framesIn), events (ordered gate / mode / send trace).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-03: fake port for SdIndexRepository and later playback tests.
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-05: framesIn (units flowing switch), not-ready use counter, ordered events.
+//   PREVIOUS: v0.1.0 - GSD plan 04-03: fake port for SdIndexRepository and later playback tests.
 // END_CHANGE_SUMMARY
 
 class FakeArchivePort(
@@ -45,6 +47,13 @@ class FakeArchivePort(
     val modes = mutableListOf<StreamMode>()
     var live = true
     var resolution = 1
+    // false: nextUseCount() returns null (session not ready).
+    var useCountAvailable = true
+    // true: every framesIn() call sees one more unit (camera streaming something); false: counter frozen.
+    var unitsFlowing = true
+    var units = 0L
+    // Ordered trace of port calls: "gate:<uc|null>", "mode:<MODE>", "send:<type>".
+    val events = mutableListOf<String>()
 
     // Emits a reply into the shared flow (subscribers must already be collecting).
     fun reply(type: Int, payload: ByteArray) {
@@ -56,14 +65,25 @@ class FakeArchivePort(
 
     override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean {
         sent += PlaybackCmd(type, payload)
+        events += "send:$type"
         if (!sendResult) return false
         onSend(type, payload)
         return true
     }
 
-    override fun nextUseCount(): Int? = useCounter++
+    override fun nextUseCount(): Int? = if (useCountAvailable) useCounter++ else null
     override fun liveResolution(): Int = resolution
-    override fun expectGeneration(useCount: Int?) { expected = useCount }
+    override fun expectGeneration(useCount: Int?) {
+        expected = useCount
+        events += "gate:$useCount"
+    }
     override fun lastFrame(): FrameObservation? = frame
-    override fun setStreamMode(mode: StreamMode) { modes += mode }
+    override fun framesIn(): Long {
+        if (unitsFlowing) units++
+        return units
+    }
+    override fun setStreamMode(mode: StreamMode) {
+        modes += mode
+        events += "mode:$mode"
+    }
 }
