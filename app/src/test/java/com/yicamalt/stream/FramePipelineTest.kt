@@ -1,5 +1,5 @@
 // FILE: FramePipelineTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for VideoUnit -> DecodableFrame (decrypt check, framing, csd, codec mapping, pts, log).
 //   SCOPE: encrypted H.264 with right/wrong password, plain mode, H.265, unsupported codec once, length prefixes,
@@ -34,7 +34,8 @@ import javax.crypto.spec.SecretKeySpec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-05: synthetic pipeline scenarios, trace and redaction checks.
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-05: expectGeneration gate passes through the pipeline (dropped counted).
+//   PREVIOUS: v0.1.0 - GSD plan 02-05: synthetic pipeline scenarios, trace and redaction checks.
 // END_CHANGE_SUMMARY
 
 class FramePipelineTest {
@@ -214,6 +215,21 @@ class FramePipelineTest {
         pipe.onVideoUnit(VideoUnit(3, info(78, false, 11), p264))
         assertEquals(1, sink.frames.size)
         assertFalse(sink.frames.any { !it.isKeyFrame })
+    }
+
+    @Test
+    fun `expectGeneration passes through and is synchronized`() {
+        val sink = RecordingSink()
+        val pipe = FramePipeline(null, p2pEncrypt = false, sink = sink)
+        pipe.expectGeneration(4)
+        pipe.onVideoUnit(VideoUnit(2, info(78, true, 10, useCount = 3), plainI264))
+        assertTrue(sink.frames.isEmpty())
+        assertEquals(1, pipe.stats().dropped)
+        pipe.onVideoUnit(VideoUnit(2, info(78, true, 11, useCount = 4), plainI264))
+        assertEquals(1, sink.frames.size)
+        pipe.expectGeneration(null)
+        pipe.onVideoUnit(VideoUnit(2, info(78, true, 12, useCount = 3), plainI264))
+        assertEquals(2, sink.frames.size)
     }
 
     @Test

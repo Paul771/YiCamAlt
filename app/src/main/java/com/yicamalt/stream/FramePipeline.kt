@@ -160,6 +160,11 @@ class FramePipeline(
         snapshot = buildStats()
     }
 
+    @Synchronized
+    fun expectGeneration(useCount: Int?) {
+        error("RED stub")
+    }
+
     private fun buildStats() = PipelineStats(
         framesIn = framesIn,
         keyFrames = keyFrames,

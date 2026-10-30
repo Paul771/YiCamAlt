@@ -1,5 +1,5 @@
 // FILE: FrameAssemblerTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the keyframe gate, P-frame reorder and useCount generation filter.
 //   SCOPE: P before I (waits, overtaking P drained after the I), in-order and out-of-order P, duplicates, u16 wrap, MAX_PENDING overflow, generations, reset.
@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review HIGH-1: P frames that overtake their I frame (separate ch2 / ch3
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2):
+//     other generations dropped, gate change disarms and clears pending, low-byte wrap, null gate, reset keeps gate.
+//   PREVIOUS: v0.2.0 - Phase 2 review HIGH-1: P frames that overtake their I frame (separate ch2 / ch3
 //     readers) are kept and drained after the I; stale pending (seq <= I, u16 order, other generation) is dropped
 //     when the I arrives; P before the first I waits instead of being dropped at once.
 //   PREVIOUS: v0.1.0 - GSD plan 02-05: scripted ordering sequences.
@@ -196,4 +198,70 @@ class FrameAssemblerTest {
         assertEquals(1, a.dropped)
         assertEquals(listOf("P13"), labels(a.offer(p(13))))
     }
+
+    // START_BLOCK_GENERATION_GATE_TESTS
+    @Test
+    fun `gate drops other generations`() {
+        val a = FrameAssembler()
+        a.expectGeneration(5)
+        assertTrue(a.offer(i(9, useCount = 4)).isEmpty())
+        assertEquals(1, a.dropped)
+        assertEquals(listOf("I10"), labels(a.offer(i(10, useCount = 5))))
+        assertTrue(a.offer(p(11, useCount = 4)).isEmpty())
+        assertEquals(2, a.dropped)
+        assertEquals(0, a.pending)
+        assertEquals(listOf("P11"), labels(a.offer(p(11, useCount = 5))))
+    }
+
+    @Test
+    fun `gate change disarms`() {
+        val a = FrameAssembler()
+        a.offer(i(10, useCount = 5))
+        a.expectGeneration(6)
+        assertTrue(a.offer(p(12, useCount = 6)).isEmpty())
+        assertEquals(1, a.pending)
+        assertTrue(a.offer(p(11, useCount = 5)).isEmpty())
+        assertEquals(listOf("I11", "P12"), labels(a.offer(i(11, useCount = 6))))
+    }
+
+    @Test
+    fun `gate clears pending of other generations`() {
+        val a = FrameAssembler()
+        a.offer(i(10, useCount = 5))
+        a.offer(p(13, useCount = 5))
+        assertEquals(1, a.pending)
+        val before = a.dropped
+        a.expectGeneration(6)
+        assertEquals(0, a.pending)
+        assertEquals(before + 1, a.dropped)
+    }
+
+    @Test
+    fun `byte wrap`() {
+        val a = FrameAssembler()
+        a.expectGeneration(256)
+        assertEquals(listOf("I1"), labels(a.offer(i(1, useCount = 0))))
+        a.expectGeneration(255)
+        assertEquals(listOf("I2"), labels(a.offer(i(2, useCount = 255))))
+        assertTrue(a.offer(p(3, useCount = 0)).isEmpty())
+    }
+
+    @Test
+    fun `null gate keeps the generation filter of Phase 3`() {
+        val a = FrameAssembler()
+        a.expectGeneration(5)
+        a.expectGeneration(null)
+        assertEquals(listOf("I10"), labels(a.offer(i(10, useCount = 4))))
+        assertEquals(listOf("I20"), labels(a.offer(i(20, useCount = 9))))
+    }
+
+    @Test
+    fun `reset keeps the gate`() {
+        val a = FrameAssembler()
+        a.expectGeneration(7)
+        a.reset()
+        assertTrue(a.offer(i(10, useCount = 6)).isEmpty())
+        assertEquals(listOf("I11"), labels(a.offer(i(11, useCount = 7))))
+    }
+    // END_BLOCK_GENERATION_GATE_TESTS
 }

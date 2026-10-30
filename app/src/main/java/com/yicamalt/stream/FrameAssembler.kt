@@ -126,6 +126,10 @@ class FrameAssembler {
         return emptyList()
     }
 
+    fun expectGeneration(useCount: Int?) {
+        error("RED stub")
+    }
+
     // START_CONTRACT: reset
     //   PURPOSE: Re-arm the keyframe gate (decoder recreated or link restarted).
     //   INPUTS: none
