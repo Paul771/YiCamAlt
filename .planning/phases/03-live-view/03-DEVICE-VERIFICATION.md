@@ -27,6 +27,16 @@ Values (uid, DID, passwords, tokens) are deliberately not recorded here.
 | TNP camera "Спальня" (Phase 2 H1/H2 + H-L3 + TNP half of H-L4), 2026-10-25 | PASS (LAN, no RELAY) | `BLOCK_CONNECT result=ok`, `BLOCK_AUTH_REPLY authResult=0 version=2`, burst 4881,9029,768; first video 875 ms, decoder 1920x1080 HW H.264; audio AAC 16000 Hz mono `enc=true` (AES), AAC decoder + AudioTrack created after unmute, sound confirmed audible by the user; HD->SD (decoder 640x360) and back (1920x1080) via 4881; snapshot saved (281 KB); Home: closed in 374 ms, return `resumed=true`, Live again in ~0.7 s; audio not recreated after resume |
 | H-L9 Redaction sweep | PASS | `RealLogScanTest` over the pulled 849-line diag log: BUILD SUCCESSFUL |
 
+## Session 2026-10-30 (Mi 9 over USB, TNP "Спальня" on Wi-Fi; TUTK camera off)
+
+| Check | Result | Evidence |
+|---|---|---|
+| H-L8 Snapshot (not zoomed) | PASS at 1x; zoomed case still NOT verified | `BLOCK_SAVE_SNAPSHOT result=Saved bytes=247366`, JPEG 1920x1088 = stream frame. A double tap sent by adb did not visibly zoom (adb cannot drive a pinch), so "full frame while zoomed" stays open |
+| TNP auth after the camera was switched on | TRANSIENT FAILURE, then PASS | 08:47-08:51: ten `BLOCK_AUTH_REPLY authResult=1 WRONG_PASSWORD` over four manual retries (connect OK on LAN, 0.1-0.3 s). 13:53: `authResult=0 OK`, `BADGE state=Live` with no code change. The official app showed the same camera live at ~09:30 on another phone. Cause not established |
+| H-L5 Wi-Fi -> 4G | NOT POSSIBLE on this phone | SIM present (beeline) but `mDataRegState=OUT_OF_SERVICE`, only Wi-Fi network up even with `svc data enable` |
+| H-L6 Parallel use with the official app (TNP) | NOT VERIFIED | Our link closed on Home (`BLOCK_CLOSE reason=background`, 1.4 s), but the official app opened on a full-screen ad and the tap meant to close it opened an ad page in the browser; stopped before the camera screen. Do it by hand |
+| Password shape log | ADDED | `BLOCK_RESOLVE_P2P_CREDENTIALS` now carries `pwdSource=default\|decrypted\|undecryptable pwdLen=N` (no value) to tell a missing cloud password from a rejected one next time |
+
 ## Not verified (pending)
 
 - H-L5 Wi-Fi→4G (the USB phone has Wi-Fi only). 

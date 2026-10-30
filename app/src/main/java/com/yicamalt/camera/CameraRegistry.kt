@@ -280,6 +280,8 @@ class CameraRegistry @Inject constructor(
             Timber.d(
                 "[Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport=${decision.transport} via=${decision.via} " +
                     "listType=${record.type ?: "-"} tnpInfo=${decision.tnpInfo} hasPassword=${password != null} " +
+                    "pwdSource=${if (record.passwordHex.isNullOrBlank()) "default" else if (password == null) "undecryptable" else "decrypted"} " +
+                    "pwdLen=${password?.length ?: 0} " +
                     "needsPincode=${record.hasPincode}",
             )
             P2pCredentials(
