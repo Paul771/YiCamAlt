@@ -212,6 +212,16 @@ class LiveSessionSupervisor(
         if (send && link != null) sendQuality(link, q, "manual") else publishQuality()
     }
 
+    val liveEpoch: StateFlow<Int> get() = error("RED stub")
+    val ioCtrlReplies: kotlinx.coroutines.flow.SharedFlow<com.yicamalt.stream.LinkIoCtrlReply> get() = error("RED stub")
+    fun setStreamMode(mode: com.yicamalt.stream.StreamMode): Unit = error("RED stub")
+    internal fun liveLinkOrNull(): CameraLink? = error("RED stub")
+    internal fun sessionOrNull(): MediaSession? = error("RED stub")
+    internal fun liveResolution(): Int = error("RED stub")
+    internal fun linkHealthy(): Boolean = error("RED stub")
+    fun archivePort(transport: com.yicamalt.camera.TransportType, encrypted: Boolean): com.yicamalt.archive.ArchiveLinkPort =
+        SupervisorArchivePort(this, transport, encrypted)
+
     private fun isCurrent(my: Int) = synchronized(lock) { token == my }
 
     private fun publish(my: Int, s: SupervisorState) {
