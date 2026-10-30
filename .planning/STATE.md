@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-04-PLAN.md
-last_updated: "2026-10-30T16:18:26.109Z"
+stopped_at: Completed 04-06-PLAN.md
+last_updated: "2026-10-30T21:36:25.074Z"
 last_activity: 2026-10-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 50
-  completed_plans: 45
+  completed_plans: 46
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 7 of 10
+Plan: 8 of 10
 Status: Ready to execute
 Last activity: 2026-10-30
 
@@ -84,6 +84,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P03 | 20min | 3 tasks | 9 files |
 | Phase 04 P05 | 35min | 3 tasks | 11 files |
 | Phase 04 P04 | 45min | 3 tasks | 9 files |
+| Phase 04 P06 | 75min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -152,6 +153,9 @@ Recent decisions affecting current work:
 - [Phase 04]: PlaybackController serialises calls/ticker/collector with one lock; timers keyed on linkHealthy() only
 - [Phase 04]: 04-04: TNP camera has no SD card (tfstat=5, verified); TUTK unverified (unreachable); SD-01..SD-04 device scenarios need a microSD before 04-09, H-SD6 checkable on TNP
 - [Phase 04]: 04-04: WIRE_IS_UTC stays true (no deltaS; TNP 817 isUtc=1 supporting only); BOUNDARY_MS 8000 and both transports kept (unverified)
+- [Phase 04]: 04-06: supervisor stall window counts from max(last frame growth, last setStreamMode); HD/SD requests only in LIVE
+- [Phase 04]: 04-06: TUTK hide needs Failed(NO_FRAMES) + no Playing ever + liveThroughout (set on entry into Starting from non-Starting, cleared by unhealthy or liveEpoch change) + units arriving
+- [Phase 04]: 04-06: openDays refresh re-fetches only the index, keeps old data on failure; selected day follows the cursor only on a cursor day change
 
 ### Pending Todos
 
@@ -165,6 +169,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-30T16:18:18.233Z
-Stopped at: Completed 04-04-PLAN.md
+Last session: 2026-10-30T21:36:25.063Z
+Stopped at: Completed 04-06-PLAN.md
 Resume file: None

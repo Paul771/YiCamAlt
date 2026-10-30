@@ -130,7 +130,7 @@ Plans:
 - [x] 04-03-PLAN.md — Archive core: port contract, SdTimeline (days/segments/seek), PlaybackCommands, SdIndexRepository
 - [x] 04-04-PLAN.md — Device probe on both cameras (SD status, index, play/pause/live), 04-PROBE.md, wire-time decision
 - [x] 04-05-PLAN.md — useCount generation gate, media-session frame observation, PlaybackController state machine
-- [ ] 04-06-PLAN.md — Mode-aware supervisor + SupervisorArchivePort, ArchiveCoordinator, LiveViewModel archive API
+- [x] 04-06-PLAN.md — Mode-aware supervisor + SupervisorArchivePort, ArchiveCoordinator, LiveViewModel archive API
 - [ ] 04-07-PLAN.md — Archive UI under the video: timeline ruler, day month-grid dialog, pause/«Живой», D-07 texts
 - [ ] 04-08-PLAN.md — GRACE docs sync (M-SD-ARCHIVE, V-M-SD-ARCHIVE, graph) + 04-HUMAN-UAT.md
 - [ ] 04-09-PLAN.md — Device verification H-SD1..H-SD9, D-06 decision for TUTK
