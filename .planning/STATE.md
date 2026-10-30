@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-00-PLAN.md
-last_updated: "2026-10-30T15:09:48.314Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-10-30T15:21:00.897Z"
 last_activity: 2026-10-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 50
-  completed_plans: 40
+  completed_plans: 41
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-10-30
 
@@ -79,6 +79,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P11 | 20min | 2 tasks | 3 files |
 | Phase 03 P12 | 45min | 2 tasks | 5 files |
 | Phase 04 P00 | 35min | 3 tasks | 7 files |
+| Phase 04 P01 | 15min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Phase 3 GRACE V-M records stay in-progress (JVM-verified); H-L1..H-L9 pending in 03-HUMAN-UAT.md, none passed
 - [Phase 04]: TNP canSend() gate shared by requestResolution, sendIoCtrl, nextUseCount; one link-wide useCount after burst 1/2
 - [Phase 04]: TNP ioCtrlReplies publishes only authResult-0 ch0 replies other than 4882/9033; TNP setStreamMode stays no-op
+- [Phase 04]: SD wire time = UTC fields (SdTime.WIRE_IS_UTC seam); dayBounds half-open via atStartOfDay
+- [Phase 04]: parseTnpIndex: <12 B null, truncated -> empty (vendor); parseTutkIndexPage null unless size/12-1 == count
 
 ### Pending Todos
 
@@ -151,6 +154,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-30T15:09:48.308Z
-Stopped at: Completed 04-00-PLAN.md
+Last session: 2026-10-30T15:21:00.891Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
