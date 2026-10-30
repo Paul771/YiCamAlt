@@ -1,8 +1,9 @@
 // FILE: LiveProbeScreen.kt
-// VERSION: 0.1.4
+// VERSION: 0.1.5
 // START_MODULE_CONTRACT
 //   PURPOSE: Minimal debug live screen for one camera: SurfaceView video, Connect / Stop, "relay only" toggle,
-//     HEVC decoder info, explicit message and the value-free status line (full live view is GSD Phase 3).
+//     HEVC decoder info, explicit message and the value-free status line (full live view is GSD Phase 3); a second,
+//     horizontally scrollable row of debug SD archive probe buttons (plan 04-04).
 //   SCOPE: binds LiveProbeViewModel to the composition: open on enter; close on back ("user"), on ON_STOP
 //     ("background") and when the screen leaves composition ("screen-left"); SurfaceHolder callbacks feed
 //     attachSurface / detachSurface. Never shows the device id, DID, password, InitString, license or IP.
@@ -16,6 +17,7 @@ package com.yicamalt.ui.live
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,12 +52,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
 // START_MODULE_MAP
-//   LiveProbeScreen - debug live screen: SurfaceView + Connect / Stop / relay toggle (disabled for TUTK) + message +
-//     status line.
+//   LiveProbeScreen - debug live screen: SurfaceView + Connect / Stop / relay toggle (disabled for TUTK) + SD probe
+//     buttons (enabled = ui.sdProbeEnabled) + message + status line.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.4 - "Только relay" checkbox disabled for TUTK cameras (ui.relayAvailable=false; the TUTK connect
+//   LAST_CHANGE: v0.1.5 - GSD plan 04-04: SD archive probe row «SD инфо», «SD индекс», «SD старт», «Пауза»,
+//     «Продолжить», «Live», «Граница» -> LiveProbeViewModel.sdProbe(action), enabled only while streaming.
+//   PREVIOUS: v0.1.4 - "Только relay" checkbox disabled for TUTK cameras (ui.relayAvailable=false; the TUTK connect
 //     call has no relay flag) with the hint "Для TUTK недоступно" under the row. White Surface and setZOrderOnTop
 //     unchanged.
 //   PREV_CHANGE: v0.1.3 - SurfaceView.setZOrderOnTop(true): with the default z-order the whole window rendered black on
@@ -133,6 +137,16 @@ fun LiveProbeScreen(
             Button(onClick = { viewModel.connect() }, enabled = ui.canConnect) { Text("Подключить") }
             OutlinedButton(onClick = { viewModel.stop() }, enabled = ui.canStop) { Text("Стоп") }
         }
+        // START_BLOCK_SD_PROBE_ROW
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SD_PROBE_BUTTONS.forEach { (label, action) ->
+                OutlinedButton(onClick = { viewModel.sdProbe(action) }, enabled = ui.sdProbeEnabled) { Text(label) }
+            }
+        }
+        // END_BLOCK_SD_PROBE_ROW
         if (!ui.relayAvailable) {
             // TUTK connect has no relay flag: the toggle would do nothing, so it is disabled with a hint.
             Text(LiveProbeTexts.RELAY_TUTK_UNAVAILABLE, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
@@ -146,3 +160,13 @@ fun LiveProbeScreen(
     }
     // END_BLOCK_RENDER_PROBE
 }
+
+private val SD_PROBE_BUTTONS = listOf(
+    "SD инфо" to SdProbeAction.INFO,
+    "SD индекс" to SdProbeAction.INDEX,
+    "SD старт" to SdProbeAction.PLAY_NEWEST,
+    "Пауза" to SdProbeAction.PAUSE,
+    "Продолжить" to SdProbeAction.RESUME,
+    "Live" to SdProbeAction.LIVE,
+    "Граница" to SdProbeAction.BOUNDARY,
+)

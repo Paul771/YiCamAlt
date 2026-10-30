@@ -1,5 +1,5 @@
 // FILE: LiveProbeViewModel.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Debug live-probe orchestration for one camera: credentials -> CameraLinkFactory -> FramePipeline ->
 //     VideoDecoder -> Surface, with a value-free status line and explicit Russian refusal / error texts.
@@ -8,9 +8,11 @@
 //     stop / close (link closed once, decoder released once, idempotent, cancels a pending retry), Connect disabled
 //     until the closed link reports Closed / Failed, surface attach / detach, decoder reset -> pipeline reset, 1 s
 //     status ticker only while a session is active. No reconnect after any other error, no retry loop.
+//     Debug SD archive probe (plan 04-04): a SdProbeTee in front of the pipeline, a counting audio sink, and one
+//     SdProbe per streaming session (sdProbe(action), LiveProbeUi.sdProbeEnabled).
 //   DEPENDS: M-STREAM-CORE (CameraLink ports, FramePipeline), M-TNP-LINK (CameraLinkFactory binding),
 //     M-MEDIA-RENDER (VideoDecoder, DecoderStatus, DecoderCatalog), M-P2P-CREDS (P2pCredentialsSource),
-//     M-P2P-NATIVE (PpppCodes), M-TUTK-LINK (TutkCodes)
+//     M-P2P-NATIVE (PpppCodes), M-TUTK-LINK (TutkCodes), M-SD-ARCHIVE (via SdProbe)
 //   LINKS: M-UI-LIVE-PROBE, V-M-UI-LIVE-PROBE
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -27,6 +29,7 @@ import com.yicamalt.media.DecoderStatus
 import com.yicamalt.media.VideoDecoder
 import com.yicamalt.p2p.PpppCodes
 import com.yicamalt.p2p.tutk.TutkCodes
+import com.yicamalt.stream.AudioUnitSink
 import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.CameraLinkFactory
 import com.yicamalt.stream.DecodableFrame
@@ -66,9 +69,10 @@ import javax.inject.Inject
 //   VideoSinkPort - the decoder surface the VM uses (status, resetEvents, surface attach/detach, release, frames).
 //   VideoSinkProvider - injectable factory of VideoSinkPort (VideoDecoderAdapter over a new VideoDecoder).
 //   HevcProbe - injectable "HEVC-декодер: <name> (hw|sw)" / "HEVC-декодер: нет" text from DecoderCatalog.
-//   LiveProbeUi - title, canConnect, canStop, statusLine, message, forceRelay, hevcInfo, relayAvailable (false for TUTK).
+//   LiveProbeUi - title, canConnect, canStop, statusLine, message, forceRelay, hevcInfo, relayAvailable (false for TUTK),
+//     sdProbeEnabled (a streaming session with its SdProbe exists).
 //   LiveProbeViewModel - open / setForceRelay (ignored for TUTK) / connect / stop / onStop / close / attachSurface /
-//     detachSurface.
+//     detachSurface / sdProbe(action).
 //   linkErrorMessage - Russian text for every LinkErrorKind (UNSUPPORTED_TRANSPORT and the INTERNAL code name depend
 //     on the transport).
 //   codeName - symbolic name of a vendor code from the table of the camera's transport (TutkCodes for TUTK, else
@@ -77,7 +81,11 @@ import javax.inject.Inject
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - device fix: "Только relay" had no effect for TUTK (the TUTK connect call has no relay flag)
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-04: SD archive probe actions (debug). The link starts with a SdProbeTee that
+//     forwards every unit to the FramePipeline, a counting audio sink is set before start (count only, no decode);
+//     on Streaming the session gets one SdProbe (scope = session scope on Dispatchers.IO, 5 s channel ticker);
+//     sdProbe(action) is a no-op without it.
+//   PREVIOUS: v0.3.0 - device fix: "Только relay" had no effect for TUTK (the TUTK connect call has no relay flag)
 //     yet the log said relayForced=yes with mode=LAN. For TUTK the toggle is forced false (open, setForceRelay,
 //     connect), LiveProbeUi.relayAvailable=false disables the checkbox with RELAY_TUTK_UNAVAILABLE; logs and the
 //     status line show relayForced=no. TNP unchanged.
@@ -153,6 +161,8 @@ data class LiveProbeUi(
     val hevcInfo: String,
     // False for TUTK: the relay-only toggle is shown disabled with LiveProbeTexts.RELAY_TUTK_UNAVAILABLE.
     val relayAvailable: Boolean = true,
+    // Debug SD probe buttons: a streaming session with its SdProbe exists.
+    val sdProbeEnabled: Boolean = false,
 )
 
 // START_CONTRACT: linkErrorMessage
@@ -204,9 +214,11 @@ class LiveProbeViewModel @Inject constructor(
         val creds: P2pCredentials,
         val decoder: VideoSinkPort,
         val pipeline: FramePipeline,
+        val tee: SdProbeTee,
         val scope: CoroutineScope,
     ) {
         val lock = Any()
+        var probe: SdProbe? = null // Main
         var ended = false // lock
         var link: CameraLink? = null // lock
         val linkClosed = AtomicBoolean(false)
@@ -314,9 +326,10 @@ class LiveProbeViewModel @Inject constructor(
     private fun startSession(c: P2pCredentials, relay: Boolean, attempt: Int, press: Int) {
         val decoder = sinks.create()
         val pipeline = FramePipeline(c.password, c.p2pEncrypt, decoder)
+        val tee = SdProbeTee(pipeline, System::currentTimeMillis)
         val parent = viewModelScope.coroutineContext.job
         val s = Session(
-            press, attempt, relay, c, decoder, pipeline,
+            press, attempt, relay, c, decoder, pipeline, tee,
             CoroutineScope(viewModelScope.coroutineContext + SupervisorJob(parent)),
         )
         session = s
@@ -362,12 +375,29 @@ class LiveProbeViewModel @Inject constructor(
             }
             s.scope.launch(Dispatchers.Main) { link.state.collect { onLinkState(s, it) } }
             synchronized(s.lock) {
-                if (!s.ended) link.start(pipeline)
+                if (!s.ended) {
+                    // Debug SD probe: audio units are only counted (no decode); the tee forwards every video unit.
+                    link.setAudioSink(AudioUnitSink { tee.onAudioUnit() })
+                    link.start(tee)
+                }
             }
         }
     }
 
     fun stop() = close("user")
+
+    // START_CONTRACT: sdProbe
+    //   PURPOSE: Debug SD archive probe button (816 info, index, play newest, pause, resume, live, boundary).
+    //   INPUTS: { action: SdProbeAction }
+    //   OUTPUTS: none (value-free [Archive][probe] log lines)
+    //   SIDE_EFFECTS: SdProbe.run on the current streaming session; no-op without one
+    //   LINKS: M-UI-LIVE-PROBE, M-SD-ARCHIVE, V-M-UI-LIVE-PROBE
+    // END_CONTRACT: sdProbe
+    fun sdProbe(action: SdProbeAction) {
+        val s = session ?: return
+        if (linkState !is LinkState.Streaming) return
+        s.probe?.run(action)
+    }
 
     fun onStop() = close("background")
 
@@ -422,7 +452,10 @@ class LiveProbeViewModel @Inject constructor(
         linkState = if (st is LinkState.Idle) LinkState.Connecting else st
         when (st) {
             is LinkState.Connected -> lastInfo = st.info
-            is LinkState.Streaming -> lastInfo = st.info
+            is LinkState.Streaming -> {
+                lastInfo = st.info
+                ensureProbe(s)
+            }
             is LinkState.Failed -> linkMessage = linkErrorMessage(st.error, creds?.transport)
             is LinkState.Closed -> linkMessage = if (st.reason == "kicked") LiveProbeTexts.KICKED else null
             else -> Unit
@@ -436,6 +469,15 @@ class LiveProbeViewModel @Inject constructor(
         publish()
     }
     // END_BLOCK_LINK_STATE
+
+    // Main thread. One SdProbe per streaming session; its coroutines run off Main and end with the session scope.
+    private fun ensureProbe(s: Session) {
+        if (s.probe != null) return
+        val link = synchronized(s.lock) { s.link } ?: return
+        val port = ProbeArchivePort(link, s.creds.transport, s.creds.p2pEncrypt, s.tee)
+        s.probe = SdProbe(port, s.tee, CoroutineScope(s.scope.coroutineContext + Dispatchers.IO), System::currentTimeMillis)
+            .also { it.startChannelTicker() }
+    }
 
     // START_BLOCK_RETRY
     // START_CONTRACT: scheduleRetry
@@ -540,6 +582,7 @@ class LiveProbeViewModel @Inject constructor(
             forceRelay = forceRelay,
             hevcInfo = hevcInfo,
             relayAvailable = relayAvailable(creds),
+            sdProbeEnabled = s?.probe != null && linkState is LinkState.Streaming,
         )
     }
 

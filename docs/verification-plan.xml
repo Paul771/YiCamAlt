@@ -856,6 +856,7 @@
     <V-M-UI-LIVE-PROBE MODULE="M-UI-LIVE-PROBE" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/ui/live/LiveProbeViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/live/SdProbeTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.ui.live.*"</check-1>
@@ -877,6 +878,8 @@
         <scenario-13 kind="success" evidence-type="deterministic">After Stop, Connect stays disabled until the closed link reports Closed / Failed, then one press opens again (Phase 2 review LOW-8)</scenario-13>
         <scenario-14 kind="success" evidence-type="deterministic">Status auth= is "-" before streaming, "pending" while Streaming(authOk=false), "ok" / "fail" only when known; TUTK codes named from TutkCodes (error=AV_ER_SESSION_CLOSE_BY_REMOTE, INTERNAL text with IOTC names) (Phase 2 review LOW-10)</scenario-14>
         <scenario-15 kind="failure" evidence-type="deterministic">TUTK camera: "Только relay" is unavailable (LiveProbeUi.relayAvailable=false, checkbox disabled with "Для TUTK недоступно"); setForceRelay(true) is ignored, factory gets LinkOptions(false), status line relayForced=no and BLOCK_CONNECT_PRESSED relayForced=false; TNP still passes LinkOptions(true) (device fix 2026-10-20)</scenario-15>
+        <scenario-16 kind="success" evidence-type="deterministic">SD probe (plan 04-04): SdProbeTee forwards every unit unchanged and counts per channel / recorded / other generation; first recorded key frame of the expected generation reported once; max jump between recorded key frames; INFO logs 817 fields value-free (timeout after 10 s); INDEX + PLAY_NEWEST sends PlaybackCommands.seek with nextUseCount and ARCHIVE mode, FIRST_FRAME deltaS; PAUSE sends 767 + stop record, PAUSED, frame counts; LIVE sends stop record + 9029, LIVE, firstLiveMs (SdProbeTest)</scenario-16>
+        <scenario-17 kind="success" evidence-type="trace">Device: SD probe buttons on each camera produce [Archive][probe][BLOCK_SD_INFO / BLOCK_SD_INDEX / BLOCK_SD_FIRST_FRAME / BLOCK_SD_PAUSE / BLOCK_SD_LIVE / BLOCK_SD_BOUNDARY / BLOCK_SD_CHANNELS] lines recorded in .planning/phases/04-sd-archive/04-PROBE.md</scenario-17>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveProbe][vm][BLOCK_OPEN_PROBE]</marker-1>

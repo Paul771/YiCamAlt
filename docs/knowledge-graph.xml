@@ -576,7 +576,8 @@
       <purpose>Debug live screen for Phase 2 checkpoints: open from camera list, Connect / force-relay / Stop, SurfaceView, mode / codec / decoder / fps / decryptOk status line, close on leave.</purpose>
       <path>app/src/main/java/com/yicamalt/ui/live/LiveProbeScreen.kt</path>
       <path>app/src/main/java/com/yicamalt/ui/live/LiveProbeViewModel.kt</path>
-      <depends>M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST</depends>
+      <path>app/src/main/java/com/yicamalt/ui/live/SdProbe.kt</path>
+      <depends>M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST, M-SD-ARCHIVE</depends>
       <verification-ref>V-M-UI-LIVE-PROBE</verification-ref>
       <annotations>
         <export-LiveProbeScreen PURPOSE="Compose debug screen" />
@@ -587,12 +588,17 @@
         <export-linkErrorMessage PURPOSE="LinkErrorKind to Russian text" />
         <export-codeName PURPOSE="Vendor code name by transport (TutkCodes / PpppCodes)" />
         <export-LiveProbeTexts PURPOSE="Fixed Russian refusal texts" />
+        <export-SdProbeTee PURPOSE="Debug tee before the FramePipeline: per-channel / generation / audio counters, first recorded and first live key frame, max recorded timestamp jump" />
+        <export-ProbeArchivePort PURPOSE="ArchiveLinkPort over the probe CameraLink (linkHealthy = isLive, framesIn = tee units)" />
+        <export-SdProbe PURPOSE="Debug SD archive actions INFO / INDEX / PLAY_NEWEST / PAUSE / RESUME / LIVE / BOUNDARY with value-free [Archive][probe][BLOCK_SD_*] lines" />
       </annotations>
       <change-summary>2026-10-15 GSD plan 02-09: LiveProbeViewModel.kt + LiveProbeScreen.kt implemented; opened from CameraListScreen row tap via AppShellScreen (onOpenCamera). STATUS stays planned until the device checkpoint (02-12).</change-summary>
       <tests>app/src/test/java/com/yicamalt/ui/live/LiveProbeViewModelTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/ui/live/SdProbeTest.kt</tests>
       <change-summary phase="02-p2p" plan="02-12" verification="in-progress">2026-10-16 GRACE sync: STATUS implemented (LiveProbeViewModelTest 17); device proof in 02-DEVICE-VERIFICATION.md.</change-summary>
       <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes (LiveProbeViewModel v0.2.0): MED-4 one automatic retry per press after WRONG_PASSWORD (2 s, refreshCredentials, new session; cancelled by Stop), LOW-8 Connect disabled until the closed link is terminal, LOW-10 auth=pending and TUTK code names. LiveProbeViewModelTest 25.</change-summary>
       <change-summary phase="03-live-view" plan="03-11" verification="unchanged">2026-10-23: kept as debug screen, reachable by long-press on a camera row; code unchanged in Phase 3.</change-summary>
+      <change-summary phase="04-sd-archive" plan="04-04" verification="jvm-passed">2026-10-30: debug SD archive probe (SdProbe.kt) on the long-press screen: SdProbeTee before the pipeline, counting audio sink, SdProbe per streaming session, second button row (SD инфо / SD индекс / SD старт / Пауза / Продолжить / Live / Граница). SdProbeTest 10. Device run pending (04-PROBE.md).</change-summary>
     </M-UI-LIVE-PROBE>
 
     <M-TUTK-LINK NAME="TutkCameraLink" TYPE="CORE_LOGIC" STATUS="implemented">
