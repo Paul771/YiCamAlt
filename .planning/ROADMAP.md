@@ -128,7 +128,7 @@ Plans:
 - [x] 04-01-PLAN.md — SdArchiveCodec + SdTime: byte-exact archive payloads/parsers, UTC wire time (TDD)
 - [x] 04-02-PLAN.md — TUTK link: generic IOCTRL, 793 replies, shared useCount, -20012 limit only in LIVE
 - [x] 04-03-PLAN.md — Archive core: port contract, SdTimeline (days/segments/seek), PlaybackCommands, SdIndexRepository
-- [ ] 04-04-PLAN.md — Device probe on both cameras (SD status, index, play/pause/live), 04-PROBE.md, wire-time decision
+- [x] 04-04-PLAN.md — Device probe on both cameras (SD status, index, play/pause/live), 04-PROBE.md, wire-time decision
 - [x] 04-05-PLAN.md — useCount generation gate, media-session frame observation, PlaybackController state machine
 - [ ] 04-06-PLAN.md — Mode-aware supervisor + SupervisorArchivePort, ArchiveCoordinator, LiveViewModel archive API
 - [ ] 04-07-PLAN.md — Archive UI under the video: timeline ruler, day month-grid dialog, pause/«Живой», D-07 texts
@@ -171,6 +171,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
 | 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
-| 4. Архив SD-карты | 4/10 | In Progress|  |
+| 4. Архив SD-карты | 6/10 | In Progress|  |
 | 5. Лента событий | 0/TBD | Not started | - |
 | 6. Релизная сборка и проверка на телефоне | 0/TBD | Not started | - |
