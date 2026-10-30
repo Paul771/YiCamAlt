@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-12-PLAN.md
-last_updated: "2026-10-30T11:33:49.950Z"
+stopped_at: Completed 04-00-PLAN.md
+last_updated: "2026-10-30T15:09:48.314Z"
 last_activity: 2026-10-30
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 40
-  completed_plans: 39
+  total_plans: 50
+  completed_plans: 40
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 03 — live-view
+**Current focus:** Phase 4 — Архив SD-карты
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
+Phase: 4 (Архив SD-карты) — EXECUTING
+Plan: 2 of 10
 Status: Ready to execute
 Last activity: 2026-10-30
 
@@ -78,6 +78,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P10 | 45min | 2 tasks | 7 files |
 | Phase 03 P11 | 20min | 2 tasks | 3 files |
 | Phase 03 P12 | 45min | 2 tasks | 5 files |
+| Phase 04 P00 | 35min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-11: video slot stable across portrait/fullscreen; fullscreen exit forces PORTRAIT then OrientationEventListener restores UNSPECIFIED
 - [Phase 03]: 03-11: camera tap opens LiveViewScreen, long press opens the debug LiveProbeScreen
 - [Phase 03]: Phase 3 GRACE V-M records stay in-progress (JVM-verified); H-L1..H-L9 pending in 03-HUMAN-UAT.md, none passed
+- [Phase 04]: TNP canSend() gate shared by requestResolution, sendIoCtrl, nextUseCount; one link-wide useCount after burst 1/2
+- [Phase 04]: TNP ioCtrlReplies publishes only authResult-0 ch0 replies other than 4882/9033; TNP setStreamMode stays no-op
 
 ### Pending Todos
 
@@ -148,6 +151,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T10:07:08.832Z
-Stopped at: Completed 03-12-PLAN.md
+Last session: 2026-10-30T15:09:48.308Z
+Stopped at: Completed 04-00-PLAN.md
 Resume file: None

@@ -124,7 +124,7 @@ Plans:
   4. Если SD-карты нет или за день нет записей, пользователь видит понятное состояние, а не пустую шкалу или зависание
 **Plans**: 10 plans
 Plans:
-- [ ] 04-00-PLAN.md — CameraLink archive port (sendIoCtrl, replies, useCount, stream mode) + TNP ch4/5/7, generic IOCTRL
+- [x] 04-00-PLAN.md — CameraLink archive port (sendIoCtrl, replies, useCount, stream mode) + TNP ch4/5/7, generic IOCTRL
 - [ ] 04-01-PLAN.md — SdArchiveCodec + SdTime: byte-exact archive payloads/parsers, UTC wire time (TDD)
 - [ ] 04-02-PLAN.md — TUTK link: generic IOCTRL, 793 replies, shared useCount, -20012 limit only in LIVE
 - [ ] 04-03-PLAN.md — Archive core: port contract, SdTimeline (days/segments/seek), PlaybackCommands, SdIndexRepository
