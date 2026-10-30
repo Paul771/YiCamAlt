@@ -1,5 +1,5 @@
 // FILE: TutkCameraLinkTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TutkCameraLink and TutkLinkFactory over FakeTutkNative: vendor call order,
 //     nonce + HMAC auth, start command, LE frame heads, mode mapping, failure codes, frame drop rule, no-data bound,
@@ -21,16 +21,24 @@ import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.FrameHeadCodec
 import com.yicamalt.stream.IoCtrlMessages
 import com.yicamalt.stream.LinkError
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
+import com.yicamalt.stream.StreamMode
 import com.yicamalt.stream.VideoUnit
 import com.yicamalt.stream.VideoUnitSink
 import com.yicamalt.stream.YiP2pAuth
 import com.yicamalt.test.RedactionFixtures
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onSubscription
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -43,6 +51,8 @@ import java.nio.ByteOrder
 import java.util.Random
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -62,10 +72,17 @@ import java.util.concurrent.atomic.AtomicLong
 //   phase 3 tests - audio sink -> 768 + cleanAudioBuf + rxa units (LE, unencrypted); no sink -> no 768 / rxa; audio
 //     and ioctrl end codes end only their loop; audio no-data pacing; 4881 LE via tx with useCount 2, 3; null before
 //     start / after close; teardown joins rx / rxa / rxc / tx before stop; blocked tx defers the registry.
+//   collectReplies - background collector of ioCtrlReplies, subscribed before return.
+//   phase 4 tests - sendIoCtrl false before the start command, true after (on -tx, payload copied); ioCtrlReplies
+//     publish every reply except 4882; nextUseCount shares the useCount with requestResolution; transportBigEndian
+//     false; PAUSED / ARCHIVE suspend the -20012 limit, back to LIVE restores it; BLOCK_SEND_IOCTRL /
+//     BLOCK_IOCTRL_REPLY / BLOCK_STREAM_MODE markers value-free.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 03-04: TUTK audio reader, IOCTRL reader, in-session 4881 and extended teardown.
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-02: archive port on TUTK (generic IOCTRL, reply flow, shared useCount,
+//     stream mode suspending the -20012 limit).
+//   PREVIOUS: v0.3.0 - GSD plan 03-04: TUTK audio reader, IOCTRL reader, in-session 4881 and extended teardown.
 //   PREVIOUS: v0.2.0 - Phase 2 review: vendor fatal read codes and -20001 buffer growth (MED-5), late
 //     avClientStart2 after close (MED-6), thread guard / empty password (MED-7), deferred registry release (LOW-8),
 //     vendor stop only after the reader left avRecvFrameData2 (LOW-9).
@@ -913,10 +930,148 @@ class TutkCameraLinkTest {
     }
     // END_BLOCK_PHASE3_TESTS
 
+    // START_BLOCK_PHASE4_TESTS
+    // Collects ioCtrlReplies on a background scope; the subscription is live before return.
+    private fun collectReplies(link: CameraLink): Pair<CopyOnWriteArrayList<LinkIoCtrlReply>, CoroutineScope> {
+        val got = CopyOnWriteArrayList<LinkIoCtrlReply>()
+        val scope = CoroutineScope(Dispatchers.Default)
+        val subscribed = CountDownLatch(1)
+        link.ioCtrlReplies.onSubscription { subscribed.countDown() }.onEach { got += it }.launchIn(scope)
+        assertTrue(subscribed.await(2, TimeUnit.SECONDS), "ioCtrlReplies subscription")
+        return got to scope
+    }
+
+    @Test
+    fun `sendIoCtrl before the start command returns false`() {
+        val gate = CountDownLatch(1)
+        val fake = fake().apply { clientStartGate = gate }
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        assertFalse(link.sendIoCtrl(ARCHIVE_LIST, ByteArray(24)))
+        link.start(RecordingSink())
+        awaitTrue { fake.callCount("clientStart") == 1 }
+        assertFalse(link.sendIoCtrl(ARCHIVE_LIST, ByteArray(24)))
+        gate.countDown()
+        awaitState(link) { it is LinkState.Streaming }
+        assertEquals(0, fake.sentIoCtrl.count { it.first == ARCHIVE_LIST })
+    }
+
+    @Test
+    fun `sendIoCtrl after start goes out on tx`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        val payload = ByteArray(24) { (it * 3 + 1).toByte() }
+        awaitTrue { link.sendIoCtrl(ARCHIVE_LIST, payload) }
+        payload.fill(0)
+        awaitTrue { fake.sentIoCtrl.any { it.first == ARCHIVE_LIST } }
+        val i = fake.sentIoCtrl.indexOfFirst { it.first == ARCHIVE_LIST }
+        assertArrayEquals(ByteArray(24) { (it * 3 + 1).toByte() }, fake.sentIoCtrl[i].second)
+        assertTrue(fake.sendThreads[i].endsWith("-tx"), fake.sendThreads.toString())
+        assertEquals(1, fake.sentIoCtrl.count { it.first == ARCHIVE_LIST })
+    }
+
+    @Test
+    fun `replies except 4882 are published`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        val (got, scope) = collectReplies(link)
+        try {
+            link.start(RecordingSink())
+            awaitState(link) { it is LinkState.Streaming }
+            fake.ioCtrlQueue += FakeTutkNative.IoCtrlReply(ARCHIVE_PAGE, ByteArray(36) { it.toByte() })
+            fake.ioCtrlQueue += FakeTutkNative.IoCtrlReply(IoCtrlMessages.SET_RESOLUTION_RESP, ByteArray(8))
+            fake.ioCtrlQueue += FakeTutkNative.IoCtrlReply(EVENT_REPLY, ByteArray(344) { 7 })
+            awaitTrue { fake.ioCtrlQueue.isEmpty() && got.size >= 2 }
+            Thread.sleep(50)
+            assertEquals(listOf(ARCHIVE_PAGE, EVENT_REPLY), got.map { it.type })
+            assertEquals(listOf(36, 344), got.map { it.payload.size })
+            assertArrayEquals(ByteArray(36) { it.toByte() }, got[0].payload)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `nextUseCount shares the counter with requestResolution`() {
+        val gate = CountDownLatch(1)
+        val fake = fake().apply { clientStartGate = gate }
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        assertEquals(null, link.nextUseCount())
+        link.start(RecordingSink())
+        awaitTrue { fake.callCount("clientStart") == 1 }
+        assertEquals(null, link.nextUseCount())
+        gate.countDown()
+        awaitState(link) { it is LinkState.Streaming }
+        var first: Int? = null
+        awaitTrue { link.nextUseCount().also { first = it } != null }
+        assertEquals(2, first)
+        assertEquals(3, link.requestResolution(IoCtrlMessages.RESOLUTION_SD))
+        assertEquals(4, link.nextUseCount())
+        link.close()
+        assertEquals(null, link.nextUseCount())
+    }
+
+    @Test
+    fun `transportBigEndian is false`() {
+        assertFalse(newLink(fake()).transportBigEndian)
+    }
+
+    // One frame, then mode, then 50 paced -20012 polls (limit 5): still Streaming; back to LIVE -> 5 more end it.
+    private fun assertModeSuspendsNoDataLimit(mode: StreamMode) {
+        val fake = fake().apply { recvPermits = Semaphore(1) }
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake, timeouts = TutkCameraLink.Timeouts(pollMs = 5, maxNoDataPolls = 5, noDataSleepMs = 1))
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        link.setStreamMode(mode)
+        fake.recvPermits!!.release(50)
+        awaitTrue { fake.callCount("recvFrame") == 51 }
+        Thread.sleep(30)
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        link.setStreamMode(StreamMode.LIVE)
+        fake.recvPermits!!.release(1_000)
+        assertEquals(failed(LinkErrorKind.TIMEOUT, -20012), awaitState(link) { it is LinkState.Failed })
+        assertTrue(fake.callCount("recvFrame") <= 51 + 5, fake.callCount("recvFrame").toString())
+    }
+
+    @Test
+    fun `PAUSED mode does not end the session on -20012`() = assertModeSuspendsNoDataLimit(StreamMode.PAUSED)
+
+    @Test
+    fun `ARCHIVE mode also suspends the limit`() = assertModeSuspendsNoDataLimit(StreamMode.ARCHIVE)
+
+    @Test
+    fun `phase 4 blocks log value-free markers`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val cam = CAM.incrementAndGet()
+        val link = newLink(fake, cam = cam)
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        link.setStreamMode(StreamMode.PAUSED)
+        awaitTrue { link.sendIoCtrl(ARCHIVE_LIST, ByteArray(24)) }
+        fake.ioCtrlQueue += FakeTutkNative.IoCtrlReply(ARCHIVE_PAGE, ByteArray(36))
+        awaitTrue { recorder.bufferText().contains("[P2P][tutk][BLOCK_IOCTRL_REPLY] cam=$cam type=$ARCHIVE_PAGE bytes=36") }
+        link.close()
+        val text = recorder.bufferText()
+        assertTrue(text.contains("[P2P][tutk][BLOCK_STREAM_MODE] cam=$cam mode=PAUSED"), text)
+        assertTrue(text.contains("[P2P][tutk][BLOCK_SEND_IOCTRL] cam=$cam type=$ARCHIVE_LIST bytes=24 queued=true"), text)
+        RedactionScanner().assertClean(text, extraLiterals = SECRETS + listOf(fake.lastUser!!, fake.lastPass!!))
+    }
+    // END_BLOCK_PHASE4_TESTS
+
     companion object {
         private val CAM = AtomicInteger(1000)
         private const val PASSWORD = "SYNTH1234567890"
         private const val PLAIN = "admin"
+        private const val ARCHIVE_LIST = 792
+        private const val ARCHIVE_PAGE = 793
+        private const val EVENT_REPLY = 817
         private val SECRETS = RedactionFixtures.ALL_SECRETS + listOf(PASSWORD)
     }
 }
