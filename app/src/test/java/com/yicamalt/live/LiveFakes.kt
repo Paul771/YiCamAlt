@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.update
 //   LIVE_DEVICE_ID / LIVE_SYNTH_* - synthetic id and credential literals (also fed to RedactionScanner).
 //   liveCreds(password) - synthetic P2pCredentials.
 //   FakeCameraLink - controllable state flow; records start / close reasons / audio-sink order / resolution requests;
-//     Phase 4: replies (ioCtrlReplies), sentIoCtrl / sendIoCtrlResult, nextUseCount (shared counter), modes.
+//     Phase 4: replies (ioCtrlReplies), sentIoCtrl / sendIoCtrlResult / onIoCtrl, nextUseCount (shared counter), modes.
 //   FakeLinkFactory - returns scripted links (initial state per open or a lambda); records open times + passwords.
 //   FakeNetworkMonitor - MutableStateFlow<NetState> with set(available) / bump() helpers.
 //   FakeMediaSession / FakeMediaSessionFactory - frames counter, key frame, release count; expected / expectCalls /
@@ -99,10 +99,13 @@ class FakeCameraLink(override val deviceId: String, initial: LinkState = LinkSta
     override val ioCtrlReplies: SharedFlow<LinkIoCtrlReply> get() = replies
     val sentIoCtrl = mutableListOf<Pair<Int, ByteArray>>()
     var sendIoCtrlResult = true
+    // Called after an accepted send (e.g. to script a reply on [replies]).
+    var onIoCtrl: (type: Int, payload: ByteArray) -> Unit = { _, _ -> }
     val modes = mutableListOf<StreamMode>()
 
     override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean {
         sentIoCtrl += type to payload
+        if (sendIoCtrlResult) onIoCtrl(type, payload)
         return sendIoCtrlResult
     }
 

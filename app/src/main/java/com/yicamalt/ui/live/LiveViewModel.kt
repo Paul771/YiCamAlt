@@ -122,6 +122,8 @@ open class LiveEnvironment @Inject constructor() {
     open fun now(): Long = SystemClock.elapsedRealtime()
     open fun video(): LiveVideoOutput = VideoDecoderOutput(VideoDecoder())
     open fun audio(): LiveAudioOutput = AacDecoderOutput(AacDecoder())
+    open fun wallNow(): Long = System.currentTimeMillis()
+    open fun zone(): java.time.ZoneId = java.time.ZoneId.systemDefault()
 }
 
 enum class BadgeTone { NEUTRAL, GOOD, WARN, ERROR }
@@ -225,6 +227,14 @@ class LiveViewModel @Inject constructor(
 
     private val _ui = MutableStateFlow(initialUi(LiveViewTexts.DEFAULT_TITLE))
     val ui: StateFlow<LiveViewUi> = _ui.asStateFlow()
+    val archive: StateFlow<ArchiveUi> get() = error("RED stub")
+    fun archiveSeek(ms: Long): Unit = error("RED stub")
+    fun archiveTogglePause(): Unit = error("RED stub")
+    fun archiveGoLive(): Unit = error("RED stub")
+    fun archiveRetry(): Unit = error("RED stub")
+    fun archiveOpenDays(): Unit = error("RED stub")
+    fun archiveCloseDays(): Unit = error("RED stub")
+    fun archiveSelectDay(day: java.time.LocalDate): Unit = error("RED stub")
     private val _events = MutableSharedFlow<LiveEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<LiveEvent> = _events.asSharedFlow()
 
