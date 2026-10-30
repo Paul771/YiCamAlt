@@ -1,5 +1,5 @@
 // FILE: LiveSessionTypes.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Contract-first port types of the Phase 3 live session (supervisor state, quality, network, media session).
 //   SCOPE: NetState / NetworkMonitor, Quality / QualityState, ErrorClass, KeyFrameObservation, MediaSession /
@@ -14,6 +14,7 @@ package com.yicamalt.live
 
 import com.yicamalt.camera.P2pCredentials
 import com.yicamalt.stream.AudioUnitSink
+import com.yicamalt.stream.FrameObservation
 import com.yicamalt.stream.IoCtrlMessages
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkInfo
@@ -28,13 +29,16 @@ import kotlinx.coroutines.flow.StateFlow
 //   QualityState - observed / pending / manual quality + switchSupported (D-06, D-07).
 //   ErrorClass - NETWORK | WRONG_PASSWORD | KICK | FATAL: supervisor classification of a link failure.
 //   KeyFrameObservation - useCount + size of the last key frame seen by the media session.
-//   MediaSession - one link attempt's media plumbing: videoSink, audioSink, framesIn, lastKeyFrame, release.
+//   MediaSession - one link attempt's media plumbing: videoSink, audioSink, framesIn, lastKeyFrame, release,
+//     expectGeneration (default ignored), lastFrame (default null).
 //   MediaSessionFactory - create(credentials) -> MediaSession.
 //   SupervisorState - Idle | Connecting | Live | Waiting | NoNetwork | Exhausted | AuthFailed | Kicked | Fatal | Stopped.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-00: contract-first port types for Phase 3 (interface-first for plans 03-01..03-13).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-05: MediaSession.expectGeneration / lastFrame with default bodies (archive
+//     generation gate and cursor source); existing fakes compile unchanged.
+//   PREVIOUS: v0.1.0 - GSD plan 03-00: contract-first port types for Phase 3 (interface-first for plans 03-01..03-13).
 //     Doc comments use // only (no block comments). INVARIANT: every toString() is value-free (no ids, no secrets).
 // END_CHANGE_SUMMARY
 
@@ -78,6 +82,12 @@ interface MediaSession {
     fun framesIn(): Long
     fun lastKeyFrame(): KeyFrameObservation?
     fun release()
+
+    // Archive generation gate (04-05): only units of [useCount] reach the pipeline; null = no gate. Default: ignored.
+    fun expectGeneration(useCount: Int?) {}
+
+    // Last unit that passed the gate; null before the first one (or right after expectGeneration). Default: null.
+    fun lastFrame(): FrameObservation? = null
 }
 
 fun interface MediaSessionFactory {
