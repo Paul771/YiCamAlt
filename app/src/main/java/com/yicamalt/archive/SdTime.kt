@@ -11,15 +11,19 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.archive
 
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 // START_MODULE_MAP
 //   SdTime - object: WIRE_IS_UTC seam, wireZone, toWire, fromWire, dayBounds, localDate.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-01: RED stub signatures.
+//   LAST_CHANGE: v0.1.0 - GSD plan 04-01: wire time per 04-RESEARCH §P0 (UTC fields for gw-us; WIRE_IS_UTC is the
+//     single seam), DST-safe day bounds via atStartOfDay.
 // END_CHANGE_SUMMARY
 
 object SdTime {
@@ -33,7 +37,7 @@ object SdTime {
     //   SIDE_EFFECTS: none
     //   LINKS: M-SD-ARCHIVE
     // END_CONTRACT: wireZone
-    fun wireZone(): ZoneId = error("RED stub")
+    fun wireZone(): ZoneId = if (WIRE_IS_UTC) ZoneOffset.UTC else ZoneId.systemDefault()
 
     // START_CONTRACT: toWire
     //   PURPOSE: Epoch ms to wire STimeDay (wday Sunday = 1 .. Saturday = 7).
@@ -42,7 +46,18 @@ object SdTime {
     //   SIDE_EFFECTS: none
     //   LINKS: M-SD-ARCHIVE
     // END_CONTRACT: toWire
-    fun toWire(epochMs: Long, wireZone: ZoneId = wireZone()): STimeDay = error("RED stub")
+    fun toWire(epochMs: Long, wireZone: ZoneId = wireZone()): STimeDay {
+        val z = Instant.ofEpochMilli(epochMs).atZone(wireZone)
+        return STimeDay(
+            year = z.year,
+            month = z.monthValue,
+            day = z.dayOfMonth,
+            wday = z.dayOfWeek.value % 7 + 1, // java.util.Calendar order: Sunday = 1 .. Saturday = 7
+            hour = z.hour,
+            minute = z.minute,
+            second = z.second,
+        )
+    }
 
     // START_CONTRACT: fromWire
     //   PURPOSE: Wire STimeDay to epoch ms (wday ignored).
@@ -51,7 +66,9 @@ object SdTime {
     //   SIDE_EFFECTS: none
     //   LINKS: M-SD-ARCHIVE
     // END_CONTRACT: fromWire
-    fun fromWire(t: STimeDay, wireZone: ZoneId = wireZone()): Long = error("RED stub")
+    fun fromWire(t: STimeDay, wireZone: ZoneId = wireZone()): Long =
+        LocalDateTime.of(t.year, t.month, t.day, t.hour, t.minute, t.second)
+            .atZone(wireZone).toInstant().toEpochMilli()
 
     // START_CONTRACT: dayBounds
     //   PURPOSE: Epoch-ms range of one calendar day in a zone (23 / 24 / 25 h across DST).
@@ -60,7 +77,12 @@ object SdTime {
     //   SIDE_EFFECTS: none
     //   LINKS: M-SD-ARCHIVE
     // END_CONTRACT: dayBounds
-    fun dayBounds(day: LocalDate, zone: ZoneId): LongRange = error("RED stub")
+    fun dayBounds(day: LocalDate, zone: ZoneId): LongRange {
+        // Calendar arithmetic, never a fixed day length: DST days are 23 or 25 h.
+        val start = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        val next = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        return start until next
+    }
 
     // START_CONTRACT: localDate
     //   PURPOSE: Calendar day of an instant in a zone.
@@ -69,5 +91,5 @@ object SdTime {
     //   SIDE_EFFECTS: none
     //   LINKS: M-SD-ARCHIVE
     // END_CONTRACT: localDate
-    fun localDate(epochMs: Long, zone: ZoneId): LocalDate = error("RED stub")
+    fun localDate(epochMs: Long, zone: ZoneId): LocalDate = Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
 }
