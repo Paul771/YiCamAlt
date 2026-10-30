@@ -62,7 +62,7 @@ result: partial (Wi-Fi off/on with logs, camera power cycle with logs: PASS; Wi-
 steps: while streaming: lock and unlock within 1 min; Home and back within 1 min; Home, open the official Yi Home app on the same camera, then return to ours after more than 5 min.
 expected: our session stops on background so the official app gets video; within 5 min ours resumes on its own once; after more than 5 min it waits for a tap (Connect); rotation does not restart the session. Звук снова выключен после возврата из фона (строже D-05, подтвердить).
 markers: `[LiveView][lifecycle][BLOCK_LIFECYCLE]`, `[LiveView][vm][BLOCK_LIFECYCLE]`, `[LiveSession][supervisor][BLOCK_STOP]`, `[LiveSession][supervisor][BLOCK_RESUME]`.
-result: partial (Home, lock, >5 min return: PASS on both cameras; parallel use with the official app is a user report on TUTK, not on TNP; sound off again after return: PASS in logs, user acceptance of the stricter rule pending)
+result: passed (Home, lock, >5 min return: PASS on both cameras; hand-over to the official app confirmed by the user on TNP 2026-10-30 and earlier on TUTK, no logs; sound off again after return: PASS in logs, stricter-than-D-05 rule not rejected by the user)
 
 ### H-L7. Fullscreen, gestures, rotation, keep-screen-on
 steps: fullscreen by button and by rotation (also with auto-rotate off); back exits fullscreen; pinch to 4x, pan, double tap; tap shows controls; leave the screen on for 2+ minutes without touching; check the notch side in landscape.
@@ -74,7 +74,7 @@ result: passed (fullscreen by button/rotation, Back exit, pinch + double tap by 
 steps: zoom to 2x, press the snapshot button; open the gallery.
 expected: a JPEG `YiCamAlt_yyyyMMdd_HHmmss.jpg` appears under Pictures/YiCamAlt at the full frame resolution (not the zoomed crop); a toast confirms; no half-written gallery entry on failure.
 markers: `[LiveView][vm][BLOCK_SNAPSHOT]`, `[Media][snapshot][BLOCK_SAVE_SNAPSHOT] result=Saved sdk=30 bytes=<n>` (no URI, path, file or camera name).
-result: partial (snapshot saved on both cameras, stream resolution; not taken while zoomed, gallery view not checked by eye)
+result: passed (snapshot on both cameras at stream resolution, 1920x1088 on TNP; zoomed snapshot and gallery confirmed by the user 2026-10-30)
 
 ### H-L9. Log pull and redaction sweep of the new log lines (as Phase 2 H7)
 steps: pull the diag log after H-L1..H-L8 (commands above); run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks`.
@@ -84,10 +84,10 @@ result: passed (RealLogScanTest over the pulled diag log, 849 lines)
 ## Summary
 
 total: 9
-passed: 5
+passed: 7
 issues: 0
 pending: 0
-partial: 4
+partial: 2
 skipped: 0
 blocked: 0
 

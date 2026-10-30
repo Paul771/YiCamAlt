@@ -25,6 +25,8 @@ human_verification:
     why_human: "No H.265 camera available"
 ---
 
+> **Update 2026-10-30:** the user confirmed by hand that a zoomed snapshot saves the full frame and that the official app gets video while ours is backgrounded (TNP), so LIVE-10 is met (user report, no logs for the official-app side). Only LIVE-07 (SD by default on relay) and Wi-Fi->4G with logs remain open; they need a phone with mobile data.
+
 > **Update 2026-10-25 (after the report):** the user confirmed TNP sound is audible, so LIVE-06 is met. Remaining partial: LIVE-07 (SD by default on relay is JVM-only), LIVE-10 (parallel use with the official app not checked on TNP).
 
 # Phase 3: Live View — Verification Report
