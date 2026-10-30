@@ -29,13 +29,95 @@ object SdTimeline {
     const val LIVE_THRESHOLD_MS = 10_000L
     const val INDEX_RANGE_MS = 30L * 24 * 3_600_000
 
-    fun fromEntries(entries: List<IndexEntry>, wireZone: ZoneId): List<Segment> = error("RED stub")
+    // START_CONTRACT: fromEntries
+    //   PURPOSE: Index entries to merged, sorted segments.
+    //   INPUTS: { entries: List<IndexEntry> - raw index (any order); wireZone: ZoneId - zone of the wire STimeDay }
+    //   OUTPUTS: { List<Segment> - sorted, duration-0 entries dropped, overlaps and gaps <= MERGE_GAP_MS merged }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE, SdTime.fromWire
+    // END_CONTRACT: fromEntries
+    fun fromEntries(entries: List<IndexEntry>, wireZone: ZoneId): List<Segment> {
+        val runs = entries.asSequence()
+            .filter { it.durationS > 0 }
+            .map { val s = SdTime.fromWire(it.start, wireZone); Segment(s, s + it.durationS * 1_000L) }
+            .sortedBy { it.startMs }
+        val out = ArrayList<Segment>()
+        for (r in runs) {
+            val last = out.lastOrNull()
+            if (last != null && r.startMs - last.endMs <= MERGE_GAP_MS) {
+                out[out.size - 1] = Segment(last.startMs, maxOf(last.endMs, r.endMs))
+            } else {
+                out += r
+            }
+        }
+        return out
+    }
 
-    fun daysWithRecordings(segments: List<Segment>, zone: ZoneId): Set<LocalDate> = error("RED stub")
+    // START_CONTRACT: daysWithRecordings
+    //   PURPOSE: Local calendar days touched by any segment.
+    //   INPUTS: { segments: List<Segment> - merged segments; zone: ZoneId - display zone }
+    //   OUTPUTS: { Set<LocalDate> - every day from localDate(start) to localDate(end - 1) per segment }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE, SdTime.localDate
+    // END_CONTRACT: daysWithRecordings
+    fun daysWithRecordings(segments: List<Segment>, zone: ZoneId): Set<LocalDate> {
+        val days = LinkedHashSet<LocalDate>()
+        for (s in segments) {
+            if (s.endMs <= s.startMs) continue
+            var d = SdTime.localDate(s.startMs, zone)
+            val last = SdTime.localDate(s.endMs - 1, zone)
+            while (!d.isAfter(last)) {
+                days += d
+                d = d.plusDays(1)
+            }
+        }
+        return days
+    }
 
-    fun segmentsForDay(segments: List<Segment>, day: LocalDate, zone: ZoneId): List<Segment> = error("RED stub")
+    // START_CONTRACT: segmentsForDay
+    //   PURPOSE: Segments of one local day, clipped to its bounds (23 / 24 / 25 h).
+    //   INPUTS: { segments: List<Segment> - merged segments; day: LocalDate - local day; zone: ZoneId - display zone }
+    //   OUTPUTS: { List<Segment> - non-empty intersections with [startOfDay, nextStartOfDay) }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE, SdTime.dayBounds
+    // END_CONTRACT: segmentsForDay
+    fun segmentsForDay(segments: List<Segment>, day: LocalDate, zone: ZoneId): List<Segment> {
+        val bounds = SdTime.dayBounds(day, zone)
+        val dayStart = bounds.first
+        val dayEnd = bounds.last + 1
+        return segments.mapNotNull { s ->
+            val a = maxOf(s.startMs, dayStart)
+            val b = minOf(s.endMs, dayEnd)
+            if (a < b) Segment(a, b) else null
+        }
+    }
 
-    fun nextSegmentStart(segments: List<Segment>, afterMs: Long): Long? = error("RED stub")
+    // START_CONTRACT: nextSegmentStart
+    //   PURPOSE: Start of the first segment beginning after an instant.
+    //   INPUTS: { segments: List<Segment> - merged sorted segments; afterMs: Long - instant }
+    //   OUTPUTS: { Long? - first start > afterMs, null when none }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE
+    // END_CONTRACT: nextSegmentStart
+    fun nextSegmentStart(segments: List<Segment>, afterMs: Long): Long? =
+        segments.firstOrNull { it.startMs > afterMs }?.startMs
 
-    fun resolveSeek(segments: List<Segment>, targetMs: Long, wallNowMs: Long): SeekTarget = error("RED stub")
+    // START_CONTRACT: resolveSeek
+    //   PURPOSE: Where a seek to a target instant actually goes (research Pattern 5).
+    //   INPUTS: { segments: List<Segment> - merged sorted segments; targetMs: Long - requested instant;
+    //             wallNowMs: Long - current wall time }
+    //   OUTPUTS: { SeekTarget - empty NoRecording; within LIVE_THRESHOLD_MS of now (or later) Live; inside a segment
+    //              the target; at / after the last end max(last.start, last.end - END_CLAMP_MS); else next start }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE
+    // END_CONTRACT: resolveSeek
+    fun resolveSeek(segments: List<Segment>, targetMs: Long, wallNowMs: Long): SeekTarget {
+        if (segments.isEmpty()) return SeekTarget.NoRecording
+        if (wallNowMs - targetMs <= LIVE_THRESHOLD_MS) return SeekTarget.Live
+        if (segments.any { targetMs >= it.startMs && targetMs < it.endMs }) return SeekTarget.Archive(targetMs)
+        val last = segments.last()
+        if (targetMs >= last.endMs) return SeekTarget.Archive(maxOf(last.startMs, last.endMs - END_CLAMP_MS))
+        // Not inside and before the last end: a later segment start always exists.
+        return SeekTarget.Archive(nextSegmentStart(segments, targetMs) ?: last.startMs)
+    }
 }

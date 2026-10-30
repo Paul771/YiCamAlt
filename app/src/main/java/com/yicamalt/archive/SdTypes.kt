@@ -94,6 +94,12 @@ object ArchiveSupport {
 //   SIDE_EFFECTS: none
 //   LINKS: M-SD-ARCHIVE, SdArchiveCodec.parseDeviceInfo
 // END_CONTRACT: sdStatusOf
-fun sdStatusOf(info: DeviceInfo?): SdStatus {
-    error("RED stub")
+fun sdStatusOf(info: DeviceInfo?): SdStatus = when {
+    info == null -> SdStatus.Unknown
+    info.tfstat == 5 -> SdStatus.NoCard
+    info.tfstat in ABNORMAL_TFSTAT -> SdStatus.Abnormal(info.tfstat)
+    info.tfstat == 0 && info.totalMb == 0 -> SdStatus.Abnormal(0)
+    else -> SdStatus.Ok
 }
+
+private val ABNORMAL_TFSTAT = setOf(2, 3, 8, 9)
