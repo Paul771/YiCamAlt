@@ -1,9 +1,10 @@
 // FILE: LiveSessionSupervisor.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One live screen's session owner: one link at a time, bounded reconnect, network events, stall watchdog,
 //     quality requests and the background-resume rule (D-01..D-03, D-10, LIVE-04/05/10/11).
-//   SCOPE: start / retry / stop / onForeground / setQuality; classify(LinkError), classifyClosed(reason).
+//   SCOPE: start / retry / stop / onForeground / setQuality; classify(LinkError), classifyClosed(reason);
+//     Phase 4: setStreamMode (mode-aware stall window), liveEpoch, ioCtrlReplies, archivePort.
 //   DEPENDS: M-STREAM-CORE (CameraLink ports), M-P2P-CREDS, live/LiveSessionTypes.kt, QualityController, ResumePolicy
 //   LINKS: M-LIVE-SESSION, V-M-LIVE-SESSION
 //   ROLE: RUNTIME
@@ -11,24 +12,32 @@
 // END_MODULE_CONTRACT
 package com.yicamalt.live
 
+import com.yicamalt.archive.ArchiveLinkPort
 import com.yicamalt.camera.P2pCredentials
+import com.yicamalt.camera.TransportType
 import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.CameraLinkFactory
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
 import com.yicamalt.stream.P2pCredentialsSource
+import com.yicamalt.stream.StreamMode
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -38,14 +47,21 @@ import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 // START_MODULE_MAP
-//   LiveSessionSupervisor - state / qualityState / currentLinkState; start, retry, stop, onForeground, setQuality.
-//   LiveSessionSupervisor.Timing - backoff 2/5/10/20 s, 5 attempts, auth 2 s, kick 10 s, stall 10 s, drain 5 s, ...
+//   LiveSessionSupervisor - state / qualityState / currentLinkState; start, retry, stop, onForeground, setQuality;
+//     liveEpoch, ioCtrlReplies, setStreamMode, archivePort (internal accessors for SupervisorArchivePort).
+//   LiveSessionSupervisor.Timing - backoff 2/5/10/20 s, 5 attempts, auth 2 s, kick 10 s, stall 10 s (archive 35 s),
+//     drain 5 s, ...
 //   classify - LinkError -> ErrorClass.
 //   classifyClosed - Closed reason -> ErrorClass, null for our own stops.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 03-06 GREEN: run loop (network wait, drain, credentials, open, watch, classify,
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-06: stream modes (research Pitfall 3). Stall window 10 s in LIVE, 35 s in
+//     ARCHIVE, off in PAUSED; the window counts from the later of the last frame growth and the last mode switch.
+//     Automatic and manual HD/SD requests are sent only in LIVE (manual choice still stored). A link reaching
+//     Streaming resets the mode to LIVE before it becomes the live link, then liveEpoch += 1 after Live is published.
+//     Replies of every watched link are forwarded to ioCtrlReplies; archivePort() exposes the current session.
+//   PREVIOUS: v0.2.0 - GSD plan 03-06 GREEN: run loop (network wait, drain, credentials, open, watch, classify,
 //     schedule), stall watchdog, network-change debounce, quality requests, stop / resume. INVARIANTS: one link per
 //     run; a new open only after the previous link is terminal or 5 s passed; links never retry themselves; an open
 //     that returns after stop() is closed with the stop reason and never started (token check under lock). State
@@ -72,6 +88,7 @@ class LiveSessionSupervisor(
         val wrongPasswordDelayMs: Long = 2_000,
         val kickDelayMs: Long = 10_000,
         val stallMs: Long = 10_000,
+        val archiveStallMs: Long = 35_000,
         val healthyResetMs: Long = 30_000,
         val drainMs: Long = 5_000,
         val networkChangeDebounceMs: Long = 1_500,
@@ -100,6 +117,10 @@ class LiveSessionSupervisor(
     val qualityState: StateFlow<QualityState> = _quality.asStateFlow()
     private val _linkState = MutableStateFlow<LinkState>(LinkState.Idle)
     val currentLinkState: StateFlow<LinkState> = _linkState.asStateFlow()
+    private val _liveEpoch = MutableStateFlow(0)
+    val liveEpoch: StateFlow<Int> = _liveEpoch.asStateFlow()
+    private val _replies = MutableSharedFlow<LinkIoCtrlReply>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val ioCtrlReplies: SharedFlow<LinkIoCtrlReply> = _replies.asSharedFlow()
 
     // Closes are fire-and-forget on io and must survive the cancellation of [scope] (screen-left from onCleared).
     private val closer = CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -115,6 +136,8 @@ class LiveSessionSupervisor(
     @Volatile private var previousLink: CameraLink? = null
     @Volatile private var liveLink: CameraLink? = null
     @Volatile private var stoppedAtMs: Long? = null
+    @Volatile private var streamMode = StreamMode.LIVE
+    @Volatile private var modeSince = 0L
 
     // START_CONTRACT: start
     //   PURPOSE: Fresh run: counters reset, any current link closed ("user"), pending resume cleared.
@@ -209,18 +232,43 @@ class LiveSessionSupervisor(
     fun setQuality(q: Quality) {
         val send = quality.setManual(q)
         val link = liveLink
-        if (send && link != null) sendQuality(link, q, "manual") else publishQuality()
+        if (send && link != null && streamMode == StreamMode.LIVE) sendQuality(link, q, "manual") else publishQuality()
     }
 
-    val liveEpoch: StateFlow<Int> get() = error("RED stub")
-    val ioCtrlReplies: kotlinx.coroutines.flow.SharedFlow<com.yicamalt.stream.LinkIoCtrlReply> get() = error("RED stub")
-    fun setStreamMode(mode: com.yicamalt.stream.StreamMode): Unit = error("RED stub")
-    internal fun liveLinkOrNull(): CameraLink? = error("RED stub")
-    internal fun sessionOrNull(): MediaSession? = error("RED stub")
-    internal fun liveResolution(): Int = error("RED stub")
-    internal fun linkHealthy(): Boolean = error("RED stub")
-    fun archivePort(transport: com.yicamalt.camera.TransportType, encrypted: Boolean): com.yicamalt.archive.ArchiveLinkPort =
+    // START_CONTRACT: setStreamMode
+    //   PURPOSE: What the current link carries (LIVE / ARCHIVE / PAUSED): picks the stall window and the quality gate.
+    //   INPUTS: { mode: StreamMode }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: forwards the mode to the live link; restarts the stall window; a new link resets it to LIVE
+    //   LINKS: M-LIVE-SESSION, PlaybackController
+    // END_CONTRACT: setStreamMode
+    fun setStreamMode(mode: StreamMode) {
+        // START_BLOCK_STREAM_MODE
+        streamMode = mode
+        modeSince = now()
+        liveLink?.setStreamMode(mode)
+        Timber.d("[LiveSession][supervisor][BLOCK_STREAM_MODE] mode=%s", mode.name)
+        // END_BLOCK_STREAM_MODE
+    }
+
+    // START_CONTRACT: archivePort
+    //   PURPOSE: The archive's view of this supervisor's current session.
+    //   INPUTS: { transport: TransportType - camera transport; encrypted: Boolean - P2pCredentials.p2pEncrypt }
+    //   OUTPUTS: { ArchiveLinkPort - SupervisorArchivePort }
+    //   SIDE_EFFECTS: none
+    //   LINKS: SupervisorArchivePort, M-SD-ARCHIVE
+    // END_CONTRACT: archivePort
+    fun archivePort(transport: TransportType, encrypted: Boolean): ArchiveLinkPort =
         SupervisorArchivePort(this, transport, encrypted)
+
+    internal fun liveLinkOrNull(): CameraLink? = liveLink
+
+    internal fun sessionOrNull(): MediaSession? = synchronized(lock) { currentSession }
+
+    internal fun liveResolution(): Int = (quality.state.manual ?: quality.state.observed ?: Quality.HD).resolution
+
+    internal fun linkHealthy(): Boolean =
+        liveLink != null && network.state.value.available && _state.value is SupervisorState.Live
 
     private fun isCurrent(my: Int) = synchronized(lock) { token == my }
 
@@ -459,8 +507,12 @@ class LiveSessionSupervisor(
                             w.streamingSince = now()
                             w.lastFrames = session.framesIn()
                             w.lastGrowthAt = w.streamingSince
+                            // A new link always starts in LIVE (its camera side knows nothing of the archive).
+                            streamMode = StreamMode.LIVE
+                            modeSince = w.streamingSince
                             liveLink = link
                             publish(my, SupervisorState.Live(s.info, s.authOk))
+                            if (isCurrent(my)) _liveEpoch.value += 1
                         }
                     }
                 }
@@ -469,6 +521,9 @@ class LiveSessionSupervisor(
                         delay(timing.tickMs)
                         tick(link, session, w, ownClose.value != null, requestClose)
                     }
+                }
+                launch {
+                    link.ioCtrlReplies.collect { _replies.tryEmit(it) }
                 }
                 launch {
                     link.capabilities.collect { c ->
@@ -530,13 +585,19 @@ class LiveSessionSupervisor(
         val t = now()
         // START_BLOCK_STALL
         val frames = session.framesIn()
-        if (frames != w.lastFrames) {
+        val mode = streamMode
+        if (mode == StreamMode.PAUSED || frames != w.lastFrames) {
+            // PAUSED: the camera is told to stay silent, so silence is no stall.
             w.lastFrames = frames
             w.lastGrowthAt = t
-        } else if (t - w.lastGrowthAt >= timing.stallMs) {
-            Timber.w("[LiveSession][supervisor][BLOCK_STALL] idleMs=%d", t - w.lastGrowthAt)
-            requestClose(REASON_STALL)
-            return
+        } else {
+            val window = if (mode == StreamMode.ARCHIVE) timing.archiveStallMs else timing.stallMs
+            val idle = t - maxOf(w.lastGrowthAt, modeSince)
+            if (idle >= window) {
+                Timber.w("[LiveSession][supervisor][BLOCK_STALL] idleMs=%d mode=%s", idle, mode.name)
+                requestClose(REASON_STALL)
+                return
+            }
         }
         if (!w.healthy && t - w.streamingSince >= timing.healthyResetMs) w.healthy = true
         // END_BLOCK_STALL
@@ -545,7 +606,7 @@ class LiveSessionSupervisor(
             w.lastKeyFrame = kf
             quality.observe(kf)
         }
-        if (quality.needsAutoRequest(w.mode)) sendQuality(link, quality.target(w.mode), "auto")
+        if (mode == StreamMode.LIVE && quality.needsAutoRequest(w.mode)) sendQuality(link, quality.target(w.mode), "auto")
         quality.tick(t)
         publishQuality()
     }

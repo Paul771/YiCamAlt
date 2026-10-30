@@ -24,7 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-06 RED: signatures only.
+//   LAST_CHANGE: v0.1.0 - GSD plan 04-06: delegation to the supervisor's live link and media session. Without a live
+//     link: send false, useCount null, health false; without a session: no gate, no frame, 0 units.
 // END_CHANGE_SUMMARY
 
 class SupervisorArchivePort internal constructor(
@@ -32,16 +33,19 @@ class SupervisorArchivePort internal constructor(
     override val transport: TransportType,
     override val encrypted: Boolean,
 ) : ArchiveLinkPort {
-    override val bigEndian: Boolean get() = error("RED stub")
-    override val liveEpoch: StateFlow<Int> get() = error("RED stub")
-    override val ioCtrlReplies: Flow<LinkIoCtrlReply> get() = error("RED stub")
-    override fun isLive(): Boolean = error("RED stub")
-    override fun linkHealthy(): Boolean = error("RED stub")
-    override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean = error("RED stub")
-    override fun nextUseCount(): Int? = error("RED stub")
-    override fun liveResolution(): Int = error("RED stub")
-    override fun expectGeneration(useCount: Int?): Unit = error("RED stub")
-    override fun lastFrame(): FrameObservation? = error("RED stub")
-    override fun framesIn(): Long = error("RED stub")
-    override fun setStreamMode(mode: StreamMode): Unit = error("RED stub")
+    override val bigEndian: Boolean get() = transport == TransportType.TNP
+    override val liveEpoch: StateFlow<Int> get() = supervisor.liveEpoch
+    override val ioCtrlReplies: Flow<LinkIoCtrlReply> get() = supervisor.ioCtrlReplies
+    override fun isLive(): Boolean = supervisor.liveLinkOrNull() != null
+    override fun linkHealthy(): Boolean = supervisor.linkHealthy()
+    override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean =
+        supervisor.liveLinkOrNull()?.sendIoCtrl(type, payload) ?: false
+    override fun nextUseCount(): Int? = supervisor.liveLinkOrNull()?.nextUseCount()
+    override fun liveResolution(): Int = supervisor.liveResolution()
+    override fun expectGeneration(useCount: Int?) {
+        supervisor.sessionOrNull()?.expectGeneration(useCount)
+    }
+    override fun lastFrame(): FrameObservation? = supervisor.sessionOrNull()?.lastFrame()
+    override fun framesIn(): Long = supervisor.sessionOrNull()?.framesIn() ?: 0L
+    override fun setStreamMode(mode: StreamMode) = supervisor.setStreamMode(mode)
 }
