@@ -116,3 +116,5 @@ No code gaps: every planned module exists, is substantive, wired, covered by JVM
 
 _Verified: 2026-10-25_
 _Verifier: Claude (gsd-verifier)_
+
+> **Closed 2026-10-30 with a caveat (user decision):** phase 3 is closed with LIVE-07 (SD by default on relay) and Wi-Fi->4G with logs unverified on a device; they need a phone with mobile data. H.265 and a 15+ minute soak are also still open.
