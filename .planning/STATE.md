@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-10-30T15:21:00.897Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-10-30T15:29:40.976Z"
 last_activity: 2026-10-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 50
-  completed_plans: 41
+  completed_plans: 42
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 3 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-10-30
 
@@ -80,6 +80,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P12 | 45min | 2 tasks | 5 files |
 | Phase 04 P00 | 35min | 3 tasks | 7 files |
 | Phase 04 P01 | 15min | 3 tasks | 6 files |
+| Phase 04 P02 | 25min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,7 @@ Recent decisions affecting current work:
 - [Phase 04]: TNP ioCtrlReplies publishes only authResult-0 ch0 replies other than 4882/9033; TNP setStreamMode stays no-op
 - [Phase 04]: SD wire time = UTC fields (SdTime.WIRE_IS_UTC seam); dayBounds half-open via atStartOfDay
 - [Phase 04]: parseTnpIndex: <12 B null, truncated -> empty (vendor); parseTutkIndexPage null unless size/12-1 == count
+- [Phase 04]: TUTK sendIoCtrl/nextUseCount share the requestResolution guard; outside LIVE the -20012 counter resets, pause pacing unchanged
 
 ### Pending Todos
 
@@ -154,6 +156,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-30T15:21:00.891Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-10-30T15:29:40.970Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

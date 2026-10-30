@@ -126,7 +126,7 @@ Plans:
 Plans:
 - [x] 04-00-PLAN.md — CameraLink archive port (sendIoCtrl, replies, useCount, stream mode) + TNP ch4/5/7, generic IOCTRL
 - [x] 04-01-PLAN.md — SdArchiveCodec + SdTime: byte-exact archive payloads/parsers, UTC wire time (TDD)
-- [ ] 04-02-PLAN.md — TUTK link: generic IOCTRL, 793 replies, shared useCount, -20012 limit only in LIVE
+- [x] 04-02-PLAN.md — TUTK link: generic IOCTRL, 793 replies, shared useCount, -20012 limit only in LIVE
 - [ ] 04-03-PLAN.md — Archive core: port contract, SdTimeline (days/segments/seek), PlaybackCommands, SdIndexRepository
 - [ ] 04-04-PLAN.md — Device probe on both cameras (SD status, index, play/pause/live), 04-PROBE.md, wire-time decision
 - [ ] 04-05-PLAN.md — useCount generation gate, media-session frame observation, PlaybackController state machine
