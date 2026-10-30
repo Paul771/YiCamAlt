@@ -12,6 +12,7 @@
 package com.yicamalt.archive
 
 import com.yicamalt.camera.TransportType
+import com.yicamalt.stream.IoCtrlMessages
 
 // START_MODULE_MAP
 //   PlaybackCmd - one IOCTRL (type + payload); content equality; toString without bytes.
@@ -29,11 +30,62 @@ class PlaybackCmd(val type: Int, val payload: ByteArray) {
 }
 
 object PlaybackCommands {
+
+    // START_CONTRACT: seek
+    //   PURPOSE: Commands that start archive playback at a target (also used for every later seek).
+    //   INPUTS: { transport: TransportType - TNP or TUTK; encrypted: Boolean - p2pEncrypt; useCount: Int - new
+    //             generation; resolution: Int - live resolution code (TNP only); at: STimeDay - wire target }
+    //   OUTPUTS: { List<PlaybackCmd> - TNP [9030]; otherwise [12718 / 794 cmd 16 LE] }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE, SdArchiveCodec.tnpPlayRecord, SdArchiveCodec.playControl
+    // END_CONTRACT: seek
     fun seek(transport: TransportType, encrypted: Boolean, useCount: Int, resolution: Int, at: STimeDay): List<PlaybackCmd> =
-        error("RED stub")
+        if (transport == TransportType.TNP) {
+            listOf(PlaybackCmd(SdArchiveCodec.TNP_START_RECORD, SdArchiveCodec.tnpPlayRecord(useCount, resolution, at)))
+        } else {
+            listOf(
+                PlaybackCmd(
+                    SdArchiveCodec.playControlType(encrypted),
+                    SdArchiveCodec.playControl(SdArchiveCodec.PLAY_START, at, useCount, bigEndian = false),
+                ),
+            )
+        }
 
-    fun pause(transport: TransportType, encrypted: Boolean): List<PlaybackCmd> = error("RED stub")
+    // START_CONTRACT: pause
+    //   PURPOSE: Commands that pause archive playback (camera stops sending; resume is a fresh seek).
+    //   INPUTS: { transport: TransportType; encrypted: Boolean - p2pEncrypt }
+    //   OUTPUTS: { List<PlaybackCmd> - [767 stop, stop record] }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE, IoCtrlMessages.stop
+    // END_CONTRACT: pause
+    fun pause(transport: TransportType, encrypted: Boolean): List<PlaybackCmd> = listOf(
+        PlaybackCmd(IoCtrlMessages.STOP, IoCtrlMessages.stop()),
+        stopRecord(encrypted, bigEndian(transport)),
+    )
 
-    fun live(transport: TransportType, encrypted: Boolean, useCount: Int, resolution: Int): List<PlaybackCmd> =
-        error("RED stub")
+    // START_CONTRACT: live
+    //   PURPOSE: Commands that leave the archive and restart the live stream.
+    //   INPUTS: { transport: TransportType; encrypted: Boolean - p2pEncrypt; useCount: Int - new generation;
+    //             resolution: Int - live resolution code (TNP 9029) }
+    //   OUTPUTS: { List<PlaybackCmd> - [stop record, 9029] on TNP; [stop record, 8190 / 511] otherwise }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-SD-ARCHIVE, IoCtrlMessages.startRealtime, IoCtrlMessages.tutkStart
+    // END_CONTRACT: live
+    fun live(transport: TransportType, encrypted: Boolean, useCount: Int, resolution: Int): List<PlaybackCmd> {
+        val be = bigEndian(transport)
+        val start = if (be) {
+            PlaybackCmd(IoCtrlMessages.START_REALTIME, IoCtrlMessages.startRealtime(useCount, resolution))
+        } else {
+            val type = if (encrypted) IoCtrlMessages.TUTK_START_ENC else IoCtrlMessages.TUTK_START_PLAIN
+            PlaybackCmd(type, IoCtrlMessages.tutkStart(useCount))
+        }
+        return listOf(stopRecord(encrypted, be), start)
+    }
+
+    private fun bigEndian(transport: TransportType): Boolean = transport == TransportType.TNP
+
+    private fun stopRecord(encrypted: Boolean, bigEndian: Boolean) = PlaybackCmd(
+        SdArchiveCodec.playControlType(encrypted),
+        SdArchiveCodec.playControl(SdArchiveCodec.PLAY_STOP, null, 0, bigEndian),
+    )
 }
