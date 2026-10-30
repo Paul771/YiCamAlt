@@ -709,6 +709,23 @@
       <change-summary phase="03-live-view" plan="03-09" verification="jvm-passed">2026-10-23: SnapshotSpec + MediaStoreSnapshotStore; SnapshotSaverTest 4; failed write deletes the row.</change-summary>
     </M-MEDIA-SNAPSHOT>
 
+    <M-SD-ARCHIVE NAME="SdArchive" TYPE="CORE_LOGIC" STATUS="in-progress">
+      <purpose>SD card archive over the live P2P session (GSD Phase 4).</purpose>
+      <path>app/src/main/java/com/yicamalt/archive/SdArchiveCodec.kt</path>
+      <path>app/src/main/java/com/yicamalt/archive/SdTime.kt</path>
+      <depends>M-STREAM-CORE</depends>
+      <verification-ref>V-M-SD-ARCHIVE</verification-ref>
+      <annotations>
+        <export-SdArchiveCodec PURPOSE="IOTYPE constants, 816 / 9031 / 792 / 9030 / 12718 / 794 payload builders, 9032 / 793 / 817 parsers (BLOCK_LIST_EVENTS_REQUEST, BLOCK_PARSE_TNP_INDEX, BLOCK_PARSE_TUTK_PAGE, BLOCK_PARSE_DEVICE_INFO)" />
+        <type-STimeDay PURPOSE="8-byte wire time: u16 year in transport order, month, day, wday (Sunday = 1), hour, minute, second" />
+        <export-SdTime PURPOSE="WIRE_IS_UTC seam, toWire / fromWire, DST-safe dayBounds, localDate" />
+      </annotations>
+      <tests>app/src/test/java/com/yicamalt/archive/SdArchiveCodecTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/archive/SdTimeTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/archive/SdFixtures.kt</tests>
+      <change-summary phase="04-sd-archive" plan="04-01" verification="jvm">2026-10-30: stub; byte layer only.</change-summary>
+    </M-SD-ARCHIVE>
+
     <!-- CrossLinks: module dependencies -->
     <CrossLink from="M-HTTP" to="M-CONFIG" relation="uses for base URL config" />
     <CrossLink from="M-LOCAL-DB" to="M-CONFIG" relation="uses for DB config" />
@@ -786,5 +803,6 @@
     <CrossLink from="M-UI-LIVEVIEW" to="M-STREAM-CORE" relation="LinkState / LinkInfo for the badge and debug line" />
     <CrossLink from="M-UI-LIVEVIEW" to="M-P2P-CREDS" relation="credentials source passed to the supervisor" />
     <CrossLink from="M-UI-LIVE-PROBE" to="M-STREAM-CORE" relation="FramePipeline and CameraLinkFactory port" />
+    <CrossLink from="M-SD-ARCHIVE" to="M-STREAM-CORE" relation="uses" />
   </Project>
 </KnowledgeGraph>
