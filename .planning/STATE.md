@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-10-30T15:41:14.906Z"
+stopped_at: Completed 04-05-PLAN.md
+last_updated: "2026-10-30T15:59:19.969Z"
 last_activity: 2026-10-30
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 50
-  completed_plans: 43
+  completed_plans: 44
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 5 of 10
+Plan: 6 of 10
 Status: Ready to execute
 Last activity: 2026-10-30
 
@@ -82,6 +82,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P01 | 15min | 3 tasks | 6 files |
 | Phase 04 P02 | 25min | 2 tasks | 3 files |
 | Phase 04 P03 | 20min | 3 tasks | 9 files |
+| Phase 04 P05 | 35min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,8 @@ Recent decisions affecting current work:
 - [Phase 04]: TUTK sendIoCtrl/nextUseCount share the requestResolution guard; outside LIVE the -20012 counter resets, pause pacing unchanged
 - [Phase 04]: 04-03: segments merge on gap <= 2 s inclusive; resolveSeek gives Live within 10 s of now or in the future
 - [Phase 04]: 04-03: TUTK index paging capped at 1000 replies incl. rejected pages; per-reply 10 s timeout
+- [Phase 04]: ArchiveLinkPort.framesIn() added: start timeout counts only while units arrive; 04-04/04-06 ports must forward MediaSession.framesIn()
+- [Phase 04]: PlaybackController serialises calls/ticker/collector with one lock; timers keyed on linkHealthy() only
 
 ### Pending Todos
 
@@ -159,6 +162,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-30T15:41:14.900Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-10-30T15:59:19.963Z
+Stopped at: Completed 04-05-PLAN.md
 Resume file: None
