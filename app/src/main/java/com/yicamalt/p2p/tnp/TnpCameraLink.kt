@@ -1,11 +1,12 @@
 // FILE: TnpCameraLink.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One TNP/CS2 PPPP session per camera, vendor call order.
 //   SCOPE: connect (PPPP_Connect / WakeUp_And_Connect) with the device_info DID, session check and mode mapping,
-//     readers on ch 0,1,2,3,6, the 4881 -> 9029 -> 768 startup burst from a single writer, authResult check on every
+//     readers on ch 0,1,2,3,6 (ch1 audio -> optional AudioUnitSink), the 4881 -> 9029 -> 768 startup burst from a single writer, authResult check on every
 //     ch0 reply, header version adoption (whole start sequence re-sent once), kick handling, connect and first-frame
-//     timeouts, thread guard (any Throwable -> Failed(INTERNAL)), bounded idempotent teardown.
+//     timeouts, thread guard (any Throwable -> Failed(INTERNAL)), bounded idempotent teardown, in-session
+//     resolution requests (4881) through the single writer, 4882 abilityRet -> LinkCapabilities.
 //   DEPENDS: M-P2P-NATIVE (PpppNative, PpppCodes), M-STREAM-CORE (CameraLink, TnpCodec, IoCtrlMessages, YiP2pAuth),
 //     M-P2P-CREDS (P2pCredentials)
 //   LINKS: M-TNP-LINK, V-M-TNP-LINK
@@ -17,8 +18,11 @@ package com.yicamalt.p2p.tnp
 import com.yicamalt.camera.P2pCredentials
 import com.yicamalt.p2p.PpppCodes
 import com.yicamalt.p2p.PpppNative
+import com.yicamalt.stream.AudioUnit
+import com.yicamalt.stream.AudioUnitSink
 import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.IoCtrlMessages
+import com.yicamalt.stream.LinkCapabilities
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkInfo
@@ -50,10 +54,17 @@ import java.util.concurrent.atomic.AtomicInteger
 //   TnpCameraLink.modeOf - vendor bMode 0..3 -> P2P, RELAY, TCP_RELAY, SDEV_RELAY, else UNKNOWN.
 //   TnpCameraLink.FLAG_P2P / FLAG_RELAY - connect flag bytes 0x49 / 0xDF.
 //   TnpCameraLink.READER_CHANNELS - 0, 1, 2, 3, 6.
+//   TnpCameraLink.setAudioSink - ch1 units (ioType 2, body > 24) go to the sink, encrypted = header version >= 2.
+//   TnpCameraLink.requestResolution - queues 4881 [res, useCount 3, 4, ...] on the writer; null if not connected.
+//   TnpCameraLink.capabilities - resolutionSwitch=false once a 4882 reply carries abilityRet 1.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review fixes.
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-02: ch1 audio -> AudioUnitSink (encrypted = header version >= 2), requestResolution
+//     via txQueue (useCount from 3), 4882 abilityRet 1 -> resolutionSwitch=false; burst unchanged. A throwing audio
+//     sink is logged once (class name) and audio dropped, video keeps running. requestResolution only enqueues, and
+//     only after the start burst is queued (so 4881 useCount 1 always leads); never calls native.
+//   PREVIOUS: v0.2.0 - Phase 2 review fixes.
 //     HIGH-2: header version detection follows vendor TnpCamera: when the FIRST ch0 head carries a version in 1..3
 //       other than the one used, the version is adopted, the WHOLE start sequence (4881, 9029, 768; same resolution
 //       and useCounts, next command numbers) is queued again with it, and that reply is skipped unparsed ("skip wrong
@@ -117,6 +128,11 @@ internal class TnpCameraLink(
     private val unknownAuthLogged = AtomicBoolean(false)
     private val commandNumber = AtomicInteger(0)
     private val videoUnits = AtomicInteger(0)
+    private val audioUnits = AtomicInteger(0)
+    private val audioSinkErrorLogged = AtomicBoolean(false)
+    private val resolutionUseCount = AtomicInteger(USE_COUNT_START_RT)
+    private val _capabilities = MutableStateFlow(LinkCapabilities())
+    override val capabilities: StateFlow<LinkCapabilities> = _capabilities.asStateFlow()
     private val threadLock = Any()
     private val liveLock = Any()
     private val threads = CopyOnWriteArrayList<Thread>()
@@ -129,6 +145,8 @@ internal class TnpCameraLink(
     @Volatile private var connectDone = false
     @Volatile private var handle = -1
     @Volatile private var sink: VideoUnitSink? = null
+    @Volatile private var audioSink: AudioUnitSink? = null
+    @Volatile private var burstQueued = false
     @Volatile private var info: LinkInfo? = null
     @Volatile private var authOk = false
     @Volatile private var streaming = false
@@ -151,6 +169,49 @@ internal class TnpCameraLink(
         setLiveState(LinkState.Connecting)
         spawn("watch") { runWatch() }
         spawn("connect") { runConnect() }
+    }
+
+    // START_CONTRACT: setAudioSink
+    //   PURPOSE: Route ch1 audio units to [sink]; null (default) discards them as before.
+    //   INPUTS: { sink: AudioUnitSink? - called from p2p-<n>-rx1 }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: none (read by the ch1 reader on its next unit)
+    //   LINKS: M-TNP-LINK, AudioUnitSink.onAudioUnit
+    // END_CONTRACT: setAudioSink
+    override fun setAudioSink(sink: AudioUnitSink?) {
+        audioSink = sink
+    }
+
+    // START_CONTRACT: requestResolution
+    //   PURPOSE: In-session HD/SD switch (D-07): queue IOCTRL 4881 [resolution, useCount] on the single writer.
+    //   INPUTS: { resolution: Int - IoCtrlMessages resolution code }
+    //   OUTPUTS: { Int? - useCount sent (3, 4, ...), or null when not Connected/Streaming, before the start burst was
+    //     queued, or once closing }
+    //   SIDE_EFFECTS: one txQueue.offer; never blocks and never calls native (any caller thread)
+    //   LINKS: M-TNP-LINK, IoCtrlMessages.setResolution, BLOCK_TX_LOOP
+    // END_CONTRACT: requestResolution
+    override fun requestResolution(resolution: Int): Int? {
+        // START_BLOCK_SET_RESOLUTION
+        val st = _state.value
+        val ready = !closing.get() && !stopping && handle >= 0 && burstQueued &&
+            (st is LinkState.Connected || st is LinkState.Streaming)
+        if (!ready) {
+            Timber.d(
+                "[P2P][tnp][BLOCK_SET_RESOLUTION] cam=%d res=%d useCount=%d queued=%b",
+                camIndex, resolution, 0, false,
+            )
+            return null
+        }
+        val uc = resolutionUseCount.incrementAndGet()
+        val queued = txQueue.offer(
+            TxItem(buildCommand(IoCtrlMessages.SET_RESOLUTION, IoCtrlMessages.setResolution(resolution, uc))),
+        )
+        Timber.d(
+            "[P2P][tnp][BLOCK_SET_RESOLUTION] cam=%d res=%d useCount=%d queued=%b",
+            camIndex, resolution, uc, queued,
+        )
+        return if (queued) uc else null
+        // END_BLOCK_SET_RESOLUTION
     }
 
     // START_CONTRACT: close
@@ -236,6 +297,7 @@ internal class TnpCameraLink(
         val burst = startSequence(resolution)
         burstAtMs = now()
         txQueue.addAll(burst)
+        burstQueued = true
         Timber.d(
             "[P2P][tnp][BLOCK_START_BURST] cam=%d cmds=4881,9029,768 resolution=%d version=%d",
             camIndex, resolution, headerVersion,
@@ -292,7 +354,7 @@ internal class TnpCameraLink(
     // START_BLOCK_READ_LOOP
     // START_CONTRACT: readerLoop
     //   PURPOSE: Per-channel reader p2p-<n>-rx<ch>: exact 8-byte head, validateHead, exact body, dispatch.
-    //   INPUTS: { ch: Int - 0 command, 1 audio (discarded), 2/3/6 video; firstRead: CountDownLatch - released after the
+    //   INPUTS: { ch: Int - 0 command, 1 audio (audio sink or discarded), 2/3/6 video; firstRead: CountDownLatch - released after the
     //     first native read returns, so the burst never precedes a running reader }
     //   OUTPUTS: { Unit - exit closed (-3014 / -3019 / stopping) quietly; error -> failWith(classify(code));
     //     dirty head -> failWith(PROTOCOL, -9000) }
@@ -379,7 +441,7 @@ internal class TnpCameraLink(
     private fun onUnit(ch: Int, head: TnpCodec.TnpHead, body: ByteArray) {
         when (ch) {
             TnpCodec.CH_COMMAND -> onCommandUnit(head, body)
-            TnpCodec.CH_AUDIO -> Unit
+            TnpCodec.CH_AUDIO -> onAudioBody(head, body)
             else -> onVideoBody(ch, body)
         }
     }
@@ -399,7 +461,10 @@ internal class TnpCameraLink(
             // END_BLOCK_HEADER_VERSION
         }
         val reply = TnpCodec.parseIoCtrlReply(body) ?: return
-        if (!onAuthResult(reply.type, reply.authResult)) return
+        if (reply.type == IoCtrlMessages.SET_RESOLUTION_RESP && head.abilityRet == 1) {
+            _capabilities.value = LinkCapabilities(resolutionSwitch = false)
+        }
+        if (!onAuthResult(reply.type, reply.authResult, head.abilityRet)) return
         if (reply.type == IoCtrlMessages.KICK) {
             Timber.d(
                 "[P2P][tnp][BLOCK_KICKED] cam=%d code=%s",
@@ -413,14 +478,15 @@ internal class TnpCameraLink(
     // START_BLOCK_AUTH_REPLY
     // START_CONTRACT: onAuthResult
     //   PURPOSE: Vendor authResult rule for every ch0 reply (TnpCamera ~1266).
-    //   INPUTS: { type: Int - IOCTRL type of the reply; authResult: Int - s32 at IOCtrl offset 8 }
+    //   INPUTS: { type: Int - IOCTRL type of the reply; authResult: Int - s32 at IOCtrl offset 8;
+    //     abilityRet: Int - TNPHead byte 2, logged only }
     //   OUTPUTS: { Boolean - true: authResult 0, the reply may be handled further }
     //   SIDE_EFFECTS: 0 on 4882 -> authOk (Streaming republished under liveLock); 1|2 -> Failed(WRONG_PASSWORD, -20009);
     //     4 -> Failed(PROTOCOL, -9000); any other value -> reply dropped, one value-free UNKNOWN log line per link.
     //     The link itself never retries.
     //   LINKS: IoCtrlMessages.authOutcome, M-TNP-LINK
     // END_CONTRACT: onAuthResult
-    private fun onAuthResult(type: Int, authResult: Int): Boolean {
+    private fun onAuthResult(type: Int, authResult: Int, abilityRet: Int = 0): Boolean {
         val outcome = IoCtrlMessages.authOutcome(authResult)
         if (outcome is IoCtrlMessages.AuthOutcome.Unknown) {
             if (unknownAuthLogged.compareAndSet(false, true)) {
@@ -430,8 +496,8 @@ internal class TnpCameraLink(
         }
         if (type == IoCtrlMessages.SET_RESOLUTION_RESP || outcome != IoCtrlMessages.AuthOutcome.OK) {
             Timber.d(
-                "[P2P][tnp][BLOCK_AUTH_REPLY] cam=%d type=%d authResult=%d outcome=%s version=%d",
-                camIndex, type, authResult, outcome.toString(), headerVersion,
+                "[P2P][tnp][BLOCK_AUTH_REPLY] cam=%d type=%d authResult=%d outcome=%s version=%d abilityRet=%d",
+                camIndex, type, authResult, outcome.toString(), headerVersion, abilityRet,
             )
         }
         when (outcome) {
@@ -471,6 +537,30 @@ internal class TnpCameraLink(
         sink?.onVideoUnit(unit)
     }
     // END_BLOCK_FIRST_VIDEO
+
+    // START_BLOCK_AUDIO_UNIT
+    // ch1: only ioType 2 with a body longer than the 24-byte frame head. Encrypted = adopted header version >= 2
+    // (vendor: v1 audio is plain). A sink exception drops that unit only (audio is optional), logged once.
+    private fun onAudioBody(head: TnpCodec.TnpHead, body: ByteArray) {
+        val s = audioSink ?: return
+        if (head.ioType != TnpCodec.IOTYPE_AUDIO || body.size <= TnpCodec.FRAME_HEAD_SIZE) return
+        val (frameInfo, payload) = TnpCodec.splitFrameUnit(body, bigEndian = true) ?: return
+        val encrypted = headerVersion >= 2
+        if (audioUnits.incrementAndGet() == 1) {
+            Timber.d(
+                "[P2P][tnp][BLOCK_AUDIO_UNIT] cam=%d first=true codecId=%d enc=%b",
+                camIndex, frameInfo.codecId, encrypted,
+            )
+        }
+        try {
+            s.onAudioUnit(AudioUnit(TnpCodec.CH_AUDIO, frameInfo, payload, encrypted))
+        } catch (e: Exception) {
+            if (audioSinkErrorLogged.compareAndSet(false, true)) {
+                Timber.w("[P2P][tnp][BLOCK_AUDIO_UNIT] cam=%d sinkError=%s", camIndex, e.javaClass.simpleName)
+            }
+        }
+    }
+    // END_BLOCK_AUDIO_UNIT
 
     // START_BLOCK_WATCH
     // p2p-<n>-watch: the only two timers. Connect (connect + check) > connectMs -> TIMEOUT(-3003);

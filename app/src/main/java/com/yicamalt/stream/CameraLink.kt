@@ -1,9 +1,9 @@
 // FILE: CameraLink.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Transport-neutral port for one live P2P session to one camera (TNP now, TUTK conditionally).
 //   SCOPE: CameraLink / CameraLinkFactory / P2pCredentialsSource ports and the LinkState, LinkInfo, LinkMode,
-//     LinkError, LinkErrorKind, LinkOptions values they expose.
+//     LinkError, LinkErrorKind, LinkOptions, LinkCapabilities values they expose.
 //   DEPENDS: M-P2P-CREDS (P2pCredentials, TransportType)
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK
 //   ROLE: TYPES
@@ -13,6 +13,7 @@ package com.yicamalt.stream
 
 import com.yicamalt.camera.P2pCredentials
 import com.yicamalt.camera.TransportType
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 // START_MODULE_MAP
@@ -22,14 +23,19 @@ import kotlinx.coroutines.flow.StateFlow
 //   LinkError - kind + vendor/app code (0 when none).
 //   LinkState - Idle | Connecting | Connected | Streaming | Failed (terminal) | Closed (terminal).
 //   LinkOptions - per-press options (forceRelay).
-//   CameraLink - one session: deviceId, state flow, start(sink), close(reason).
+//   LinkCapabilities - resolutionSwitch (null = unknown, false = 4881 unsupported); UNKNOWN shared constant flow.
+//   CameraLink - one session: deviceId, state flow, start(sink), close(reason); default members setAudioSink(sink),
+//     requestResolution(resolution) -> useCount?, capabilities flow.
 //   CameraLinkFactory - open(credentials, options); one session per camera.
 //   P2pCredentialsSource - credentialsFor(deviceId) -> P2pCredentials?; refreshCredentials(deviceId) (suspend, one
 //     cloud refresh then the stored value; default = credentialsFor).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review MED-4: P2pCredentialsSource.refreshCredentials, used by the single automatic
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-00: Phase 3 port members with default bodies so existing links and test fakes
+//     compile unchanged: setAudioSink, requestResolution, capabilities; LinkCapabilities value. Closed reason set gains
+//     stall and network-change. INVARIANT kept: links never retry or reconnect.
+//   PREVIOUS: v0.2.0 - Phase 2 review MED-4: P2pCredentialsSource.refreshCredentials, used by the single automatic
 //     retry after WRONG_PASSWORD (vendor re-fetches the password before reconnecting). Links themselves still never
 //     retry or reconnect; Failed / Closed stay terminal for a link.
 //   PREVIOUS: v0.1.0 - GSD plan 02-00: contract-first port types for Phase 2. Doc comments use // only (no block comments).
@@ -63,12 +69,19 @@ sealed interface LinkState {
     // Terminal for this link; the link never retries (one retry on WRONG_PASSWORD may open a NEW link above it).
     data class Failed(val error: LinkError) : LinkState
 
-    // Terminal; reason in {user, kicked, screen-left, background, error, timeout}. error and timeout normally end
-    // in Failed; the set is shared with the BLOCK_CLOSE log reason.
+    // Terminal; reason in {user, kicked, screen-left, background, error, timeout, stall, network-change}. error and
+    // timeout normally end in Failed; the set is shared with the BLOCK_CLOSE log reason.
     data class Closed(val reason: String) : LinkState
 }
 
 data class LinkOptions(val forceRelay: Boolean = false)
+
+// resolutionSwitch: null = unknown, false = the camera marked 4881 unsupported (TNP abilityRet == 1).
+data class LinkCapabilities(val resolutionSwitch: Boolean? = null) {
+    companion object {
+        val UNKNOWN: StateFlow<LinkCapabilities> = MutableStateFlow(LinkCapabilities())
+    }
+}
 
 interface CameraLink {
     val deviceId: String
@@ -79,6 +92,15 @@ interface CameraLink {
 
     // Idempotent, callable from any thread, never blocks longer than ~2 s (abort + bounded join).
     fun close(reason: String = "user")
+
+    // Call before start(). Audio units go to [sink] from a link thread; null (default) = audio discarded.
+    fun setAudioSink(sink: AudioUnitSink?) {}
+
+    // Non-blocking: queues IOCTRL 4881 [resolution, ++useCount] on the link writer thread. Returns the useCount sent,
+    // or null when the link cannot send now (not connected, closing) or does not support it (default).
+    fun requestResolution(resolution: Int): Int? = null
+
+    val capabilities: StateFlow<LinkCapabilities> get() = LinkCapabilities.UNKNOWN
 }
 
 interface CameraLinkFactory {

@@ -1,5 +1,5 @@
 // FILE: TutkShimContractTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Pin the TUTK JNI shim to the exact class, method, field and callback names the vendor libIOTCAPIs.so /
 //     libAVAPIs.so bind to or FindClass.
@@ -27,7 +27,8 @@ import java.lang.reflect.Modifier
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-10: created with the TUTK shim.
+//   LAST_CHANGE: v0.2.0 - GSD plan 03-03: AV_NATIVES pins avClientCleanAudioBuf, avRecvAudioData, avRecvIOCtrl.
+//   PREV_CHANGE: v0.1.0 - GSD plan 02-10: created with the TUTK shim.
 // END_CHANGE_SUMMARY
 
 class TutkShimContractTest {
@@ -87,6 +88,9 @@ class TutkShimContractTest {
         "avSendIOCtrlExit" to (int to listOf(int)),
         "avClientStop" to (void to listOf(int)),
         "avClientExit" to (void to listOf(int, int)),
+        "avClientCleanAudioBuf" to (int to listOf(int)),
+        "avRecvAudioData" to (int to listOf(int, bytes, int, bytes, int, ints)),
+        "avRecvIOCtrl" to (int to listOf(int, ints, bytes, int, int)),
     )
 
     private fun jniType(c: Class<*>): String = when {

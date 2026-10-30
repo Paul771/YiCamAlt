@@ -1,8 +1,8 @@
 // FILE: IoCtrlMessagesTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for IOCTRL constants, payload builders and reply interpretation.
-//   SCOPE: 4881/9029/768/767/8190/511 payload bytes, authOutcome, kickCode, ResolutionPolicy.
+//   SCOPE: 4881 (BE and LE)/9029/768/767/8190/511 payload bytes, 769 id, authOutcome, kickCode, ResolutionPolicy.
 //   DEPENDS: M-STREAM-CORE (IoCtrlMessages, LinkMode)
 //   LINKS: V-M-STREAM-CORE
 //   ROLE: TEST
@@ -17,11 +17,12 @@ import org.junit.jupiter.api.Test
 
 // START_MODULE_MAP
 //   bytes(vararg) - int list to byte array.
-//   IoCtrlMessagesTest - payload bytes, constants, auth/kick mapping, resolution policy.
+//   IoCtrlMessagesTest - payload bytes (incl. 4881 byte order), constants, auth/kick mapping, resolution policy.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review: kick reason is payload[0] (LOW-11); Unknown authResult has appCode 0 (MED-3).
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-00: setResolution byte order (LE for TUTK, BE default) and AUDIO_STOP 769.
+//   PREVIOUS: v0.2.0 - Phase 2 review: kick reason is payload[0] (LOW-11); Unknown authResult has appCode 0 (MED-3).
 //   PREVIOUS: v0.1.0 - GSD plan 02-04: wire-layer vectors.
 // END_CHANGE_SUMMARY
 
@@ -39,11 +40,22 @@ class IoCtrlMessagesTest {
     }
 
     @Test
+    fun `setResolution honours the transport byte order`() {
+        assertArrayEquals(bytes(1, 0, 0, 0, 3, 0, 0, 0), IoCtrlMessages.setResolution(1, 3, bigEndian = false))
+        assertArrayEquals(bytes(0, 0, 0, 2, 0, 0, 0, 5), IoCtrlMessages.setResolution(2, 5, bigEndian = true))
+        assertArrayEquals(
+            IoCtrlMessages.setResolution(2, 7, bigEndian = true),
+            IoCtrlMessages.setResolution(resolution = 2, useCount = 7),
+        )
+    }
+
+    @Test
     fun `command constants`() {
         assertEquals(4881, IoCtrlMessages.SET_RESOLUTION)
         assertEquals(4882, IoCtrlMessages.SET_RESOLUTION_RESP)
         assertEquals(9029, IoCtrlMessages.START_REALTIME)
         assertEquals(768, IoCtrlMessages.AUDIO_START)
+        assertEquals(769, IoCtrlMessages.AUDIO_STOP)
         assertEquals(767, IoCtrlMessages.STOP)
         assertEquals(9033, IoCtrlMessages.KICK)
         assertEquals(8190, IoCtrlMessages.TUTK_START_ENC)

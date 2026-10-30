@@ -1,5 +1,5 @@
 // FILE: TutkCameraLinkTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TutkCameraLink and TutkLinkFactory over FakeTutkNative: vendor call order,
 //     nonce + HMAC auth, start command, LE frame heads, mode mapping, failure codes, frame drop rule, no-data bound,
@@ -15,6 +15,8 @@ package com.yicamalt.p2p.tutk
 import com.yicamalt.camera.P2pCredentials
 import com.yicamalt.camera.TransportType
 import com.yicamalt.p2p.NativeLibs
+import com.yicamalt.stream.AudioUnit
+import com.yicamalt.stream.AudioUnitSink
 import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.FrameHeadCodec
 import com.yicamalt.stream.IoCtrlMessages
@@ -57,10 +59,14 @@ import java.util.concurrent.atomic.AtomicLong
 //   review fixes - non-fatal codes skipped (logged once), vendor fatal list, -20001 buffer growth, late av after
 //     close (avClientStop once), thread guard, empty password, deferred registry release, stop after reader left.
 //   log hygiene - markers present; RedactionScanner over every buffer incl. the generated nonce and HMAC.
+//   phase 3 tests - audio sink -> 768 + cleanAudioBuf + rxa units (LE, unencrypted); no sink -> no 768 / rxa; audio
+//     and ioctrl end codes end only their loop; audio no-data pacing; 4881 LE via tx with useCount 2, 3; null before
+//     start / after close; teardown joins rx / rxa / rxc / tx before stop; blocked tx defers the registry.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review: vendor fatal read codes and -20001 buffer growth (MED-5), late
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-04: TUTK audio reader, IOCTRL reader, in-session 4881 and extended teardown.
+//   PREVIOUS: v0.2.0 - Phase 2 review: vendor fatal read codes and -20001 buffer growth (MED-5), late
 //     avClientStart2 after close (MED-6), thread guard / empty password (MED-7), deferred registry release (LOW-8),
 //     vendor stop only after the reader left avRecvFrameData2 (LOW-9).
 //   PREVIOUS: v0.1.0 - GSD plan 02-11: created.
@@ -673,6 +679,239 @@ class TutkCameraLinkTest {
         assertFalse(link.state.value.toString().contains(RedactionFixtures.TUTK_UID))
     }
     // END_BLOCK_LOG_HYGIENE
+
+    // START_BLOCK_PHASE3_TESTS
+    private class RecordingAudioSink : AudioUnitSink {
+        val units = CopyOnWriteArrayList<AudioUnit>()
+        override fun onAudioUnit(unit: AudioUnit) {
+            units += unit
+        }
+    }
+
+    private fun audioFrame(seq: Int) = ByteArray(40) { (it + seq).toByte() }.let {
+        FakeTutkNative.Frame(RecvResult(it.size, it.size), it, leHead(codec = 138, key = false, seq = seq))
+    }
+
+    private fun threadAlive(name: String) = Thread.getAllStackTraces().keys.any { it.isAlive && it.name == name }
+
+    private fun sentTypes(fake: FakeTutkNative) = fake.sentIoCtrl.map { it.first }
+
+    @Test
+    fun `audio sink set - 768 queued after the start command, buffer cleaned, units delivered unencrypted`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        fake.audioQueue += audioFrame(1)
+        fake.audioQueue += audioFrame(2)
+        val cam = CAM.incrementAndGet()
+        val link = newLink(fake, cam = cam)
+        val audio = RecordingAudioSink()
+        link.setAudioSink(audio)
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        awaitTrue(what = { audio.units.toString() }) { audio.units.size == 2 }
+        awaitTrue { fake.sentIoCtrl.size >= 2 }
+        val calls = fake.calls.toList()
+        val start = calls.indexOfFirst { it.startsWith("sendIoCtrl av=0 type=8190") }
+        val audioStart = calls.indexOfFirst { it.startsWith("sendIoCtrl av=0 type=768") }
+        assertTrue(start in 0 until audioStart, calls.toString())
+        val clean = calls.indexOfFirst { it.startsWith("cleanAudioBuf") }
+        val firstRecv = calls.indexOfFirst { it.startsWith("recvAudio") }
+        assertTrue(clean in 0 until firstRecv, calls.toString())
+        assertEquals(listOf(IoCtrlMessages.TUTK_START_ENC, IoCtrlMessages.AUDIO_START), sentTypes(fake))
+        assertArrayEquals(IoCtrlMessages.audioStart(), fake.sentIoCtrl[1].second)
+        assertTrue(fake.sendThreads[1].endsWith("-tx"), fake.sendThreads.toString())
+        audio.units.forEach {
+            assertFalse(it.encrypted)
+            assertEquals(138, it.info.codecId)
+            assertEquals(40, it.payload.size)
+        }
+        assertArrayEquals(ByteArray(40) { (it + 2).toByte() }, audio.units[1].payload)
+        assertTrue(threadAlive("tutk-$cam-rxa"))
+        assertTrue(fake.threads.all { it.startsWith("tutk-$cam-") }, fake.threads.toString())
+    }
+
+    @Test
+    fun `no audio sink - no 768, no audio reader`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val cam = CAM.incrementAndGet()
+        val link = newLink(fake, cam = cam)
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        awaitTrue { threadAlive("tutk-$cam-tx") && threadAlive("tutk-$cam-rxc") }
+        Thread.sleep(100)
+        assertEquals(listOf(IoCtrlMessages.TUTK_START_ENC), sentTypes(fake))
+        assertEquals(0, fake.callCount("recvAudio"))
+        assertEquals(0, fake.callCount("cleanAudioBuf"))
+        assertFalse(threadAlive("tutk-$cam-rxa"))
+        assertFalse(fake.threads.contains("tutk-$cam-rxa"))
+    }
+
+    @Test
+    fun `audio -20015 ends only the audio loop`() {
+        val fake = fake().apply { audioEndCode = TutkCodes.AV_SESSION_CLOSE_BY_REMOTE }
+        fake.recvQueue += frame(seq = 1)
+        fake.audioQueue += audioFrame(1)
+        val cam = CAM.incrementAndGet()
+        val link = newLink(fake, cam = cam)
+        val audio = RecordingAudioSink()
+        link.setAudioSink(audio)
+        val sink = RecordingSink()
+        link.start(sink)
+        awaitState(link) { it is LinkState.Streaming }
+        awaitTrue { fake.callCount("recvAudio") >= 2 && !threadAlive("tutk-$cam-rxa") }
+        fake.recvQueue += frame(seq = 2, key = false)
+        fake.recvQueue += frame(seq = 3, key = false)
+        awaitTrue(what = { sink.units.size.toString() }) { sink.units.size == 3 }
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        assertEquals(1, audio.units.size)
+        assertEquals(2, fake.callCount("recvAudio"))
+        val text = recorder.bufferText()
+        assertTrue(text.contains("[P2P][tutk][BLOCK_AUDIO_LOOP] cam=$cam exit=AV_ER_SESSION_CLOSE_BY_REMOTE"), text)
+    }
+
+    @Test
+    fun `audio -20012 polls with a pause`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        // Default Timeouts.audioNoDataSleepMs (vendor 120 ms) between two no-data results.
+        val link = newLink(fake)
+        link.setAudioSink(RecordingAudioSink())
+        link.start(RecordingSink())
+        awaitTrue { fake.recvAudioAtNs.size >= 3 }
+        val gaps = fake.recvAudioAtNs.toList().take(3).zipWithNext { a, b -> b - a }
+        assertTrue(gaps.all { it >= 100_000_000L }, gaps.toString())
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+    }
+
+    @Test
+    fun `requestResolution sends 4881 little-endian with useCount 2 then 3 on the tx thread`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        assertEquals(2, link.requestResolution(IoCtrlMessages.RESOLUTION_SD))
+        assertEquals(3, link.requestResolution(IoCtrlMessages.RESOLUTION_HD))
+        awaitTrue { fake.sentIoCtrl.count { it.first == IoCtrlMessages.SET_RESOLUTION } == 2 }
+        val sent = fake.sentIoCtrl.withIndex().filter { it.value.first == IoCtrlMessages.SET_RESOLUTION }
+        assertArrayEquals(byteArrayOf(2, 0, 0, 0, 2, 0, 0, 0), sent[0].value.second)
+        assertArrayEquals(byteArrayOf(1, 0, 0, 0, 3, 0, 0, 0), sent[1].value.second)
+        sent.forEach { assertTrue(fake.sendThreads[it.index].endsWith("-tx"), fake.sendThreads.toString()) }
+        assertTrue(link.state.value is LinkState.Streaming)
+    }
+
+    @Test
+    fun `requestResolution before Streaming or Connected or after close returns null`() {
+        val gate = CountDownLatch(1)
+        val fake = fake().apply { clientStartGate = gate }
+        fake.recvQueue += frame(seq = 1)
+        val link = newLink(fake)
+        assertEquals(null, link.requestResolution(IoCtrlMessages.RESOLUTION_HD))
+        link.start(RecordingSink())
+        awaitTrue { fake.callCount("clientStart") == 1 }
+        assertEquals(null, link.requestResolution(IoCtrlMessages.RESOLUTION_HD))
+        gate.countDown()
+        awaitState(link) { it is LinkState.Streaming }
+        awaitTrue { link.requestResolution(IoCtrlMessages.RESOLUTION_HD) != null }
+        link.close()
+        assertEquals(null, link.requestResolution(IoCtrlMessages.RESOLUTION_SD))
+    }
+
+    @Test
+    fun `ioctrl reader consumes 4882 replies and never fails the link`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        fake.ioCtrlQueue += FakeTutkNative.IoCtrlReply(IoCtrlMessages.SET_RESOLUTION_RESP, ByteArray(4))
+        val cam = CAM.incrementAndGet()
+        val link = newLink(fake, cam = cam)
+        val sink = RecordingSink()
+        link.start(sink)
+        awaitState(link) { it is LinkState.Streaming }
+        awaitTrue { recorder.bufferText().contains("[P2P][tutk][BLOCK_IOCTRL_LOOP] cam=$cam type=4882 size=4") }
+        assertTrue(link.state.value is LinkState.Streaming)
+        fake.ioCtrlEndCode = TutkCodes.AV_SESSION_CLOSE_BY_REMOTE
+        awaitTrue { !threadAlive("tutk-$cam-rxc") }
+        fake.recvQueue += frame(seq = 2, key = false)
+        awaitTrue { sink.units.size == 2 }
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        assertTrue(threadAlive("tutk-$cam-rx"))
+    }
+
+    @Test
+    fun `close joins rx, rxa, rxc and tx before stop`() {
+        repeat(3) {
+            val fake = fake().apply { recvDelayMs = 15 }
+            fake.recvQueue += frame(seq = 1)
+            val cam = CAM.incrementAndGet()
+            val link = newLink(fake, cam = cam, timeouts = TutkCameraLink.Timeouts(pollMs = 5, noDataSleepMs = 0))
+            link.setAudioSink(RecordingAudioSink())
+            link.start(RecordingSink())
+            awaitState(link) { it is LinkState.Streaming }
+            awaitTrue { fake.callCount("recvAudio") > 0 && fake.callCount("recvIoCtrl") > 0 }
+            link.requestResolution(IoCtrlMessages.RESOLUTION_SD)
+            Thread.sleep(20)
+            val t0 = System.nanoTime()
+            link.close()
+            val ms = (System.nanoTime() - t0) / 1_000_000
+            assertTrue(ms <= 2_000 + 300, "close took $ms ms")
+            assertEquals(0, fake.recvInFlightAtStop)
+            assertEquals(0, fake.sendInFlightAtStop)
+            val calls = fake.calls.toList()
+            val stopAt = calls.indexOfFirst { c -> c.startsWith("stop") }
+            assertTrue(stopAt >= 0, calls.toString())
+            assertTrue(
+                calls.subList(stopAt, calls.size).none { c -> c.startsWith("recv") || c.startsWith("sendIoCtrl") },
+                calls.toString(),
+            )
+            assertThreadsGone(cam)
+        }
+    }
+
+    @Test
+    fun `tx blocked in sendIoCtrl does not block close and the registry is deferred until it exits`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        val f = factory(fake)
+        val first = f.openTracked(creds())
+        first.start(RecordingSink())
+        awaitState(first) { it is LinkState.Streaming }
+        val latch = CountDownLatch(1)
+        fake.sendIoCtrlBlock = latch
+        assertEquals(2, first.requestResolution(IoCtrlMessages.RESOLUTION_SD))
+        awaitTrue { fake.sendInFlight.get() == 1 }
+        val t0 = System.nanoTime()
+        first.close()
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        assertTrue(ms <= 2_000 + 300, "close took $ms ms")
+        assertEquals(LinkState.Closed("user"), first.state.value)
+        assertEquals(failed(LinkErrorKind.ALREADY_OPEN, 0), f.openTracked(creds()).state.value)
+        fake.sendIoCtrlBlock = null
+        latch.countDown()
+        awaitTrue { recorder.bufferText().contains("registry=released") }
+        assertEquals(LinkState.Idle, f.openTracked(creds()).state.value)
+        assertTrue(recorder.bufferText().contains("registry=deferred"))
+    }
+
+    @Test
+    fun `phase 3 blocks log value-free markers`() {
+        val fake = fake()
+        fake.recvQueue += frame(seq = 1)
+        fake.audioQueue += audioFrame(1)
+        val link = newLink(fake)
+        link.setAudioSink(RecordingAudioSink())
+        link.start(RecordingSink())
+        awaitState(link) { it is LinkState.Streaming }
+        link.requestResolution(IoCtrlMessages.RESOLUTION_SD)
+        awaitTrue { fake.callCount("sendIoCtrl") >= 3 }
+        link.close()
+        val text = recorder.bufferText()
+        listOf("BLOCK_TX_LOOP", "BLOCK_AUDIO_LOOP", "BLOCK_SET_RESOLUTION", "BLOCK_IOCTRL_LOOP").forEach {
+            assertTrue(text.contains("[P2P][tutk][$it] cam="), it)
+        }
+        RedactionScanner().assertClean(text, extraLiterals = SECRETS + listOf(fake.lastUser!!, fake.lastPass!!))
+    }
+    // END_BLOCK_PHASE3_TESTS
 
     companion object {
         private val CAM = AtomicInteger(1000)

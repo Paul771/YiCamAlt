@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-11-PLAN.md
-last_updated: "2026-10-16T05:14:37.203Z"
-last_activity: 2026-10-16
+stopped_at: Completed 03-12-PLAN.md
+last_updated: "2026-10-30T11:33:49.950Z"
+last_activity: 2026-10-30
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 26
-  completed_plans: 25
+  completed_phases: 2
+  total_plans: 40
+  completed_plans: 39
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 02 — p2p
+**Current focus:** Phase 03 — live-view
 
 ## Current Position
 
-Phase: 02 (p2p) — EXECUTING
-Plan: 13 of 13
+Phase: 4
+Plan: Not started
 Status: Ready to execute
-Last activity: 2026-10-16
+Last activity: 2026-10-30
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -65,6 +65,19 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-p2p P09 | 35min | 2 tasks | 8 files |
 | Phase 02-p2p P10 | 35min | 3 tasks | 17 files |
 | Phase 02-p2p P11 | 40min | 2 tasks | 9 files |
+| Phase 03-live-view P00 | 20min | 2 tasks | 9 files |
+| Phase 03 P01 | 25min | 2 tasks | 7 files |
+| Phase 03-live-view P02 | 25min | 2 tasks | 4 files |
+| Phase 03-live-view P03 | 15min | 2 tasks | 5 files |
+| Phase 03 P05 | 6min | 2 tasks | 4 files |
+| Phase 03 P08 | 15min | 2 tasks | 10 files |
+| Phase 03 P09 | 10min | 2 tasks | 7 files |
+| Phase 03 P04 | 25min | 2 tasks | 4 files |
+| Phase 03 P06 | 30min | 2 tasks | 5 files |
+| Phase 03 P07 | 25min | 2 tasks | 6 files |
+| Phase 03 P10 | 45min | 2 tasks | 7 files |
+| Phase 03 P11 | 20min | 2 tasks | 3 files |
+| Phase 03 P12 | 45min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -101,6 +114,27 @@ Recent decisions affecting current work:
 - [Phase 02-p2p]: TUTK shim omits DeInitialize natives; names pinned from .so strings (12 classes/interfaces)
 - [Phase 02-p2p]: 02-11: TransportLinkFactory bound as CameraLinkFactory; TUTK connect timer covers connect+check+clientStart; teardown frees sid0 via stop(-1, sid0) after a failed/aborted connect
 - [Phase 02-p2p]: 02-11: TUTK -20012 polling bounded at 300 x 30 ms -> Failed(TIMEOUT, -20012), no vendor auto-reconnect
+- [Phase 03]: Phase 3 CameraLink members have default bodies so TNP/TUTK links and fakes compile unchanged
+- [Phase 03]: M-UI-LIVEVIEW rewritten: no PTZ/camera selector (v2), depends on M-LIVE-SESSION
+- [Phase 03]: Audio availability: valid frame -> true; non-AAC codec -> false; else null until 6 s after streaming, then false
+- [Phase 03]: AudioPipeline decryptOk only set when a decrypt ran; fail-open units leave it null
+- [Phase 03-live-view]: TNP requestResolution returns null until the start burst is queued; audio sink exceptions logged once and dropped
+- [Phase 03]: TUTK audio/IOCTRL readers: avRecvAudioData / avRecvIOCtrl on the same AV channel, exports verified on both ABIs; fake recvInFlight covers all readers
+- [Phase 03]: QualityController: needsAutoRequest requires no pending request; beginRequest (also null useCount) marks the per-link auto request done
+- [Phase 03]: ResumePolicy: shouldAutoResume consumes the pending resume even after the window expired
+- [Phase 03]: NetStateTracker keeps the last network key after onLost; same network back keeps generation
+- [Phase 03]: VideoDecoder.videoSize seeded from key-frame size at codec creation, then crop-aware output format size
+- [Phase 03]: SnapshotStore owns the bitmap; failed insert/compress/write deletes the row and returns WriteFailed(class)
+- [Phase 03]: ZoomMath.doubleTap: scale>1 -> fit; fill<=1 -> 2x
+- [Phase 03]: TUTK tx and rxc start after a successful 8190/511; rxa and 768 only with an audio sink set before start; audio/IOCTRL errors end only their loop
+- [Phase 03]: LiveSessionSupervisor: run token under lock closes late opens; watch ends on terminal or own close; wrong-password/kick retries advance attempt, only NETWORK checks maxAttempts; healthy 30 s resets attempt and allowances
+- [Phase 03]: AacDecoder: failures terminal (Failed, no retry); no-decoder/codec/channels/<class> reasons; AudioTrack from codec output format; queue 6 drop-oldest
+- [Phase 03]: 03-10: re-open of the same camera keeps the session (title only); another camera closes the screen first
+- [Phase 03]: 03-10: LiveVideoOutput.resetEvents -> DefaultMediaSession.resetPipeline (decoder reset re-arms the key-frame gate)
+- [Phase 03]: 03-10: WRONG_PASSWORD/KICK waits show Подключение…; NETWORK waits and Connecting(n>1) show Повтор (n/5)
+- [Phase 03]: 03-11: video slot stable across portrait/fullscreen; fullscreen exit forces PORTRAIT then OrientationEventListener restores UNSPECIFIED
+- [Phase 03]: 03-11: camera tap opens LiveViewScreen, long press opens the debug LiveProbeScreen
+- [Phase 03]: Phase 3 GRACE V-M records stay in-progress (JVM-verified); H-L1..H-L9 pending in 03-HUMAN-UAT.md, none passed
 
 ### Pending Todos
 
@@ -114,6 +148,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-16T05:14:37.197Z
-Stopped at: Completed 02-11-PLAN.md
+Last session: 2026-10-23T10:07:08.832Z
+Stopped at: Completed 03-12-PLAN.md
 Resume file: None

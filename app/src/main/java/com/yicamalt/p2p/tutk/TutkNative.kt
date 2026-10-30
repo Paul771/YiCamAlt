@@ -1,9 +1,9 @@
 // FILE: TutkNative.kt
-// VERSION: 0.1.1
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: The only seam between our code and the vendor TUTK IOTC/AV libraries, plus their error-code table.
-//   SCOPE: TutkNative interface (12 calls in the vendor client order), value-free TutkCheck / ClientStart /
-//     RecvResult projections, TutkCodes (IOTC_ER_* and AV_ER_* names + classify to LinkErrorKind).
+//   SCOPE: TutkNative interface (15 calls in the vendor client order), value-free TutkCheck / ClientStart /
+//     RecvResult / IoCtrlResult projections, TutkCodes (IOTC_ER_* and AV_ER_* names + classify to LinkErrorKind).
 //   DEPENDS: M-STREAM-CORE (LinkErrorKind)
 //   LINKS: M-TUTK-LINK, V-M-TUTK-LINK, M-P2P-NATIVE
 //   ROLE: TYPES
@@ -15,15 +15,18 @@ import com.yicamalt.stream.LinkErrorKind
 
 // START_MODULE_MAP
 //   TutkNative - initialize, avInitialize, iotcVersion, avVersion, sessionId, connectByUid, connectStop, check,
-//     clientStart, sendIoCtrl, recvFrame, stop.
+//     clientStart, sendIoCtrl, recvFrame, cleanAudioBuf, recvAudio, recvIoCtrl, stop.
 //   TutkCheck - code, mode (0 P2P, 1 Relay, 2 LAN), remoteIsPrivate (no address values).
 //   ClientStart - av channel id (or negative code), servType.
 //   RecvResult - code (> 0 bytes, else AV_ER_*), size (frame bytes written into buf).
+//   IoCtrlResult - code (>= 0 payload bytes, else AV_ER_*), type (IOCTRL type of the reply).
 //   TutkCodes - IOTC / AV constants; name(code), classify(code) -> LinkErrorKind; isAlreadyInitialized helpers.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - Phase 2 review MED-5: AV_ER_BUFPARA_MAXSIZE_INSUFF (-20001) added to the code table.
+//   LAST_CHANGE: v0.2.0 - GSD plan 03-03: cleanAudioBuf, recvAudio, recvIoCtrl and IoCtrlResult (audio and IOCTRL
+//     reply readers on the same AV channel, each on its own TUTK thread).
+//   PREVIOUS: v0.1.1 - Phase 2 review MED-5: AV_ER_BUFPARA_MAXSIZE_INSUFF (-20001) added to the code table.
 //   PREVIOUS: v0.1.0 - GSD plan 02-10: created. Android impl: AndroidTutkNative; JVM: FakeTutkNative (tests).
 //     IOTC / AV are never de-initialised. The cloud uid passed to connectByUid is a secret: never logged.
 // END_CHANGE_SUMMARY
@@ -53,6 +56,15 @@ interface TutkNative {
     // avRecvFrameData2 into buf (whole buffer) and frameInfo (24-byte FrameHead, little-endian).
     fun recvFrame(av: Int, buf: ByteArray, frameInfo: ByteArray): RecvResult
 
+    // avClientCleanAudioBuf(av): drop buffered audio before starting the audio reader (vendor order).
+    fun cleanAudioBuf(av: Int): Int
+
+    // avRecvAudioData(av, buf, buf.size, frameInfo, 24, frameIndex): > 0 payload bytes in buf, else AV_ER_* (-20012 no data).
+    fun recvAudio(av: Int, buf: ByteArray, frameInfo: ByteArray): RecvResult
+
+    // avRecvIOCtrl(av, ioType, buf, buf.size, timeoutMs): >= 0 payload bytes + type, else AV_ER_* (-20011 timeout).
+    fun recvIoCtrl(av: Int, buf: ByteArray, timeoutMs: Int): IoCtrlResult
+
     // Vendor stop order: avSendIOCtrl(767, 8 zeros), avSendIOCtrlExit, avClientStop, avClientExit(sid, 0),
     // IOTC_Session_Close. A negative av skips the AV steps, a negative sid skips the session steps.
     fun stop(av: Int, sid: Int)
@@ -64,6 +76,9 @@ data class TutkCheck(val code: Int, val mode: Int, val remoteIsPrivate: Boolean)
 data class ClientStart(val av: Int, val servType: Int)
 
 data class RecvResult(val code: Int, val size: Int)
+
+// avRecvIOCtrl result: code >= 0 is the payload size written into buf, type is the reply IOCTRL type.
+data class IoCtrlResult(val code: Int, val type: Int)
 
 object TutkCodes {
     const val OK = 0

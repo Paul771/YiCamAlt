@@ -705,6 +705,10 @@
         <scenario-15 kind="failure" evidence-type="deterministic">Thread guard: a sink throwing an Error and an empty encrypted password end in Failed(INTERNAL, 0) with ForceClose and onClosed, never an uncaught thread death; TnpLinkFactory refuses an empty encrypted password as NO_CREDENTIALS (Phase 2 review MED-7)</scenario-15>
         <scenario-16 kind="success" evidence-type="deterministic">A connect thread that ignores Connect_Break keeps the registry entry (onClosed deferred, registry=deferred) until it exits, while close() still returns within joinMs with Closed (Phase 2 review LOW-8)</scenario-16>
         <scenario-17 kind="success" evidence-type="deterministic">ForceClose runs with no PPPP_Read in flight and no read after it; order STOP -> Connect_Break -> ForceClose kept (5 rounds; Phase 2 review LOW-9)</scenario-17>
+        <scenario-18 kind="success" evidence-type="deterministic">ch1 audio (ioType 2, body &gt; 24) reaches the AudioUnitSink with encrypted = header version &gt;= 2 (true at 2, false after adopting 1), never the video sink; without a sink it is discarded; a throwing audio sink is logged once (sinkError=&lt;Class&gt;) and video keeps streaming (plan 03-02, LIVE-06)</scenario-18>
+        <scenario-19 kind="success" evidence-type="deterministic">requestResolution queues 4881 [res, useCount 3, 4, ...] through the single writer (header version 2, next command numbers 4, 5); burst bytes unchanged; null and no write before connect or after close (plan 03-02, LIVE-07)</scenario-19>
+        <scenario-20 kind="success" evidence-type="deterministic">4882 with TNPHead abilityRet 1 sets capabilities.resolutionSwitch=false; abilityRet 0 keeps null; abilityRet logged on BLOCK_AUTH_REPLY (plan 03-02, D-07)</scenario-20>
+        <scenario-21 kind="device" status="passed" evidence-type="trace">H-L3 / H-L4 (TNP half): ch1 audio decrypts to valid ADTS and 4881 changes the frame width without a reconnect; blocked until Phase 2 H1 (TNP live video) passes; TNP Phase 3 behaviour is JVM-only until then</scenario-21>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -718,6 +722,8 @@
         <marker-9>[P2P][tnp][BLOCK_HEADER_VERSION] version=&lt;n&gt; resent=4881,9029,768 reply=skipped</marker-9>
         <marker-10>[P2P][tnp][BLOCK_KICKED] code=&lt;NAME&gt;</marker-10>
         <marker-11>[P2P][tnp][BLOCK_THREAD_GUARD] thread=&lt;suffix&gt; error=&lt;ExceptionClass&gt;</marker-11>
+        <marker-12>[P2P][tnp][BLOCK_AUDIO_UNIT] first=true codecId=&lt;n&gt; enc=&lt;b&gt; | sinkError=&lt;Class&gt; (once each)</marker-12>
+        <marker-13>[P2P][tnp][BLOCK_SET_RESOLUTION] res=&lt;n&gt; useCount=&lt;n&gt; queued=&lt;b&gt;</marker-13>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -726,16 +732,19 @@
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK] cam=&lt;n&gt; transport=&lt;T&gt; result=&lt;started|NAME&gt;</marker-1>
         <marker-2>[P2P][tnp][BLOCK_CONNECT] cam=&lt;n&gt; relayForced=&lt;b&gt; wakeup=&lt;b&gt; result=&lt;ok|NAME&gt; ms=&lt;n&gt;</marker-2>
         <marker-3>[P2P][tnp][BLOCK_CHECK_SESSION] cam=&lt;n&gt; mode=&lt;MODE&gt; lan=&lt;b&gt; connectMs=&lt;n&gt;</marker-3>
-        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; type=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY&gt; version=&lt;n&gt; | cam=&lt;n&gt; outcome=UNKNOWN action=ignored (once)</marker-4>
+        <marker-4>[P2P][tnp][BLOCK_AUTH_REPLY] cam=&lt;n&gt; type=&lt;n&gt; authResult=&lt;n&gt; outcome=&lt;OK|WRONG_PASSWORD|RETRY&gt; version=&lt;n&gt; abilityRet=&lt;n&gt; | cam=&lt;n&gt; outcome=UNKNOWN action=ignored (once)</marker-4>
         <marker-5>[P2P][tnp][BLOCK_FIRST_VIDEO] cam=&lt;n&gt; ch=&lt;n&gt; codecId=&lt;n&gt; key=&lt;b&gt; ms=&lt;n&gt;</marker-5>
         <marker-6>[P2P][tnp][BLOCK_READ_LOOP] cam=&lt;n&gt; ch=&lt;n&gt; exit=&lt;closed|error|dirty&gt; code=&lt;NAME&gt; units=&lt;n&gt;</marker-6>
         <marker-7>[P2P][tnp][BLOCK_CLOSE] cam=&lt;n&gt; reason=&lt;reason&gt; units=&lt;n&gt; joinMs=&lt;n&gt; registry=&lt;now|deferred&gt;</marker-7>
         <marker-8>[P2P][tnp][BLOCK_HEADER_VERSION] cam=&lt;n&gt; version=&lt;n&gt; resent=4881,9029,768 reply=skipped</marker-8>
+        <marker-9>[P2P][tnp][BLOCK_AUDIO_UNIT] cam=&lt;n&gt; first=true codecId=&lt;n&gt; enc=&lt;b&gt;</marker-9>
+        <marker-10>[P2P][tnp][BLOCK_SET_RESOLUTION] cam=&lt;n&gt; res=&lt;n&gt; useCount=&lt;n&gt; queued=&lt;b&gt;</marker-10>
       </device-log-markers>
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TnpCameraLinkTest 19, TnpLinkFactoryTest 5</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); TnpCameraLinkTest 27, TnpLinkFactoryTest 5</evidence-3>
+        <evidence-4>2026-10-23 plan 03-02 gate: :app:testDebugUnitTest --tests com.yicamalt.p2p.* --rerun-tasks green 3 times in a row (gradle exit=0); :app:testDebugUnitTest :app:assembleDebug BUILD SUCCESSFUL, 43 suites, 558 tests, 1 skipped, 0 failures; TnpCameraLinkTest 33 (6 new tests failed against v0.2.0)</evidence-4>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
       <note-1>2026-10-15 GSD plan 02-07: JVM evidence over FakePpppNative (TnpCameraLinkTest 18, TnpLinkFactoryTest 5); STATUS stays planned until the device checkpoint of plan 02-12.</note-1>
@@ -753,6 +762,8 @@
         <file>app/src/test/java/com/yicamalt/stream/NalUtilsTest.kt</file>
         <file>app/src/test/java/com/yicamalt/stream/FrameAssemblerTest.kt</file>
         <file>app/src/test/java/com/yicamalt/stream/FramePipelineTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/stream/AdtsParserTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/stream/AudioPipelineTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.stream.*"</check-1>
@@ -768,10 +779,18 @@
         <scenario-7 kind="failure" evidence-type="deterministic">Unsupported codec reported via onUnsupportedCodec once per id (FramePipelineTest)</scenario-7>
         <scenario-8 kind="failure" evidence-type="deterministic">Truncated frame head / short reply rejected (FrameHeadCodecTest, TnpCodecTest)</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">Wrong key yields decryptOk=false, no crash, frame still forwarded (fail-open; IFrameDecryptorTest, FramePipelineTest)</scenario-9>
+        <scenario-10 kind="success" evidence-type="deterministic">AdtsParserTest: AAC-LC 16 kHz mono header -&gt; AdtsFrame(2, 8, 1, 7, 7+N), csd-0 0x14 0x08, CRC header length 9, parseAll walks back-to-back frames and stops at the first invalid header</scenario-10>
+        <scenario-11 kind="failure" evidence-type="deterministic">AdtsParserTest: short buffer, bad sync, layer != 0, freqIndex &gt; 12, raw blocks != 0, frameLen &lt; header, frame past end -&gt; null</scenario-11>
+        <scenario-12 kind="success" evidence-type="deterministic">AudioPipelineTest: muted by default (counted, nothing delivered, D-05); unmuted raw frames + AacConfig 16000/1/[0x14,0x08] with strictly increasing pts; full-block AES-ECB decrypt with password + '0' (tail plain, unit payload untouched); 10 frames in -&gt; 10 out (no drop)</scenario-12>
+        <scenario-13 kind="failure" evidence-type="deterministic">AudioPipelineTest: no password or key length not 16/24/32 -&gt; fail-open, decryptOk null; codec != 138 -&gt; badUnits, availability false; garbage -&gt; badUnits, decryptOk false on an encrypted unit until a good one; availability null before 6 s, false at 6 s without a valid frame (D-07)</scenario-13>
+        <scenario-14 kind="success" evidence-type="unit">IoCtrlMessagesTest: setResolution honours the transport byte order (TNP big-endian, TUTK little-endian 4881 payload); AUDIO_STOP 769 defined, never sent (plan 03-00)</scenario-14>
+        <scenario-15 kind="device" status="passed" evidence-type="trace">H-L2 / H-L3: real camera audio units parse as ADTS (TUTK plain, TNP decrypted with header version &gt;= 2); BLOCK_AUDIO_FIRST rate / channels recorded</scenario-15>
       </scenarios>
       <required-log-markers>
         <marker-1>[Stream][pipeline][BLOCK_FIRST_KEYFRAME] codec=&lt;H264|H265&gt; framing=&lt;annexb|length|unknown&gt; nals=&lt;types&gt; decryptOk=&lt;b&gt; size=&lt;WxH&gt;</marker-1>
         <marker-2>[Stream][pipeline][BLOCK_MAP_CODEC] unsupported codecId=&lt;n&gt;</marker-2>
+        <marker-3>[Stream][audio][BLOCK_AUDIO_FIRST] codecId=&lt;n&gt; rate=&lt;hz&gt; ch=&lt;n&gt; enc=&lt;b&gt; (once per pipeline)</marker-3>
+        <marker-4>[Stream][audio][BLOCK_AUDIO_BAD] codecId=&lt;n&gt; reason=&lt;codec|sync&gt; (once per pipeline)</marker-4>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -784,6 +803,7 @@
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; YiP2pAuthTest 8, TnpCodecTest 11, IoCtrlMessagesTest 5, FrameHeadCodecTest 5, IFrameDecryptorTest 6, NalUtilsTest 10, FrameAssemblerTest 9, FramePipelineTest 10</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); FrameAssemblerTest 13, IoCtrlMessagesTest 5</evidence-3>
+        <evidence-4>2026-10-23 plan 03-01: :app:testDebugUnitTest --tests "com.yicamalt.stream.*" BUILD SUCCESSFUL (gradle exit=0); AdtsParserTest 13, AudioPipelineTest 12 (incl. TraceRecorder + RedactionScanner log hygiene), 0 failures</evidence-4>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-STREAM-CORE>
@@ -791,6 +811,7 @@
     <V-M-MEDIA-RENDER MODULE="M-MEDIA-RENDER" PRIORITY="medium" STATUS="in-progress">
       <test-files>
         <file>app/src/test/java/com/yicamalt/media/DecoderPolicyTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/media/VideoSizeTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.media.*"</check-1>
@@ -806,6 +827,8 @@
         <scenario-6 kind="failure" evidence-type="deterministic">3 codec errors without a render exhaust ResetCounter (status Failed, no loop)</scenario-6>
         <scenario-7 kind="success" evidence-type="deterministic">csd map AVC csd-0/csd-1, HEVC csd-0; PtsGuard strictly increasing; NoDecoder text "H.265: на этом телефоне нет декодера"</scenario-7>
         <scenario-8 kind="success" evidence-type="trace">Device: decoder name and hw flag of each camera's codec on the status line match BLOCK_CREATE_DECODER; first render logged (02-DEVICE-VERIFICATION.md)</scenario-8>
+        <scenario-10 kind="success" evidence-type="unit">VideoSizeTest (4): crop-aware visibleSize (crop rect when all four keys exist, else width / height; non-positive sizes -&gt; null), plan 03-08</scenario-10>
+        <scenario-11 kind="device" status="passed" evidence-type="trace">H-L1: decoding to the live screen's TextureView Surface shows a picture on MIUI; BLOCK_FORMAT_CHANGED size matches the aspect ratio on screen</scenario-11>
       </scenarios>
       <required-log-markers>
         <marker-1>[Media][catalog][BLOCK_QUERY_DECODERS]</marker-1>
@@ -814,6 +837,7 @@
         <marker-4>[Media][decoder][BLOCK_DECODER_RESET] reason=&lt;codec-error|surface-lost|queue-overflow|format-change|oversize-frame&gt; resets=&lt;n&gt;</marker-4>
         <marker-5>[Media][decoder][BLOCK_NO_DECODER] mime=&lt;mime&gt;</marker-5>
         <marker-6>[Media][decoder][BLOCK_STARTUP_HOLD] result=&lt;HELD_TRIMMED|DROPPED_HOLD_FULL&gt; queued=&lt;n&gt; (debug; frames held while the codec is created, never a reset)</marker-6>
+        <marker-7>[Media][decoder][BLOCK_FORMAT_CHANGED] w=&lt;n&gt; h=&lt;n&gt; (once per visible size change, plan 03-08; VideoSizeTest proves the crop rule)</marker-7>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line is RedactionScanner-clean with RedactionFixtures.ALL_SECRETS as extra literals (no DID, InitString, License, password, nonce, authInfo, IP address)</assertion-1>
@@ -824,6 +848,7 @@
       <gate-evidence>
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; DecoderPolicyTest 9</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
+        <evidence-3>2026-10-23 plan 03-08: VideoSizeTest 4 (RED first); DecoderPolicyTest unchanged and green</evidence-3>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-MEDIA-RENDER>
@@ -908,6 +933,10 @@
         <scenario-13 kind="success" evidence-type="deterministic">avClientStart2 that returns an AV channel after close() already released the session: stop(-1, sid) then stop(av, -1), avClientStop exactly once (Phase 2 review MED-6)</scenario-13>
         <scenario-14 kind="failure" evidence-type="deterministic">Thread guard: a sink throwing an Error -> Failed(INTERNAL, 0) with the vendor stop; empty encrypted password -> Failed(INTERNAL, 0) without clientStart; the factory refuses it as NO_CREDENTIALS (Phase 2 review MED-7)</scenario-14>
         <scenario-15 kind="success" evidence-type="deterministic">A connect that ignores connectStop keeps the registry entry until it returns (registry=deferred); the vendor stop runs with no avRecvFrameData2 in flight and none after it (Phase 2 review LOW-8 / LOW-9)</scenario-15>
+        <scenario-16 kind="success" evidence-type="trace">With an audio sink: 8190 then 768 on tutk-&lt;n&gt;-tx, cleanAudioBuf before the first recvAudio, LE audio units (encrypted false) on tutk-&lt;n&gt;-rxa; without a sink no 768 and no rxa; audio -20012 sleeps audioNoDataSleepMs (120); audio / IOCTRL end codes end only their loop (TutkCameraLinkTest, plan 03-04)</scenario-16>
+        <scenario-17 kind="success" evidence-type="deterministic">requestResolution queues LE 4881 [res, useCount] on tutk-&lt;n&gt;-tx with useCount 2, 3; null before the start command and after close; 4882 replies consumed by tutk-&lt;n&gt;-rxc without affecting the link (TutkCameraLinkTest, plan 03-04)</scenario-17>
+        <scenario-18 kind="success" evidence-type="deterministic">Teardown joins rx, rxa, rxc, tx before stop (no recv / send in flight at stop); a tx blocked in sendIoCtrl does not block close (within joinMs + 300 ms) and keeps ALREADY_OPEN until it exits (registry=deferred) (TutkCameraLinkTest, plan 03-04)</scenario-18>
+        <scenario-19 kind="device" status="passed" evidence-type="trace">H-L2 / H-L4 (TUTK half): rxa delivers audio units with sound after unmute; LE 4881 changes the frame width without a reconnect; record widths for HD and SD</scenario-19>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -918,6 +947,10 @@
         <marker-6>[P2P][tutk][BLOCK_INIT_TUTK]</marker-6>
         <marker-7>[P2P][factory][BLOCK_DISPATCH_LINK]</marker-7>
         <marker-8>[P2P][tutk][BLOCK_THREAD_GUARD]</marker-8>
+        <marker-9>[P2P][tutk][BLOCK_TX_LOOP]</marker-9>
+        <marker-10>[P2P][tutk][BLOCK_IOCTRL_LOOP]</marker-10>
+        <marker-11>[P2P][tutk][BLOCK_AUDIO_LOOP]</marker-11>
+        <marker-12>[P2P][tutk][BLOCK_SET_RESOLUTION]</marker-12>
       </required-log-markers>
       <device-log-markers>
         <marker-1>[P2P][tutk][BLOCK_INIT_TUTK] iotc=&lt;code&gt; av=&lt;code&gt; iotcVer=0x&lt;HEX&gt; avVer=0x&lt;HEX&gt; result=ready</marker-1>
@@ -940,6 +973,7 @@
         <evidence-1>2026-10-16 plan 02-12 Task 1 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 490 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; TutkShimContractTest 6, TutkRuntimeTest 14, TutkCameraLinkTest 20, TransportLinkFactoryTest 3</evidence-1>
         <evidence-2>Device evidence: .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (plan 02-12 Task 3); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-16 Phase 2 review fixes gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0), 41 suites, 519 tests, 1 skipped (RealLogScanTest without a log file), 0 failures; p2p + stream + ui.live suites (210 tests) green 3 times in a row with --rerun-tasks; new tests proven to fail against the pre-fix source (02-REVIEW-FIXES.md); TutkCameraLinkTest 28</evidence-3>
+        <evidence-4>2026-10-23 plans 03-03 / 03-04: TutkShimContractTest pins avClientCleanAudioBuf / avRecvAudioData / avRecvIOCtrl (exports checked on arm64-v8a and armeabi-v7a); TutkCameraLinkTest 38 (10 new tests failed first), p2p suites green 3 runs in a row</evidence-4>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-TUTK-LINK>
@@ -1045,6 +1079,7 @@
         <scenario-7 kind="edge" evidence-type="deterministic">Single-flight: refresh() while a refresh runs does not call the port again; CancellationException is rethrown, not shown as Error</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">refresh() sets the transitional state synchronously; stale banner cleared while pulling; isRefreshing() per state (pull-to-refresh contract: one pull = one refresh, ptr.endRefresh after the first non-refreshing state)</scenario-8>
         <scenario-9 kind="failure" evidence-type="deterministic">UNAUTHORIZED offers "Войти снова" (onSessionExpired -> AppShell onLogout); no device id is rendered (deviceId only as LazyColumn key; grep check, SEC-01)</scenario-9>
+        <scenario-10 kind="device" status="passed" evidence-type="trace">H-L1: camera row tap opens LiveViewScreen ([Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live), long press opens the debug probe (tab=probe); back returns to the list (plan 03-11, compile-only on the JVM)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[Shell][render][BLOCK_RENDER_SHELL]</marker-1>
@@ -1065,29 +1100,165 @@
       <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" note="UI tests require emulator; slower than unit — not for tight worker loops." />
     </V-M-UI-SHELL>
 
-    <V-M-UI-LIVEVIEW MODULE="M-UI-LIVEVIEW" PRIORITY="high">
+    <V-M-UI-LIVEVIEW MODULE="M-UI-LIVEVIEW" PRIORITY="high" STATUS="in-progress">
       <test-files>
-        <file>app/src/androidTest/java/com/yicamalt/ui/liveview/LiveViewScreenTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:compileDebugKotlin</check-1>
-        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.liveview.*"</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.ui.live.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="integration">Video surface renders when StreamHandleFake reports playing (StreamHandleFake predates GSD Phase 2; Phase 3 live view verifies against CameraLink fakes, superseded 2026-10-12)</scenario-1>
-        <scenario-2 kind="success" evidence-type="trace">PTZ joystick sends commands to CameraCommandModule (BLOCK_SEND_PTZ_CMD)</scenario-2>
-        <scenario-3 kind="success" evidence-type="trace">Quality selector visible and toggles quality (BLOCK_QUALITY_SWITCH)</scenario-3>
-        <scenario-4 kind="success" evidence-type="trace">Disconnect button stops stream</scenario-4>
+        <scenario-1 kind="success" evidence-type="unit">Badge table: one badge per SupervisorState (Idle, Connecting, Live, Waiting, NoNetwork "Офлайн", Exhausted "Нет связи" + "Повторить", AuthFailed "Ошибка пароля", Kicked, Fatal, Stopped) (D-04)</scenario-1>
+        <scenario-2 kind="success" evidence-type="unit">Sound control hidden while audio is unavailable; muted by default on every open (D-05)</scenario-2>
+        <scenario-3 kind="success" evidence-type="unit">HD/SD control hidden when the link reports resolutionSwitch=false (D-07); manual choice never persisted (D-06)</scenario-3>
+        <scenario-4 kind="success" evidence-type="unit">Snapshot result messages: saved, no frame yet, permission denied, error</scenario-4>
+        <scenario-5 kind="success" evidence-type="unit">Lifecycle: onStop stops the session (Stopped background), onStart resumes per ResumePolicy (D-10)</scenario-5>
+        <scenario-6 kind="success" evidence-type="unit">ZoomMath: pinch scale clamped, pan bounded by the scaled content, double-tap toggles zoom (D-09)</scenario-6>
+        <scenario-7 kind="success" evidence-type="unit">LiveViewModelTest: open auto-connects; re-open of the same camera keeps the session (rotation), another camera closes the screen first; closeScreen releases the decoder and supervisor (screen-left)</scenario-7>
+        <scenario-8 kind="success" evidence-type="unit">LiveViewModelTest: Waiting after WRONG_PASSWORD / KICK shows "Подключение…" (NEUTRAL), NETWORK waits and Connecting(n&gt;1) show "Повтор (n/5)" (WARN); Kicked tone ERROR; Exhausted message = linkErrorMessage(lastError)</scenario-8>
+        <scenario-9 kind="success" evidence-type="unit">LiveViewModelTest: sound visible only while Live and after audio was available once during this open; muted again after onStop (stricter than D-05)</scenario-9>
+        <scenario-10 kind="success" evidence-type="unit">RedactionScanner over every captured log line and every observed LiveViewUi.toString() with the synthetic device id, DID, passwords, InitString, license: clean</scenario-10>
+        <scenario-11 kind="device" status="passed" evidence-type="trace">H-L1: TextureView picture on MIUI (Mi 9, Android 11), no black window, badge and controls over the video, both cameras (03-HUMAN-UAT.md)</scenario-11>
+        <scenario-12 kind="device" status="passed" evidence-type="trace">H-L4: HD/SD switch changes frame width without a reconnect; control hidden when unsupported (TUTK first, TNP after Phase 2 H1)</scenario-12>
+        <scenario-13 kind="device" status="partial" evidence-type="trace">H-L6: lock / Home / return within and after 5 min; official app gets video while ours is in background (extends Phase 2 H6)</scenario-13>
+        <scenario-14 kind="device" status="passed" evidence-type="trace">H-L7: fullscreen by button and rotation (auto-rotate off too), pinch 4x, pan, double tap, notch, keep-screen-on over 2+ minutes</scenario-14>
+        <scenario-15 kind="device" status="partial" evidence-type="trace">H-L8: snapshot visible in the gallery (Pictures/YiCamAlt), full resolution, taken while zoomed</scenario-15>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
-        <marker-2>[LiveView][ptz][BLOCK_SEND_PTZ_CMD]</marker-2>
-        <marker-3>[LiveView][quality][BLOCK_QUALITY_SWITCH]</marker-3>
+        <marker-2>[LiveView][vm][BLOCK_BADGE]</marker-2>
+        <marker-3>[LiveView][vm][BLOCK_QUALITY_SWITCH]</marker-3>
+        <marker-4>[LiveView][vm][BLOCK_LIFECYCLE]</marker-4>
+        <marker-5>[LiveView][vm][BLOCK_OPEN_LIVE]</marker-5>
+        <marker-6>[LiveView][vm][BLOCK_TOGGLE_AUDIO]</marker-6>
+        <marker-7>[LiveView][vm][BLOCK_SNAPSHOT]</marker-7>
+        <marker-8>[LiveView][render][BLOCK_FULLSCREEN]</marker-8>
+        <marker-9>[LiveView][lifecycle][BLOCK_LIFECYCLE]</marker-9>
       </required-log-markers>
-      <wave-follow-up>Live view integrated with StreamHandleFake (StreamHandleFake predates GSD Phase 2; Phase 3 live view verifies against CameraLink fakes, superseded 2026-10-12).</wave-follow-up>
-      <phase-follow-up>Multi-camera switch works; quality change mid-stream works.</phase-follow-up>
-      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+      <required-trace-assertions>
+        <assertion-1>Every captured log line and every LiveViewUi.toString() is RedactionScanner-clean (LIVE_SECRETS: device id, DID, passwords, InitString, license)</assertion-1>
+      </required-trace-assertions>
+      <notes>
+        <note-1>LiveViewScreen.kt (Compose + TextureView) has no JVM or instrumented test (no emulator): only compile evidence via assembleDebug; behaviour is device-only (H-L1, H-L6, H-L7, H-L8).</note-1>
+      </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-23 plan 03-10: LiveViewModelTest 23 (virtual time, real LiveSessionSupervisor + DefaultMediaSession over LiveFakes); plan 03-09: ZoomMathTest 6</evidence-1>
+        <evidence-2>Device evidence pending: H-L1, H-L4, H-L6, H-L7, H-L8 in .planning/phases/03-live-view/03-HUMAN-UAT.md (plan 03-13); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
+      <wave-follow-up>JVM only (no emulator): LiveViewModel over the real supervisor with fake links; ZoomMath pure.</wave-follow-up>
+      <phase-follow-up>Device follow-up H-L1 (TextureView picture on MIUI), H-L4 (HD/SD), H-L6 (background stop / resume), H-L7 (fullscreen, rotation, gestures, keep-screen-on), H-L8 (snapshot in Pictures/YiCamAlt). No PTZ, no camera selector (v2).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
     </V-M-UI-LIVEVIEW>
+
+    <V-M-LIVE-SESSION MODULE="M-LIVE-SESSION" PRIORITY="high" STATUS="in-progress">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/NetStateTrackerTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/DefaultMediaSessionTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/live/LiveFakes.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.live.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="unit">Link opens and reaches Live; a network failure schedules Waiting with backoff, at most 5 attempts, then Exhausted</scenario-1>
+        <scenario-2 kind="failure" evidence-type="unit">WRONG_PASSWORD ends in AuthFailed, second kick in Kicked, fatal kinds in Fatal (manual retry only)</scenario-2>
+        <scenario-3 kind="failure" evidence-type="unit">No frames for the stall window closes the link with reason stall and retries</scenario-3>
+        <scenario-4 kind="success" evidence-type="unit">Network loss gives NoNetwork without consuming attempts; a new network generation reconnects</scenario-4>
+        <scenario-5 kind="success" evidence-type="unit">Quality: HD on direct paths, SD on relay; manual switch sends 4881 and is confirmed by key-frame width</scenario-5>
+        <scenario-6 kind="success" evidence-type="unit">LiveSessionSupervisorTest (38, virtual time): backoff 2/5/10/20 s, 5 attempts then Exhausted; one WRONG_PASSWORD retry with refreshed credentials; one kick retry after 10 s; Fatal immediately; 1.5 s debounced reconnect on a default-network change; 10 s stall; 5 s drain before every open; stop() during factory.open closes the late link without start; 30 s Live resets the attempt counter</scenario-6>
+        <scenario-7 kind="success" evidence-type="unit">QualityControllerTest (17): manual over mode, width &gt;= 1280 = HD, confirmation by useCount or width class, 8 s timeout / null useCount / unsupported hide the switch; ResumePolicyTest (8): single-use resume within 5 min only after a background stop</scenario-7>
+        <scenario-8 kind="success" evidence-type="unit">NetStateTrackerTest (6): generation bumps on a different default network, stale onLost ignored; DefaultMediaSessionTest (7): key-frame tee, audio routed only through AudioPipeline, resetPipeline re-arms the key gate, release ignores later units</scenario-8>
+        <scenario-9 kind="device" status="partial" evidence-type="trace">H-L5: Wi-Fi toggle, Wi-Fi -&gt; 4G, camera power cycle: badge sequence and recovery time recorded, no reconnect storm in the diag log; sound off again after reconnect / return from background (stricter than D-05, confirm)</scenario-9>
+        <scenario-10 kind="device" status="partial" evidence-type="trace">H-L6: lock / Home / return after more than 5 min (no auto-resume) and within 5 min (resume once); official Yi app gets video while ours is in background (extends Phase 2 H6)</scenario-10>
+        <scenario-11 kind="device" status="passed" evidence-type="trace">H-L4: 4881 honoured (width changes, no reconnect): TUTK camera first, TNP camera only after Phase 2 H1</scenario-11>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[LiveSession][supervisor][BLOCK_OPEN_LINK]</marker-1>
+        <marker-2>[LiveSession][supervisor][BLOCK_SCHEDULE]</marker-2>
+        <marker-3>[LiveSession][supervisor][BLOCK_STALL]</marker-3>
+        <marker-4>[LiveSession][supervisor][BLOCK_CLASSIFY]</marker-4>
+        <marker-5>[LiveSession][supervisor][BLOCK_DRAIN]</marker-5>
+        <marker-6>[LiveSession][supervisor][BLOCK_NETWORK]</marker-6>
+        <marker-7>[LiveSession][supervisor][BLOCK_STOP]</marker-7>
+        <marker-8>[LiveSession][supervisor][BLOCK_QUALITY]</marker-8>
+        <marker-9>[LiveSession][supervisor][BLOCK_RESUME]</marker-9>
+        <marker-10>[LiveSession][network][BLOCK_NETWORK_EVENT] (device only, AndroidNetworkMonitor; value-free: no network handle)</marker-10>
+      </required-log-markers>
+      <required-trace-assertions>
+        <assertion-1>Every captured log line is RedactionScanner-clean (no DID, password, nonce, InitString, IP, SSID, network handle)</assertion-1>
+      </required-trace-assertions>
+      <gate-evidence>
+        <evidence-1>2026-10-23 plans 03-05 / 03-06 / 03-08 / 03-10: LiveSessionSupervisorTest 38 (green 3 runs in a row in plan 03-06), QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7; RedactionScanner clean on every captured log</evidence-1>
+        <evidence-2>Device evidence pending: H-L4, H-L5, H-L6 in .planning/phases/03-live-view/03-HUMAN-UAT.md (plan 03-13); STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
+      <phase-follow-up>Device follow-up H-L4 (HD/SD), H-L5 (reconnect after Wi-Fi / mobile switch and camera power cycle), H-L6 (background stop / resume).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
+    </V-M-LIVE-SESSION>
+
+    <V-M-MEDIA-AUDIO MODULE="M-MEDIA-AUDIO" PRIORITY="medium" STATUS="in-progress">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/media/AudioFrameQueueTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.media.AudioFrameQueueTest"</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="device" status="passed" evidence-type="trace">Device: AAC decoder created and AudioTrack plays after unmute (BLOCK_AUDIO_DECODER_CREATE, BLOCK_AUDIO_TRACK)</scenario-1>
+        <scenario-2 kind="device" status="pending" evidence-type="trace">Device: decoder and track released when the session ends (BLOCK_AUDIO_RELEASE)</scenario-2>
+        <scenario-3 kind="success" evidence-type="unit">AudioFrameQueue: capacity 6 FIFO; 7th offer drops the oldest (dropped=1); clear keeps the counter; capacity &lt; 1 rejected</scenario-3>
+        <scenario-4 kind="device" status="passed" evidence-type="trace">H-L2: TUTK camera, unmute -&gt; sound; debug row audio=playing with growing audioUnits; codec id / rate / channels from [Stream][audio][BLOCK_AUDIO_FIRST]</scenario-4>
+        <scenario-5 kind="device" status="passed" evidence-type="trace">H-L3: TNP camera (only after Phase 2 H1 passes): ch1 decrypt with header version &gt;= 2 gives valid ADTS ([Stream][audio][BLOCK_AUDIO_FIRST] enc=true, no BLOCK_AUDIO_BAD)</scenario-5>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Media][audio][BLOCK_AUDIO_DECODER_CREATE]</marker-1>
+        <marker-2>[Media][audio][BLOCK_AUDIO_TRACK]</marker-2>
+        <marker-3>[Media][audio][BLOCK_AUDIO_RELEASE] dropped=&lt;n&gt;</marker-3>
+      </required-log-markers>
+      <notes>
+        <note-1>AacDecoder is Android-only (MediaCodec / AudioTrack): its markers are device evidence. JVM evidence: AudioFrameQueueTest; the audio front end (AdtsParser, AudioPipeline) is verified in V-M-STREAM-CORE; mute routing in DefaultMediaSessionTest / LiveViewModelTest.</note-1>
+      </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-23 plan 03-07: AudioFrameQueueTest 5 (RED 5/5 failed first); :app:assembleDebug BUILD SUCCESSFUL</evidence-1>
+        <evidence-2>Device evidence pending: H-L2, H-L3 in .planning/phases/03-live-view/03-HUMAN-UAT.md; STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
+      <phase-follow-up>Device follow-up H-L2 (sound on the TUTK camera), H-L3 (sound on the TNP camera, after Phase 2 H1).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="success-only" markers="observable" followup="present" rating="partial" />
+    </V-M-MEDIA-AUDIO>
+
+    <V-M-MEDIA-SNAPSHOT MODULE="M-MEDIA-SNAPSHOT" PRIORITY="medium" STATUS="in-progress">
+      <test-files>
+        <file>app/src/test/java/com/yicamalt/media/SnapshotSaverTest.kt</file>
+      </test-files>
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.media.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="unit">Snapshot saved under Pictures/YiCamAlt with a timestamped name</scenario-1>
+        <scenario-2 kind="failure" evidence-type="unit">No frame or a write failure gives an explicit result, no crash</scenario-2>
+        <scenario-3 kind="success" evidence-type="unit">SnapshotSaverTest (4): fileName YiCamAlt_yyyyMMdd_HHmmss.jpg, target(sdk) scoped + IS_PENDING on 29+, legacy permission on 26-28, RELATIVE_PATH / MIME / quality constants</scenario-3>
+        <scenario-4 kind="device" status="partial" evidence-type="trace">H-L8: picture visible in the gallery under Pictures/YiCamAlt, full resolution, taken while zoomed; no half-written entry after a denied permission</scenario-4>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[Media][snapshot][BLOCK_SAVE_SNAPSHOT] result=&lt;Saved|PermissionDenied|WriteFailed(class)&gt; sdk=&lt;n&gt; bytes=&lt;n&gt; (never URI, path, file or camera name)</marker-1>
+      </required-log-markers>
+      <notes>
+        <note-1>MediaStoreSnapshotStore (ContentResolver insert / IS_PENDING / delete on failure) is Android-only; JVM evidence covers the pure SnapshotSpec rules.</note-1>
+      </notes>
+      <gate-evidence>
+        <evidence-1>2026-10-23 plan 03-09: SnapshotSaverTest 4 (RED first); :app:assembleDebug BUILD SUCCESSFUL</evidence-1>
+        <evidence-2>Device evidence pending: H-L8 in .planning/phases/03-live-view/03-HUMAN-UAT.md; STATUS stays in-progress until then</evidence-2>
+      </gate-evidence>
+      <phase-follow-up>Device follow-up H-L8 (picture visible in the gallery).</phase-follow-up>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
+    </V-M-MEDIA-SNAPSHOT>
 
     <V-M-UI-EVENTS MODULE="M-UI-EVENTS" PRIORITY="high">
       <test-files>
@@ -1385,6 +1556,23 @@
         <evidence-4>LIVE-01 / LIVE-02 / LIVE-03 mapped to PASS or FAIL in .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (pending)</evidence-4>
       </required-evidence>
     </Gate-GSD-Phase-2>
+
+    <Gate-GSD-Phase-3 PHASE="GSD 03-live-view (GRACE Phase-3 steps 3, 14, 15, 16)" STATUS="in-progress">
+      <goal>Live view screen over a supervised session: badge, bounded reconnect, sound, HD/SD, snapshot, fullscreen and zoom, lifecycle stop / resume (LIVE-04..LIVE-11).</goal>
+      <commands>
+        <command-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest :app:assembleDebug --rerun-tasks</command-1>
+        <command-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RedactionScannerTest" --rerun-tasks</command-2>
+        <command-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks (device, H-L9)</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>JVM suite + assembleDebug green; device gate pending H-L1..H-L9</evidence-1>
+        <evidence-3>2026-10-23 plan 03-12 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0) three consecutive times, each 53 suites, 686 tests, 0 failures, 1 skipped (RealLogScanTest without a log file); LiveSessionSupervisorTest 38, LiveViewModelTest 23, QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7, AdtsParserTest 13, AudioPipelineTest 12, AudioFrameQueueTest 5, SnapshotSaverTest 4, ZoomMathTest 6, VideoSizeTest 4, TnpCameraLinkTest 33, TutkCameraLinkTest 38, TutkShimContractTest 6, IoCtrlMessagesTest 6; redaction sweep (RedactionScannerTest 31 + the live / ui.live / p2p / AudioPipeline suites that assertClean, 307 tests) green</evidence-3>
+        <evidence-2>Device checks H-L1..H-L9 recorded in .planning/phases/03-live-view/03-HUMAN-UAT.md (all pending; plan 03-13 on the phone). H-L3 and the TNP half of H-L4 need Phase 2 H1 first; H-L6 extends Phase 2 H6; H-L9 is the RealLogScanTest sweep on the pulled diag log (as Phase 2 H7)</evidence-2>
+      </required-evidence>
+      <notes>
+        <note-1>Nothing in this gate is device-verified yet. TNP behaviour (audio decrypt, 4881 in session, abilityRet) is JVM-only until Phase 2 H1 passes.</note-1>
+      </notes>
+    </Gate-GSD-Phase-3>
 
     <Gate-Phase-4 PHASE="Phase-4">
       <goal>All features polished, push notifications working, UX complete, ready for release build.</goal>

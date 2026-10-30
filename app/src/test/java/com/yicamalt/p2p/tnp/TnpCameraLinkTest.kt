@@ -1,5 +1,5 @@
 // FILE: TnpCameraLinkTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TnpCameraLink over FakePpppNative: vendor call order, burst bytes, mode mapping,
 //     every failure code, partial reads, header version rule, kick, timeouts, cancellation, no retry, log hygiene.
@@ -16,6 +16,8 @@ import com.yicamalt.camera.TransportType
 import com.yicamalt.p2p.FakePpppNative
 import com.yicamalt.p2p.PpppCheck
 import com.yicamalt.p2p.PpppCodes
+import com.yicamalt.stream.AudioUnit
+import com.yicamalt.stream.AudioUnitSink
 import com.yicamalt.stream.IoCtrlMessages
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
@@ -61,10 +63,17 @@ import java.util.concurrent.atomic.AtomicLong
 //   timeouts - connect 30 s and first frame 20 s on an injected clock.
 //   log hygiene - marker presence and RedactionScanner over every captured buffer.
 //   auth/video race - auth reply and first video unit together, 15 rounds, always Streaming(authOk=true).
+//   RecordingAudioSink / abilityReply - audio capture sink; ch0 reply with a chosen TNPHead abilityRet.
+//   audio routing - ch1 units reach the audio sink (encrypted = header version >= 2), never the video sink; a
+//     throwing audio sink does not stop video.
+//   requestResolution - 4881 [res, useCount 3, 4, ...] through the single writer; null before connect / after close.
+//   abilityRet - 4882 with abilityRet 1 -> capabilities.resolutionSwitch == false; 0 keeps null.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review: HIGH-2 (whole start sequence re-sent once, mismatched reply skipped),
+//   LAST_CHANGE: v0.3.0 - GSD plan 03-02: ch1 audio routing, requestResolution through txQueue, 4882 abilityRet
+//     capability; log hygiene covers BLOCK_AUDIO_UNIT and BLOCK_SET_RESOLUTION.
+//   PREVIOUS: v0.2.0 - Phase 2 review: HIGH-2 (whole start sequence re-sent once, mismatched reply skipped),
 //     MED-3 (authResult on every reply, unknown ignored), MED-7 (thread guard, empty password), LOW-8 (deferred
 //     registry release), LOW-9 (ForceClose after the readers left).
 //   PREVIOUS: v0.1.1 - GSD plan 02-12: regression for the rx0 auth / rx2 first-video race on authOk.
@@ -88,6 +97,13 @@ class TnpCameraLinkTest {
     private class RecordingSink : VideoUnitSink {
         val units = CopyOnWriteArrayList<VideoUnit>()
         override fun onVideoUnit(unit: VideoUnit) {
+            units += unit
+        }
+    }
+
+    private class RecordingAudioSink : AudioUnitSink {
+        val units = CopyOnWriteArrayList<AudioUnit>()
+        override fun onAudioUnit(unit: AudioUnit) {
             units += unit
         }
     }
@@ -136,8 +152,17 @@ class TnpCameraLinkTest {
         TnpCodec.encodeHead(2, TnpCodec.IOTYPE_VIDEO, TnpCodec.FRAME_HEAD_SIZE + payload.size) +
             frameHead(codec, if (key) 1 else 0, seq) + payload
 
-    private fun audioUnit() =
-        TnpCodec.encodeHead(2, TnpCodec.IOTYPE_AUDIO, TnpCodec.FRAME_HEAD_SIZE + 16) + frameHead(140, 0, 1) + ByteArray(16)
+    private fun audioUnit(codec: Int = 140, payload: ByteArray = ByteArray(16), version: Int = 2) =
+        TnpCodec.encodeHead(version, TnpCodec.IOTYPE_AUDIO, TnpCodec.FRAME_HEAD_SIZE + payload.size) +
+            frameHead(codec, 0, 1) + payload
+
+    // ch0 reply whose TNPHead carries the given abilityRet (byte 2), authResult s32 BE at IOCtrl offset 8.
+    private fun abilityReply(type: Int, authResult: Int, abilityRet: Int): ByteArray {
+        val auth = ByteBuffer.allocate(TnpCodec.AUTH_SIZE).putInt(authResult).array()
+        val unit = TnpCodec.commandUnit(2, type, 1, auth, ByteArray(0))
+        unit[2] = abilityRet.toByte()
+        return unit
+    }
 
     private fun typeOf(unit: ByteArray) = ((unit[8].toInt() and 0xFF) shl 8) or (unit[9].toInt() and 0xFF)
     private fun numberOf(unit: ByteArray) = ((unit[10].toInt() and 0xFF) shl 8) or (unit[11].toInt() and 0xFF)
@@ -648,19 +673,150 @@ class TnpCameraLinkTest {
         assertEquals(6, sink.units.single().channel)
         assertEquals(81, sink.units.single().info.codecId)
         assertTrue(link.state.value is LinkState.Streaming)
+        assertTrue(sink.units.none { it.channel == TnpCodec.CH_AUDIO })
+    }
+
+    @Test
+    fun `audio units go to the audio sink with encrypted true at header version 2`() {
+        val fake = FakePpppNative()
+        val sink = RecordingSink()
+        val audio = RecordingAudioSink()
+        val link = newLink(fake)
+        link.setAudioSink(audio)
+        link.start(sink)
+        awaitBurst(fake)
+        fake.enqueueUnit(1, audioUnit(codec = 138, payload = ByteArray(32) { it.toByte() }))
+        awaitTrue(what = { "audio units=${audio.units.size}" }) { audio.units.size == 1 }
+        val unit = audio.units.single()
+        assertEquals(TnpCodec.CH_AUDIO, unit.channel)
+        assertEquals(138, unit.info.codecId)
+        assertEquals(32, unit.payload.size)
+        assertArrayEquals(ByteArray(32) { it.toByte() }, unit.payload)
+        assertTrue(unit.encrypted)
+        assertTrue(sink.units.isEmpty(), sink.units.toString())
+        recorder.assertMarkerAppeared("BLOCK_AUDIO_UNIT")
+    }
+
+    @Test
+    fun `audio after header version 1 adoption is not encrypted`() {
+        val fake = FakePpppNative()
+        val audio = RecordingAudioSink()
+        val link = newLink(fake)
+        link.setAudioSink(audio)
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0, version = 1)
+        awaitTrue(what = { "resent sequence, written=${fake.written.size}" }) { fake.written.size == 6 }
+        fake.enqueueUnit(1, audioUnit(codec = 138, payload = ByteArray(32), version = 1))
+        awaitTrue { audio.units.size == 1 }
+        assertFalse(audio.units.single().encrypted)
+    }
+
+    @Test
+    fun `a throwing audio sink does not stop video`() {
+        val fake = FakePpppNative()
+        val sink = RecordingSink()
+        val link = newLink(fake)
+        link.setAudioSink { throw IllegalStateException("SYNTH audio failure") }
+        link.start(sink)
+        awaitBurst(fake)
+        fake.enqueueUnit(1, audioUnit(payload = ByteArray(32)))
+        fake.enqueueUnit(1, audioUnit(payload = ByteArray(32)))
+        fake.enqueueUnit(2, videoUnit())
+        awaitTrue { sink.units.size == 1 }
+        Thread.sleep(100)
+        assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        assertEquals(1, Regex("sinkError=IllegalStateException").findAll(recorder.bufferText()).count())
     }
     // END_BLOCK_CHANNEL_TESTS
+
+    // START_BLOCK_RESOLUTION_TESTS
+    @Test
+    fun `requestResolution queues 4881 with useCount 3 then 4 on the writer`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
+        fake.enqueueUnit(2, videoUnit())
+        awaitState(link) { it is LinkState.Streaming && it.authOk }
+        val burst = fake.written.take(3).map { it.second.copyOf() }
+
+        assertEquals(3, link.requestResolution(2))
+        assertEquals(4, link.requestResolution(1))
+        awaitTrue(what = { "written=${fake.written.size}" }) { fake.written.size == 5 }
+        val extra = fake.written.drop(3)
+        extra.forEach { (ch, bytes) ->
+            assertEquals(TnpCodec.CH_COMMAND, ch)
+            assertEquals(IoCtrlMessages.SET_RESOLUTION, typeOf(bytes))
+            assertEquals(2, bytes[0].toInt())
+        }
+        assertArrayEquals(IoCtrlMessages.setResolution(2, 3), payloadOf(extra[0].second))
+        assertArrayEquals(IoCtrlMessages.setResolution(1, 4), payloadOf(extra[1].second))
+        assertEquals(listOf(4, 5), extra.map { numberOf(it.second) })
+        assertTrue(fake.calls.filter { it.startsWith("write") }.all { it.startsWith("write ch=0") })
+        // Burst bytes are untouched by the later requests.
+        fake.written.take(3).map { it.second }.zip(burst).forEach { (a, b) -> assertArrayEquals(b, a) }
+        assertArrayEquals(IoCtrlMessages.setResolution(1, 1), payloadOf(burst[0]))
+        assertArrayEquals(IoCtrlMessages.startRealtime(2, 1), payloadOf(burst[1]))
+        recorder.assertMarkerAppeared("BLOCK_SET_RESOLUTION")
+    }
+
+    @Test
+    fun `requestResolution before connect or after close returns null and writes nothing`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        assertEquals(null, link.requestResolution(2))
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        link.close()
+        val before = fake.written.size
+        assertEquals(null, link.requestResolution(2))
+        Thread.sleep(50)
+        assertEquals(before, fake.written.size)
+        assertTrue(fake.written.none { typeOf(it.second) == IoCtrlMessages.SET_RESOLUTION && numberOf(it.second) > 3 })
+    }
+
+    @Test
+    fun `4882 with abilityRet 1 marks resolution switch unsupported`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        assertEquals(null, link.capabilities.value.resolutionSwitch)
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.enqueueUnit(TnpCodec.CH_COMMAND, abilityReply(IoCtrlMessages.SET_RESOLUTION_RESP, 0, abilityRet = 1))
+        awaitTrue(what = { "capabilities=${link.capabilities.value}" }) {
+            link.capabilities.value.resolutionSwitch == false
+        }
+        awaitTrue { recorder.bufferText().contains("abilityRet=1") }
+
+        val fake0 = FakePpppNative()
+        val link0 = newLink(fake0)
+        link0.start(RecordingSink())
+        awaitBurst(fake0)
+        fake0.enqueueUnit(TnpCodec.CH_COMMAND, abilityReply(IoCtrlMessages.SET_RESOLUTION_RESP, 0, abilityRet = 0))
+        fake0.enqueueUnit(2, videoUnit())
+        awaitState(link0) { it is LinkState.Streaming && it.authOk }
+        assertEquals(null, link0.capabilities.value.resolutionSwitch)
+    }
+    // END_BLOCK_RESOLUTION_TESTS
 
     // START_BLOCK_LOG_HYGIENE
     @Test
     fun `happy and failure paths log every marker and no secret`() {
         val ok = FakePpppNative()
         val link = newLink(ok)
+        val audio = RecordingAudioSink()
+        link.setAudioSink(audio)
         link.start(RecordingSink())
         awaitBurst(ok)
         ok.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
         ok.enqueueUnit(2, videoUnit())
         awaitState(link) { it is LinkState.Streaming && it.authOk }
+        ok.enqueueUnit(1, audioUnit(payload = ByteArray(32)))
+        awaitTrue { audio.units.size == 1 }
+        assertEquals(3, link.requestResolution(2))
+        awaitTrue { ok.written.size == 4 }
         link.close()
 
         val wrong = FakePpppNative()
@@ -678,7 +834,7 @@ class TnpCameraLinkTest {
 
         listOf(
             "BLOCK_CONNECT", "BLOCK_CHECK_SESSION", "BLOCK_START_BURST", "BLOCK_AUTH_REPLY",
-            "BLOCK_READ_LOOP", "BLOCK_FIRST_VIDEO", "BLOCK_CLOSE",
+            "BLOCK_READ_LOOP", "BLOCK_FIRST_VIDEO", "BLOCK_CLOSE", "BLOCK_AUDIO_UNIT", "BLOCK_SET_RESOLUTION",
         ).forEach { recorder.assertMarkerAppeared(it) }
         val text = recorder.bufferText()
         assertTrue(text.contains("cmds=4881,9029,768"), text)

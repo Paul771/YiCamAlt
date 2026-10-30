@@ -1,23 +1,41 @@
 # YiCamAlt — Текущее состояние проекта
 
-> Дата: 2026-10-16
+> Дата: 2026-10-23
 > Формат: Markdown-снимок состояния для быстрой ориентации.
 > Канонические GRACE-артефакты: `docs/*.xml` (requirements, technology, development-plan, verification-plan, knowledge-graph, operational-packets).
 
 ---
 
-## 0. Текущий фокус (2026-10-16)
+## 0. Текущий фокус (2026-10-23)
 
 План и статус передаются на другую машину **только через Git**. Точка входа для агента на новом компьютере: `HANDOFF.md` (bootstrap, список загрузок, проверки окружения) + этот файл.
 
 | Параметр | Значение |
 |---|---|
-| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/` |
-| Текущий фокус | **GSD Phase 2 implemented; device verification** — живое видео по P2P реализовано (планы 02-00…02-11), идёт проверка на телефоне (план 02-12, Task 2/3) |
-| Планы GSD | `.planning/phases/02-p2p/` (текущая фаза; проверка 1 — `02-DEVICE-CHECK-1.md`, итог — `02-DEVICE-VERIFICATION.md`); фаза 1 — `.planning/phases/01-secrets-camera-list/` |
+| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 3 — ветка `gsd/phase-3-live-view` |
+| Текущий фокус | **GSD Phase 3 (03-live-view): implemented, device verification pending** — экран живого видео реализован и проверен только на JVM (планы 03-00…03-12); проверка на телефоне — план 03-13 по `03-HUMAN-UAT.md` (H-L1…H-L9, все pending) |
+| Планы GSD | `.planning/phases/03-live-view/` (текущая фаза); фаза 2 — `.planning/phases/02-p2p/` (проверки H1-H7 в `02-HUMAN-UAT.md` ещё открыты); фаза 1 — `.planning/phases/01-secrets-camera-list/` |
 | Инструкция | `INSTRUCTIONS.md` — эмулятор, mitmproxy, CA, установка APK, диагностика |
 | Устройство | физический телефон Mi 9 по USB; эмулятор не нужен (VT-x выключен в BIOS, см. 0.2) |
-| Блокер | нет; ждём ручную установку APK и проверку живого видео пользователем |
+| Блокер | нет для кода; TNP-поведение фазы 3 остаётся JVM-only, пока не пройдена проверка фазы 2 H1 (TNP-камера на Wi-Fi) |
+| Следующий шаг | план 03-13 на телефоне: H-L1…H-L9; H-L3 и TNP-часть H-L4 — только после фазы 2 H1 |
+
+### 0.7 GSD Phase 3: экран живого видео (2026-10-23)
+
+Тап по камере в списке открывает экран живого видео (`LiveViewScreen`, TextureView); долгое нажатие — прежний
+отладочный экран (`LiveProbeScreen`). Сессию ведёт `LiveSessionSupervisor`: бейдж состояния, повторы 2/5/10/20 с
+(не больше 5), один повтор после неверного пароля и один после kick, «Офлайн» без расхода попыток, переподключение
+при смене сети и при остановке кадров на 10 с, остановка в фоне и одно автовозобновление в течение 5 минут.
+Звук выключен по умолчанию (AAC через MediaCodec + AudioTrack), HD/SD через 4881 в текущей сессии, снимок в
+`Pictures/YiCamAlt`, полноэкранный режим, жесты масштаба.
+
+Новые модули: **M-LIVE-SESSION** (`live/`), **M-MEDIA-AUDIO** (`media/AacDecoder.kt`, `AudioFrameQueue.kt`),
+**M-MEDIA-SNAPSHOT** (`media/SnapshotSaver.kt`), **M-UI-LIVEVIEW** (`ui/live/LiveViewModel.kt`, `LiveViewScreen.kt`,
+`ZoomMath.kt`). Расширены: M-STREAM-CORE (AdtsParser, AudioPipeline, AudioUnit, LinkCapabilities), M-TNP-LINK и
+M-TUTK-LINK (аудио, `requestResolution`), M-MEDIA-RENDER (`videoSize`), M-UI-SHELL (тап / долгое нажатие).
+
+Проверено только на JVM: `:app:testDebugUnitTest :app:assembleDebug --rerun-tasks` три раза подряд зелёные (53 набора, 686 тестов, 0 падений, 1 пропуск — RealLogScanTest без файла лога). На телефоне ничего из фазы 3 ещё не проверено; требования
+LIVE-04…LIVE-11 не отмечены выполненными до плана 03-13.
 
 ### 0.6 GSD Phase 2: живое видео по P2P (2026-10-16)
 
@@ -143,7 +161,9 @@ Intel VT-x / AMD SVM в UEFI, перезагрузиться. Альтернат
 | **Phase-1 (Auth / Login)** | ✅ `verified` | 40 unit-тестов / 0 падений; реальный логин подтверждён на устройстве |
 | **Phase-2 (Camera Management)** | 🟡 `in-progress` | M-CAMERA-LIST/CMD + M-UI-SHELL/SETTINGS done (64 unit-тестов); discovery/setup deferred |
 | **GSD Phase 1 (secrets-camera-list)** | 🟡 реализована, ждёт устройства | M-CONFIG (YiRegion), M-AUTH (поиск региона при логине, fail-closed logout), M-CAMERA-LIST (`/v5/devices/list`), новый M-P2P-CREDS, M-LOCAL-DB v2, M-UI-SHELL (состояния списка, pull-to-refresh); 278 JVM-тестов зелёные; V-M-CAMERA-LIST `in-progress` до проверки на телефоне |
-| **Phase-3 (Streaming Core)** | 🟡 `in-progress` | **M-EVENT done** (23 unit-теста; suite 91/91 green). Остальное ждёт захвата стрим-протокола |
+| **Phase-3 (Streaming Core)** | 🟡 `in-progress` | **M-EVENT done** (23 unit-теста; suite 91/91 green). P2P-шаги 8-13 — GSD Phase 2; шаги 3, 14, 15, 16 — GSD Phase 3 |
+| **GSD Phase 2 (02-p2p)** | 🟡 реализована, ждёт устройства | живое видео по P2P (TNP + TUTK), проверки H1-H7 в `02-HUMAN-UAT.md` открыты |
+| **GSD Phase 3 (03-live-view)** | 🟡 implemented, device verification pending | M-LIVE-SESSION, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-UI-LIVEVIEW; JVM-набор и `assembleDebug` зелёные; H-L1…H-L9 pending (`03-HUMAN-UAT.md`, план 03-13) |
 | Phase-4 (Notifications & Polish) | ⏳ не начата | M-PUSH, M-MEDIA, M-ONBOARDING, M-UI-* polish |
 
 **Evidence-3** (навигация Login → shell на эмуляторе) — **отложена** (нет эмулятора/устройства в окружении).

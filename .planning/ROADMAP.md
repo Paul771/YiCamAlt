@@ -14,7 +14,7 @@
 
 - [ ] **Phase 1: Секреты и реальный список камер** - Санитария секретов, проба эндпоинтов/регионов, разбор списка камер и P2P-реквизитов
 - [ ] **Phase 2: Нативный P2P и первый кадр** - Вендорские .so из локального APK, JNI-шимы, чистое Kotlin-ядро протокола, первое видео по LAN и удалённо
-- [ ] **Phase 3: Полноценный live-view** - Супервизор сессии, переподключение, звук, HD/SD, снимок, полноэкранный режим, корректная остановка
+- [x] **Phase 3: Полноценный live-view** - Супервизор сессии, переподключение, звук, HD/SD, снимок, полноэкранный режим, корректная остановка (completed 2026-10-30)
 - [ ] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию
 - [ ] **Phase 5: Лента событий** - Реальный эндпоинт алертов, превью и 6-секундные клипы, фильтры, офлайн-кэш, переход к записи SD
 - [ ] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
@@ -92,7 +92,24 @@ Plans:
   3. Пользователь сохраняет снимок кадра в галерею, разворачивает видео на весь экран и масштабирует его жестом
   4. При уходе с экрана или сворачивании приложения поток останавливается; на камеру открыта одна P2P-сессия, и официальное приложение продолжает показывать видео параллельно
   5. Пользователь смотрит видео дольше официального лимита превью, без рекламы и прерываний
-**Plans**: TBD
+**Plans:** 14/14 plans complete
+
+Plans:
+- [x] 03-00-PLAN.md — Wave 0: порт-типы (AudioUnit, CameraLink.setAudioSink/requestResolution/capabilities, SupervisorState, MediaSession, NetworkMonitor), configChanges + WRITE_EXTERNAL_STORAGE max 28, GRACE-узлы (wave 1)
+- [x] 03-01-PLAN.md — TDD: AdtsParser + AudioPipeline (расшифровка TNP-аудио, mute, доступность звука) (wave 2)
+- [x] 03-02-PLAN.md — TNP: ch1-аудио в AudioUnitSink, requestResolution через txQueue, abilityRet 4882 (wave 2)
+- [x] 03-03-PLAN.md — TUTK-шим: avRecvAudioData / avRecvIOCtrl / avClientCleanAudioBuf, проверка экспортов обеих ABI (wave 2)
+- [x] 03-05-PLAN.md — TDD: QualityController (HD/SD, D-06/D-07) + ResumePolicy (5 мин, D-10) (wave 2)
+- [x] 03-08-PLAN.md — NetStateTracker + AndroidNetworkMonitor, VideoDecoder.videoSize (wave 2)
+- [x] 03-09-PLAN.md — Снимок в галерею (MediaStore Pictures/YiCamAlt) + ZoomMath (wave 2)
+- [x] 03-04-PLAN.md — TUTK: потоки tx/rxc/rxa, 768, 4881 LE, расширенный teardown (wave 3)
+- [x] 03-06-PLAN.md — TDD: LiveSessionSupervisor (backoff 2/5/10/20, пароль/kick, сеть, stall, drain, resume) (wave 3)
+- [x] 03-07-PLAN.md — AacDecoder (MediaCodec → AudioTrack) + AudioFrameQueue (wave 3)
+- [x] 03-10-PLAN.md — DefaultMediaSession + LiveViewModel (плашка, звук, HD/SD, снимок, жизненный цикл) (wave 4)
+- [x] 03-11-PLAN.md — LiveViewScreen на TextureView, полный экран, жесты; тап → live, long-press → отладочный экран (wave 5)
+- [x] 03-12-PLAN.md — Синхронизация GRACE, тройной прогон тестов, 03-HUMAN-UAT.md (wave 6)
+- [x] 03-13-PLAN.md — Проверка на телефоне H-L1..H-L9 (wave 7, checkpoint)
+**Research**: done — `.planning/phases/03-live-view/03-RESEARCH.md`
 **UI hint**: yes
 
 ### Phase 4: Архив SD-карты
@@ -141,7 +158,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 |-------|----------------|--------|-----------|
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
 | 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
-| 3. Полноценный live-view | 0/TBD | Not started | - |
+| 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
 | 4. Архив SD-карты | 0/TBD | Not started | - |
 | 5. Лента событий | 0/TBD | Not started | - |
 | 6. Релизная сборка и проверка на телефоне | 0/TBD | Not started | - |
