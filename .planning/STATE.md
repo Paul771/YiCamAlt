@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-06-PLAN.md
-last_updated: "2026-10-30T21:36:25.074Z"
-last_activity: 2026-10-30
+stopped_at: Completed 04-07-PLAN.md
+last_updated: "2026-10-31T08:52:26.422Z"
+last_activity: 2026-10-31
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 50
-  completed_plans: 46
+  completed_plans: 47
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
-Last activity: 2026-10-30
+Last activity: 2026-10-31
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -85,6 +85,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P05 | 35min | 3 tasks | 11 files |
 | Phase 04 P04 | 45min | 3 tasks | 9 files |
 | Phase 04 P06 | 75min | 3 tasks | 8 files |
+| Phase 04 P07 | 45min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -156,6 +157,8 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-06: supervisor stall window counts from max(last frame growth, last setStreamMode); HD/SD requests only in LIVE
 - [Phase 04]: 04-06: TUTK hide needs Failed(NO_FRAMES) + no Playing ever + liveThroughout (set on entry into Starting from non-Starting, cleared by unhealthy or liveEpoch change) + units arriving
 - [Phase 04]: 04-06: openDays refresh re-fetches only the index, keeps old data on failure; selected day follows the cursor only on a cursor day change
+- [Phase 04]: 04-07: custom month grid (no material3 DatePicker badge); today tappable without recordings; months = contiguous recorded range incl. today
+- [Phase 04]: 04-07: fullscreen-only overlay pause/Живой; ruler follows the cursor only while untouched; pure pinch never seeks
 
 ### Pending Todos
 
@@ -169,6 +172,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-30T21:36:25.063Z
-Stopped at: Completed 04-06-PLAN.md
+Last session: 2026-10-31T08:52:26.416Z
+Stopped at: Completed 04-07-PLAN.md
 Resume file: None
