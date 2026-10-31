@@ -109,3 +109,16 @@ Build: 944 JVM tests, 0 failures, 1 skipped; installed with `adb install -r`. Va
 | H-SD14 end of recording, no loop | PARTIAL | No loop observed; the camera records continuously so the natural end was not reached on the device; unit tests cover it |
 | Observation | LIVE stall | 10 s LIVE stall at 17:13:47 about 30 s after returning from archive to Live; supervisor reconnected in ~3 s by itself (`attempt=2`). Not investigated; Phase 3 stall behaviour is unchanged |
 | Redaction sweep (`RealLogScanTest`) | PASS | Log pulled after the session to a temporary file outside the repo (5966 lines); `tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=<temp file> --rerun-tasks` -> BUILD SUCCESSFUL, JUnit `tests=1 skipped=0 failures=0 errors=0`; no line flagged. Temp file deleted after the run |
+
+## Session 2026-10-31, part 4: TNP camera «Спальня» with recordings
+
+The camera was already recording to the card (7 segments in today's index, `BLOCK_SD_STATUS tfstat=0`); nothing had to be switched on.
+
+| Check | Result | Evidence |
+|---|---|---|
+| TNP index and timeline | PASS | `BLOCK_FETCH_INDEX transport=TNP result=Ok(count=7) pages=1`, segments drawn from ~16:50 |
+| TNP play from a moment | PASS | `BLOCK_SEEK result=Archive`, `Live -> Starting (uc=7) -> Playing` in 0.2 s, label 18:11:26 -> 18:12:24 in ~58 s; picture is greyscale (night mode on the recording; not compared with the official app) |
+| Snapshot and fullscreen in the archive | PASS | `BLOCK_SAVE_SNAPSHOT result=Saved`, `BLOCK_FULLSCREEN on=true source=button`, label kept |
+| H-SD7 background / «Продолжить» | PASS | `Playing -> Paused(BACKGROUND)`, `BLOCK_CLOSE reason=background`, return 7 s later: `BLOCK_RESUME resumed=true`, panel shows «Продолжить» at 18:13:11 (no autoplay); tap -> Playing 0.2 s, label 18:13:19 |
+| «Живой» on TNP | PASS | `Playing -> Live`, `gate-released` 0.2 s, ruler on the clock (18:29:08) |
+| Not exercised | | segment boundary crossing (H-SD4), zoom gestures in the archive, calendar dots by eye, picture comparison with the official app, TNP over relay |

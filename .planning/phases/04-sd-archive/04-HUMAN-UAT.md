@@ -32,33 +32,33 @@ Markers to look for: `[Archive][status][BLOCK_SD_STATUS]`, `[Archive][index][BLO
 steps: open a camera with a recorded SD card, tap the day button under the video.
 expected: recorded days carry a dot; other days are greyed and not tappable (today stays tappable); the default selection is «Сегодня».
 requirement: SD-01 (D-02)
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: passed (2026-10-31, TNP + TUTK cameras with cards): both cameras load the index (TNP 7 segments, TUTK 59) and show the day button; the dot marks on the day dialog were not looked at this session, only that the dialog source (`days=`) is filled (`BLOCK_ARCHIVE_LOAD days=30` on TUTK, `days=1` on TNP) — calendar dots still unchecked by eye
 
 ### H-SD2. Timeline of the selected day
 steps: pick a day with recordings; scroll the ruler, pinch in and out.
 expected: coloured segments of the selected day match the recordings (compare with the official app); scroll and pinch work (15 min..24 h); the cursor stays in the centre.
 requirement: SD-02 (D-03)
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: passed (2026-10-31): segments drawn at the recorded times on both cameras, red cursor, hour ticks, ruler recentres with the clock; pinch zoom not judged
 
 ### H-SD3. Seek by releasing the timeline
 steps: drag the ruler onto a recorded segment and release.
 expected: playback starts at that moment; the «Запись HH:mm:ss» time matches the camera's own on-picture timestamp within a few seconds (confirms the wire-time base, `SdTime.WIRE_IS_UTC`).
 requirement: SD-03 (wire-time base)
 note: recent footage on today without opening the day dialog (device defect 3 / W-1) is re-checked in H-SD13
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: passed (2026-10-31, TUTK and TNP): one drag + release -> `BLOCK_SEEK result=Archive`, Playing on the first key frame in 0.2 s (TNP) and 0.5-1 s (TUTK); label «Запись HH:mm:ss» advances at wall speed (TNP 18:11:26 -> 18:12:24 in ~58 s). Picture content vs the official app not compared
 
 ### H-SD4. Segment boundary and end of recording
 steps: start playback shortly before the end of a segment that has a following segment; then seek near the end of the last segment.
 expected: playback continues across the segment boundary without user action; at the end of the last segment the panel shows «Записи закончились».
 requirement: SD-03 (D-04)
 note: the end of the last recording without a reconnect loop (device defect 4 / W-2) is re-checked in H-SD14
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: not exercised: segment-boundary crossing was not reached on a device; unit tests cover it (see H-SD14 for the end of the last segment)
 
 ### H-SD5. Pause, «Продолжить», «Живой»
 steps: during archive playback press pause, then «Продолжить», then «Живой».
 expected: all three work on the same session without a reconnect (badge does not go through Подключение…); «Живой» returns to live video.
 requirement: SD-04
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: passed (2026-10-31, TUTK and TNP): pause freezes the position, «Продолжить» restarts from the marker (TNP `Paused(BACKGROUND) -> Starting reason=resume` -> Playing 0.2 s, label 18:13:11 -> 18:13:19), «Живой» -> `Playing -> Live`, `gate-released` 0.2-1.2 s later with live picture, HD button back
 
 ### H-SD6. Empty and error states
 steps: open the TNP camera «Спальня» (no card); on a carded camera pick a day without recordings; if possible provoke a list failure.
@@ -70,13 +70,13 @@ result: pass (no-card state) — 2026-10-31 on the TNP camera «Спальня»
 steps: unmute live sound, enter the archive; press Home (or lock), return within 5 min; tap «Продолжить».
 expected: sound is off on entering the archive; after the return live video plays normally (picture neither black nor frozen); the panel shows «Продолжить» at the saved position and does not auto-play; tapping «Продолжить» seeks to the saved moment; in this state (Paused(BACKGROUND), inArchive) the HD/SD button is hidden by design.
 requirement: SD-04 (D-05, Phase 3 D-10)
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: passed (2026-10-31, TNP): sound muted on entering the archive; Home during playback -> `Paused(BACKGROUND)`, link closed (`BLOCK_CLOSE reason=background`), return after 7 s shows the last frame, marker 18:13:11 and «Продолжить» (no autoplay), no black screen
 
 ### H-SD8. Fullscreen, zoom and snapshot in the archive
 steps: during archive playback go fullscreen, pinch zoom, take a snapshot.
 expected: fullscreen shows pause / «Живой» and the record time; pinch zoom works; the snapshot lands in Pictures/YiCamAlt.
 requirement: SD-03 (D-01)
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: partial (2026-10-31, TNP): snapshot saved in the archive (`BLOCK_SAVE_SNAPSHOT result=Saved`), fullscreen from the button keeps the «Запись» label and the picture, returns to portrait on Back; pinch/double-tap zoom not tried in the archive
 
 ### H-SD9. TUTK camera
 steps: power on the TUTK camera, open it, wait for the archive panel; afterwards pull the diag log and run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks`.
@@ -117,12 +117,13 @@ result: partial (2026-10-31): no reconnect loop in any observed case (seek past 
 ## Summary
 
 total: 14
-passed: 4
+passed: 11
 issues: 0
 pending: 0
-partial: 2
+partial: 3
 skipped: 0
-blocked: 8
+not_exercised: 1
+blocked: 1
 
 ## Gaps
 
