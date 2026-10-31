@@ -50,7 +50,7 @@ import java.time.ZoneId
 //     ticker and liveEpoch collector are serialised by one lock (thread-confined state).
 // END_CHANGE_SUMMARY
 
-enum class PauseReason { USER, ENDED, BACKGROUND }
+enum class PauseReason { USER, ENDED, BACKGROUND, SILENT }
 enum class FailReason { NOT_READY, NO_FRAMES, NO_RECORDING }
 
 sealed interface PlaybackState {

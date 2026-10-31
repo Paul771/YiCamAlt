@@ -530,6 +530,127 @@ class PlaybackControllerTest {
         assertEquals(PlaybackState.Starting(utc("2026-10-30T10:20:00Z"), 4), controller.state.value)
         controller.close()
     }
+
+    // Supervisor ARCHIVE stall closes the link: unhealthy, no live link, one more ARCHIVE stall counted.
+    private fun TestScope.stallClose(port: FakeArchivePort) {
+        port.healthy = false
+        port.live = false
+        port.archiveStalls += 1
+        step(1_000)
+    }
+
+    private fun count9030(port: FakeArchivePort) = port.sent.count { it.type == 9030 }
+
+    // Seek 10:15 with a silent camera; two ARCHIVE-stall reconnects end in Paused(SILENT). uc 3 and 4 used.
+    private fun TestScope.silentTwice(controller: PlaybackController, port: FakeArchivePort) {
+        controller.seek(utc("2026-10-30T10:15:00Z"))
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:15:00Z"), 3), controller.state.value)
+        port.unitsFlowing = false
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:15:00Z"), 4), controller.state.value)
+        assertEquals(2, count9030(port))
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Paused(utc("2026-10-30T10:15:00Z"), PauseReason.SILENT), controller.state.value)
+    }
+
+    @Test
+    fun `silent camera after a seek - two ARCHIVE-stall reconnects then Paused SILENT`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        silentTwice(controller, port)
+        assertEquals(2, count9030(port))
+        assertNull(port.expected)
+        val sentBefore = port.sent.size
+        step(120_000)
+        assertEquals(PlaybackState.Paused(utc("2026-10-30T10:15:00Z"), PauseReason.SILENT), controller.state.value)
+        assertEquals(sentBefore, port.sent.size)
+        assertTrue(recorder.bufferText().contains("BLOCK_SILENT_RESEEK"))
+        controller.close()
+    }
+
+    @Test
+    fun `mid-segment silence repeated at the same position pauses SILENT`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        playingAt(controller, port, "2026-10-30T10:20:00Z")
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:20:00Z"), 4), controller.state.value)
+        port.frame = obs(4, "2026-10-30T10:20:00Z")
+        step(500)
+        assertEquals(PlaybackState.Playing(utc("2026-10-30T10:20:00Z"), 4), controller.state.value)
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Paused(utc("2026-10-30T10:20:00Z"), PauseReason.SILENT), controller.state.value)
+        assertEquals(2, count9030(port))
+        controller.close()
+    }
+
+    @Test
+    fun `network drops never count as silent`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        var uc = playingAt(controller, port, "2026-10-30T10:20:00Z")
+        repeat(3) {
+            port.healthy = false
+            step(15_000)
+            epochBump(port)
+            runCurrent()
+            uc += 1
+            assertEquals(PlaybackState.Starting(utc("2026-10-30T10:20:00Z"), uc), controller.state.value)
+            assertEquals(seekCmds(uc, "2026-10-30T10:20:00Z"), port.sent.takeLast(1))
+        }
+        assertEquals(4, count9030(port))
+        controller.close()
+    }
+
+    @Test
+    fun `a stall at a different position starts a new count`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        controller.seek(utc("2026-10-30T10:15:00Z"))
+        port.unitsFlowing = false
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:15:00Z"), 4), controller.state.value)
+        port.frame = obs(4, "2026-10-30T10:25:00Z")
+        step(500)
+        assertEquals(PlaybackState.Playing(utc("2026-10-30T10:25:00Z"), 4), controller.state.value)
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:25:00Z"), 5), controller.state.value)
+        controller.close()
+    }
+
+    @Test
+    fun `resume after SILENT re-seeks with a fresh budget`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        silentTwice(controller, port)
+        controller.resume()
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:15:00Z"), 5), controller.state.value)
+        assertEquals(3, count9030(port))
+        step(35_000)
+        stallClose(port)
+        epochBump(port)
+        runCurrent()
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T10:15:00Z"), 6), controller.state.value)
+        controller.close()
+    }
     // END_BLOCK_LINK_TESTS
 
     @Test

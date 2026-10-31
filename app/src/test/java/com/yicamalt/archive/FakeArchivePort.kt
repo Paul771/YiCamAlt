@@ -1,5 +1,5 @@
 // FILE: FakeArchivePort.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scriptable in-memory ArchiveLinkPort for archive JVM tests.
 //   SCOPE: records sent commands, scripted replies via onSend, refusable send, generation / stream mode capture.
@@ -20,11 +20,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 // START_MODULE_MAP
 //   FakeArchivePort - ArchiveLinkPort fake: sent, sendResult, onSend hook, reply(type, payload), useCounter,
 //     healthy override, expected generation, frame, modes, live, resolution, useCountAvailable, unitsFlowing /
-//     units (framesIn), events (ordered gate / mode / send trace).
+//     units (framesIn), events (ordered gate / mode / send trace), archiveStalls (archiveStallCount).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-05: framesIn (units flowing switch), not-ready use counter, ordered events.
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2b): archiveStalls drives archiveStallCount() (default 0, so old
+//     tests never count a silent re-seek).
+//   PREVIOUS: v0.2.0 - GSD plan 04-05: framesIn (units flowing switch), not-ready use counter, ordered events.
 //   PREVIOUS: v0.1.0 - GSD plan 04-03: fake port for SdIndexRepository and later playback tests.
 // END_CHANGE_SUMMARY
 
@@ -54,6 +56,8 @@ class FakeArchivePort(
     var units = 0L
     // Ordered trace of port calls: "gate:<uc|null>", "mode:<MODE>", "send:<type>".
     val events = mutableListOf<String>()
+    // Links closed by the supervisor's ARCHIVE stall so far (tests bump it to simulate a stall close).
+    var archiveStalls = 0
 
     // Emits a reply into the shared flow (subscribers must already be collecting).
     fun reply(type: Int, payload: ByteArray) {
@@ -78,6 +82,7 @@ class FakeArchivePort(
         events += "gate:$useCount"
     }
     override fun lastFrame(): FrameObservation? = frame
+    override fun archiveStallCount(): Int = archiveStalls
     override fun framesIn(): Long {
         if (unitsFlowing) units++
         return units
