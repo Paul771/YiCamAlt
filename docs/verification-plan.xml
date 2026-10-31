@@ -710,7 +710,7 @@
         <scenario-20 kind="success" evidence-type="deterministic">4882 with TNPHead abilityRet 1 sets capabilities.resolutionSwitch=false; abilityRet 0 keeps null; abilityRet logged on BLOCK_AUTH_REPLY (plan 03-02, D-07)</scenario-20>
         <scenario-21 kind="device" status="passed" evidence-type="trace">H-L3 / H-L4 (TNP half): ch1 audio decrypts to valid ADTS and 4881 changes the frame width without a reconnect; blocked until Phase 2 H1 (TNP live video) passes; TNP Phase 3 behaviour is JVM-only until then</scenario-21>
         <scenario-22 kind="success" evidence-type="unit">GSD Phase 4 (plan 04-00): recorded video on ch4 / 5 / 7 reaches the VideoUnitSink; sendIoCtrl false before the start burst, queued after; ioCtrlReplies publishes authResult-0 ch0 replies except 4882 / 9033; one link-wide useCount after 1 / 2 shared with requestResolution (TnpCameraLinkTest 41)</scenario-22>
-        <scenario-23 kind="device" status="pending" evidence-type="trace">H-SD3 / H-SD5 (TNP half): recorded frames on ch4 / 5 / 7 after 9030 and back to live after stop record + 9029 on the same session</scenario-23>
+        <scenario-23 kind="device" status="pending" evidence-type="trace">H-SD3 / H-SD5 (TNP half): recorded frames on ch4 / 5 / 7 after 9030 and back to live after stop record + 9029 on the same session [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-23>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][factory][BLOCK_OPEN_LINK]</marker-1>
@@ -949,7 +949,7 @@
         <scenario-18 kind="success" evidence-type="deterministic">Teardown joins rx, rxa, rxc, tx before stop (no recv / send in flight at stop); a tx blocked in sendIoCtrl does not block close (within joinMs + 300 ms) and keeps ALREADY_OPEN until it exits (registry=deferred) (TutkCameraLinkTest, plan 03-04)</scenario-18>
         <scenario-19 kind="device" status="passed" evidence-type="trace">H-L2 / H-L4 (TUTK half): rxa delivers audio units with sound after unmute; LE 4881 changes the frame width without a reconnect; record widths for HD and SD</scenario-19>
         <scenario-20 kind="success" evidence-type="unit">GSD Phase 4 (plan 04-02): sendIoCtrl queued on tx after the start command, ioCtrlReplies = every avRecvIOCtrl reply except 4882, nextUseCount shared with requestResolution, transportBigEndian false, setStreamMode ARCHIVE / PAUSED suspends the -20012 limit and LIVE restores it (TutkCameraLinkTest 46)</scenario-20>
-        <scenario-21 kind="device" status="pending" evidence-type="trace">H-SD9: TUTK archive (793 pages, 12718 / 794 cmd 16 playback) or hidden with «Архив SD на этой камере недоступен»; camera was unreachable in the 04-04 probe</scenario-21>
+        <scenario-21 kind="device" status="pending" evidence-type="trace">H-SD9: TUTK archive (793 pages, 12718 / 794 cmd 16 playback) or hidden with «Архив SD на этой камере недоступен»; camera was unreachable in the 04-04 probe [04-09, 2026-10-31: not exercised, TUTK camera unreachable (connect timeout)]</scenario-21>
       </scenarios>
       <required-log-markers>
         <marker-1>[P2P][tutk][BLOCK_CONNECT]</marker-1>
@@ -1146,7 +1146,7 @@
         <scenario-14 kind="device" status="passed" evidence-type="trace">H-L7: fullscreen by button and rotation (auto-rotate off too), pinch 4x, pan, double tap, notch, keep-screen-on over 2+ minutes</scenario-14>
         <scenario-15 kind="device" status="partial" evidence-type="trace">H-L8: snapshot visible in the gallery (Pictures/YiCamAlt), full resolution, taken while zoomed</scenario-15>
         <scenario-16 kind="success" evidence-type="unit">GSD Phase 4 (plans 04-06 / 04-07): LiveViewModel.archive + 7 actions, coordinator per open closed with the screen, onStop calls onBackground before the background stop, HD/SD hidden in the archive (LiveViewModelTest 33); ArchiveCoordinator D-07 states (ArchiveCoordinatorTest 28); TimelineMath (14) and CalendarGrid (6)</scenario-16>
-        <scenario-17 kind="device" status="pending" evidence-type="trace">H-SD1, H-SD2, H-SD6, H-SD7, H-SD8: day dialog, timeline gestures, empty / error states, background return, fullscreen in the archive (04-HUMAN-UAT.md)</scenario-17>
+        <scenario-17 kind="device" status="pending" evidence-type="trace">H-SD1, H-SD2, H-SD6, H-SD7, H-SD8: day dialog, timeline gestures, empty / error states, background return, fullscreen in the archive (04-HUMAN-UAT.md) [04-09, 2026-10-31: H-SD6 no-card state passed on the TNP camera (day dialog opened, only today tappable); H-SD1 / H-SD2 / H-SD7 / H-SD8 not exercised, no SD card] [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-17>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
@@ -1175,6 +1175,7 @@
         <evidence-1>2026-10-23 plan 03-10: LiveViewModelTest 23 (virtual time, real LiveSessionSupervisor + DefaultMediaSession over LiveFakes); plan 03-09: ZoomMathTest 6</evidence-1>
         <evidence-2>Device evidence pending: H-L1, H-L4, H-L6, H-L7, H-L8 in .planning/phases/03-live-view/03-HUMAN-UAT.md (plan 03-13); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-31 plans 04-06 / 04-07: LiveViewModelTest 33, ArchiveCoordinatorTest 28, TimelineMathTest 14, CalendarGridTest 6; TimelineRuler / ArchivePanel / DayPickerDialog compile-only; device H-SD1..H-SD10 pending (04-HUMAN-UAT.md)</evidence-3>
+        <evidence-4>2026-10-31 plan 04-09 (04-DEVICE-VERIFICATION.md): archive panel present, live regression OK (Home and return: BLOCK_STOP reason=background, BLOCK_RESUME resumed=true, Live again in ~0.6 s, picture not black); H-SD6 no-card state passed; other H-SD items not exercised (no SD card)</evidence-4>
       </gate-evidence>
       <wave-follow-up>JVM only (no emulator): LiveViewModel over the real supervisor with fake links; ZoomMath pure.</wave-follow-up>
       <phase-follow-up>Device follow-up H-L1 (TextureView picture on MIUI), H-L4 (HD/SD), H-L6 (background stop / resume), H-L7 (fullscreen, rotation, gestures, keep-screen-on), H-L8 (snapshot in Pictures/YiCamAlt). No PTZ, no camera selector (v2).</phase-follow-up>
@@ -1207,7 +1208,7 @@
         <scenario-10 kind="device" status="partial" evidence-type="trace">H-L6: lock / Home / return after more than 5 min (no auto-resume) and within 5 min (resume once); official Yi app gets video while ours is in background (extends Phase 2 H6)</scenario-10>
         <scenario-11 kind="device" status="passed" evidence-type="trace">H-L4: 4881 honoured (width changes, no reconnect): TUTK camera first, TNP camera only after Phase 2 H1</scenario-11>
         <scenario-12 kind="success" evidence-type="unit">GSD Phase 4 (plans 04-05 / 04-06): stall window 10 s LIVE / 35 s ARCHIVE / off PAUSED from max(last frame growth, last mode switch); Streaming resets the mode to LIVE then liveEpoch += 1; replies of every watched link forwarded; HD/SD only in LIVE; SupervisorArchivePort delegation (framesIn, linkHealthy, no live link = send false) (LiveSessionSupervisorTest 47); MediaSession gate and lastFrame (DefaultMediaSessionTest 12)</scenario-12>
-        <scenario-13 kind="device" status="pending" evidence-type="trace">H-SD10: reconnect during archive playback resumes at the same moment through liveEpoch, retry schedule as live</scenario-13>
+        <scenario-13 kind="device" status="pending" evidence-type="trace">H-SD10: reconnect during archive playback resumes at the same moment through liveEpoch, retry schedule as live [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-13>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveSession][supervisor][BLOCK_OPEN_LINK]</marker-1>
@@ -1263,15 +1264,15 @@
         <scenario-5 kind="success" evidence-type="unit">PlaybackController states: gate set before the first send, Starting -> Playing on the first recorded key frame of the generation, boundary jump, end of recording Paused(ENDED), pause / resume / goLive, start timeout counted only while framesIn() grows (Failed NO_FRAMES), timers frozen while linkHealthy() is false, re-seek on a liveEpoch change, background pause without auto-resume; redaction clean (PlaybackControllerTest 28)</scenario-5>
         <scenario-6 kind="success" evidence-type="unit">ArchiveCoordinator D-07 states: Загрузка записей… before the first liveEpoch, Нет SD-карты (no index request), SD-карта не готова, Не удалось получить список + Повторить, За этот день записей нет, TIMELINE; days dialog refresh keeps old data on failure; TUTK hide rule (D-06); unsupported transport HIDDEN (ArchiveCoordinatorTest 28)</scenario-6>
         <scenario-7 kind="success" evidence-type="unit">TimelineMath span clamp / zoom / pan / ticks / initialCenter / release-to-seek rule (TimelineMathTest 14); CalendarGrid 42 Monday-first cells, today tappable, contiguous months (CalendarGridTest 6); SdProbe debug actions (SdProbeTest 10)</scenario-7>
-        <scenario-8 kind="device" status="pending" evidence-type="trace">H-SD1: day dialog: recorded days with a dot, other days greyed and not tappable, default «Сегодня» (SD-01, D-02)</scenario-8>
-        <scenario-9 kind="device" status="pending" evidence-type="trace">H-SD2: timeline: coloured segments of the selected day match recordings, scroll + pinch, centre cursor (SD-02, D-03)</scenario-9>
-        <scenario-10 kind="device" status="pending" evidence-type="trace">H-SD3: release on the timeline starts playback at that moment; the overlay time matches the camera's own timestamp within a few seconds (SD-03, wire-time base)</scenario-10>
-        <scenario-11 kind="device" status="pending" evidence-type="trace">H-SD4: continuous playback across a segment boundary; end of the last segment shows «Записи закончились» (D-04)</scenario-11>
-        <scenario-12 kind="device" status="pending" evidence-type="trace">H-SD5: pause / «Продолжить» / «Живой» on the same session without reconnect (SD-04)</scenario-12>
-        <scenario-13 kind="device" status="pending" evidence-type="trace">H-SD6: empty / error states: «Нет SD-карты» or «За этот день записей нет» while live keeps playing; «Не удалось получить список» + «Повторить» when applicable (SD-05, D-07); checkable on the TNP camera without a card</scenario-13>
-        <scenario-14 kind="device" status="pending" evidence-type="trace">H-SD7: sound off on entering the archive; Home / lock -> return within 5 min: live video plays normally (picture neither black nor frozen), the panel shows «Продолжить» at the saved position and does not auto-play; tapping «Продолжить» seeks to the saved moment; in this state (Paused(BACKGROUND), inArchive) the HD/SD button is hidden by design (D-05, Phase 3 D-10)</scenario-14>
-        <scenario-15 kind="device" status="pending" evidence-type="trace">H-SD8: fullscreen, pinch zoom and snapshot in the archive (D-01)</scenario-15>
-        <scenario-16 kind="device" status="pending" evidence-type="trace">H-SD9: TUTK camera: archive works or is hidden with «Архив SD на этой камере недоступен» (D-06) + redaction sweep of the pulled log</scenario-16>
+        <scenario-8 kind="device" status="pending" evidence-type="trace">H-SD1: day dialog: recorded days with a dot, other days greyed and not tappable, default «Сегодня» (SD-01, D-02) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-8>
+        <scenario-9 kind="device" status="pending" evidence-type="trace">H-SD2: timeline: coloured segments of the selected day match recordings, scroll + pinch, centre cursor (SD-02, D-03) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-9>
+        <scenario-10 kind="device" status="pending" evidence-type="trace">H-SD3: release on the timeline starts playback at that moment; the overlay time matches the camera's own timestamp within a few seconds (SD-03, wire-time base) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-10>
+        <scenario-11 kind="device" status="pending" evidence-type="trace">H-SD4: continuous playback across a segment boundary; end of the last segment shows «Записи закончились» (D-04) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-11>
+        <scenario-12 kind="device" status="pending" evidence-type="trace">H-SD5: pause / «Продолжить» / «Живой» on the same session without reconnect (SD-04) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-12>
+        <scenario-13 kind="device" status="passed" evidence-type="trace">H-SD6: empty / error states: «Нет SD-карты» or «За этот день записей нет» while live keeps playing; «Не удалось получить список» + «Повторить» when applicable (SD-05, D-07); checkable on the TNP camera without a card [04-09, 2026-10-31: «Нет SD-карты» under the video while live kept playing, BLOCK_SD_STATUS status=NoCard, BLOCK_ARCHIVE_LOAD index=skipped (no index request), day dialog with only today tappable; «За этот день записей нет» and «Не удалось получить список» + «Повторить» need a carded camera and were not exercised]</scenario-13>
+        <scenario-14 kind="device" status="pending" evidence-type="trace">H-SD7: sound off on entering the archive; Home / lock -> return within 5 min: live video plays normally (picture neither black nor frozen), the panel shows «Продолжить» at the saved position and does not auto-play; tapping «Продолжить» seeks to the saved moment; in this state (Paused(BACKGROUND), inArchive) the HD/SD button is hidden by design (D-05, Phase 3 D-10) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-14>
+        <scenario-15 kind="device" status="pending" evidence-type="trace">H-SD8: fullscreen, pinch zoom and snapshot in the archive (D-01) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-15>
+        <scenario-16 kind="device" status="pending" evidence-type="trace">H-SD9: TUTK camera: archive works or is hidden with «Архив SD на этой камере недоступен» (D-06) + redaction sweep of the pulled log [04-09, 2026-10-31: TUTK half not exercised, camera unreachable (connect timeout), D-06 not applied; redaction sweep half done: RealLogScanTest over the pulled 4645-line log, tests=1 skipped=0 failures=0]</scenario-16>
         <scenario-17 kind="device" status="pending" evidence-type="trace">H-SD10: reconnect during archive playback: Wi-Fi off / on while a recording plays -> playback resumes at the same moment (± a few seconds) without user action, retry schedule as live (2 / 5 / 10 / 20 s, 5 attempts), no «Записи закончились» and no jump to another segment (D-04)</scenario-17>
       </scenarios>
       <device-log-markers>
@@ -1296,6 +1297,7 @@
       <gate-evidence>
         <evidence-1>2026-10-30 / 31 plans 04-01..04-07: SdArchiveCodecTest 21, SdTimeTest 10, SdTimelineTest 18, SdStatusTest 7, PlaybackCommandsTest 10, SdIndexRepositoryTest 17, PlaybackControllerTest 28, ArchiveCoordinatorTest 28, TimelineMathTest 14, CalendarGridTest 6, SdProbeTest 10; full suite 903 tests, 0 failures, 1 skipped at plan 04-07</evidence-1>
         <evidence-2>Device evidence pending: H-SD1..H-SD10 in .planning/phases/04-sd-archive/04-HUMAN-UAT.md (plan 04-09); STATUS stays in-progress until then; never passed from JVM evidence</evidence-2>
+        <evidence-3>2026-10-31 plan 04-09 (.planning/phases/04-sd-archive/04-DEVICE-VERIFICATION.md): H-SD6 no-card state passed on the TNP camera; redaction sweep clean; H-SD1..H-SD5, H-SD7, H-SD8, H-SD10 not exercised (no SD card with recordings), H-SD9 not exercised (TUTK unreachable). STATUS stays in-progress</evidence-3>
       </gate-evidence>
       <phase-follow-up>Device follow-up H-SD1..H-SD10 (plan 04-09); needs a microSD card with at least one hour of recordings before the run; TUTK may be dropped from ArchiveSupport on device evidence (D-06).</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
@@ -1683,10 +1685,11 @@
       </commands>
       <required-evidence>
         <evidence-1>JVM gate: full unit suite + assembleDebug green (plan 04-08 run recorded in 04-08-SUMMARY.md)</evidence-1>
-        <evidence-2>Device gate: H-SD1..H-SD10 in .planning/phases/04-sd-archive/04-HUMAN-UAT.md (all pending; plan 04-09). SD-01..SD-04 need a camera with a microSD card that has recordings; H-SD6 is checkable on the TNP camera (no card, 04-PROBE.md)</evidence-2>
+        <evidence-2>Device gate: H-SD1..H-SD10 in .planning/phases/04-sd-archive/04-HUMAN-UAT.md (plan 04-09 run 2026-10-31: H-SD6 passed, the other nine not exercised; see 04-DEVICE-VERIFICATION.md). SD-01..SD-04 need a camera with a microSD card that has recordings; H-SD6 is checkable on the TNP camera (no card, 04-PROBE.md)</evidence-2>
       </required-evidence>
       <notes>
         <note-1>Nothing in this gate is device-verified yet beyond the 04-04 probe (TNP: 816 / 817 and 9031 / 9032 exchanges, no SD card; TUTK unreachable).</note-1>
+        <note-2>2026-10-31 plan 04-09: only the no-card state (H-SD6) and the redaction sweep are device-verified; SD-01..SD-04 stay unverified until a camera with a microSD card that has recordings is available. Gate stays in-progress (phase human_needed).</note-2>
       </notes>
     </Gate-GSD-Phase-4>
 

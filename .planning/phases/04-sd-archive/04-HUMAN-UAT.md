@@ -1,5 +1,5 @@
 ---
-status: pending
+status: partial
 phase: 04-sd-archive
 source: [04-CONTEXT.md, 04-RESEARCH.md, 04-PROBE.md, 04-08-PLAN.md]
 started: 2026-10-31
@@ -8,7 +8,7 @@ updated: 2026-10-31
 
 ## Current Test
 
-[awaiting the phone session (plan 04-09): Mi 9 over USB, HEAD APK installed over the current one (data kept), official Yi Home app closed]
+[plan 04-09 session done 2026-10-31 (Mi 9 over USB, 04-07 APK). Waiting for a camera with a microSD card that has recordings (and the TUTK camera reachable) to run H-SD1..H-SD5, H-SD7..H-SD10 and the rest of H-SD6. Evidence: 04-DEVICE-VERIFICATION.md]
 
 ## Pre-condition
 
@@ -32,70 +32,72 @@ Markers to look for: `[Archive][status][BLOCK_SD_STATUS]`, `[Archive][index][BLO
 steps: open a camera with a recorded SD card, tap the day button under the video.
 expected: recorded days carry a dot; other days are greyed and not tappable (today stays tappable); the default selection is «Сегодня».
 requirement: SD-01 (D-02)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD2. Timeline of the selected day
 steps: pick a day with recordings; scroll the ruler, pinch in and out.
 expected: coloured segments of the selected day match the recordings (compare with the official app); scroll and pinch work (15 min..24 h); the cursor stays in the centre.
 requirement: SD-02 (D-03)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD3. Seek by releasing the timeline
 steps: drag the ruler onto a recorded segment and release.
 expected: playback starts at that moment; the «Запись HH:mm:ss» time matches the camera's own on-picture timestamp within a few seconds (confirms the wire-time base, `SdTime.WIRE_IS_UTC`).
 requirement: SD-03 (wire-time base)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD4. Segment boundary and end of recording
 steps: start playback shortly before the end of a segment that has a following segment; then seek near the end of the last segment.
 expected: playback continues across the segment boundary without user action; at the end of the last segment the panel shows «Записи закончились».
 requirement: SD-03 (D-04)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD5. Pause, «Продолжить», «Живой»
 steps: during archive playback press pause, then «Продолжить», then «Живой».
 expected: all three work on the same session without a reconnect (badge does not go through Подключение…); «Живой» returns to live video.
 requirement: SD-04
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD6. Empty and error states
 steps: open the TNP camera «Спальня» (no card); on a carded camera pick a day without recordings; if possible provoke a list failure.
 expected: «Нет SD-карты» or «За этот день записей нет» while live video keeps playing; «Не удалось получить список» + «Повторить» when the list cannot be fetched.
 requirement: SD-05 (D-07)
-result: [pending]
+result: pass (no-card state) — 2026-10-31 on the TNP camera «Спальня»: «Сегодня ▾» + «Нет SD-карты» under the live video, LAN Live badge; `BLOCK_SD_STATUS status=NoCard`, `BLOCK_ARCHIVE_LOAD index=skipped` (no index request); day dialog: Monday-first grid, only today tappable, «Закрыть» closes. Still open (need a carded camera): «За этот день записей нет», «Не удалось получить список» + «Повторить»
 
 ### H-SD7. Sound and background in the archive
 steps: unmute live sound, enter the archive; press Home (or lock), return within 5 min; tap «Продолжить».
 expected: sound is off on entering the archive; after the return live video plays normally (picture neither black nor frozen); the panel shows «Продолжить» at the saved position and does not auto-play; tapping «Продолжить» seeks to the saved moment; in this state (Paused(BACKGROUND), inArchive) the HD/SD button is hidden by design.
 requirement: SD-04 (D-05, Phase 3 D-10)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD8. Fullscreen, zoom and snapshot in the archive
 steps: during archive playback go fullscreen, pinch zoom, take a snapshot.
 expected: fullscreen shows pause / «Живой» and the record time; pinch zoom works; the snapshot lands in Pictures/YiCamAlt.
 requirement: SD-03 (D-01)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD9. TUTK camera
 steps: power on the TUTK camera, open it, wait for the archive panel; afterwards pull the diag log and run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks`.
 expected: the archive works on TUTK, or is hidden with «Архив SD на этой камере недоступен» (D-06); RealLogScanTest executed (skipped=0) with failures=0.
 requirement: SD-01..SD-05 (D-06)
-result: [pending]
+result: blocked (TUTK camera unreachable) — not exercised 2026-10-31 (connect timeout); D-06 not applied (no evidence). Redaction sweep part done: RealLogScanTest over the pulled 4645-line log, skipped=0, failures=0
 
 ### H-SD10. Reconnect during archive playback
 steps: while a recording plays, turn Wi-Fi off, wait for the retry badge, turn it back on.
 expected: playback resumes at the same moment (± a few seconds) without user action; retry schedule as live (2 / 5 / 10 / 20 s, 5 attempts); no «Записи закончились» and no jump to another segment.
 requirement: SD-03 (D-04)
-result: [pending]
+result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ## Summary
 
 total: 10
-passed: 0
+passed: 1
 issues: 0
-pending: 10
+pending: 0
 partial: 0
 skipped: 0
-blocked: 0
+blocked: 9
 
 ## Gaps
+
+- No failures. Not a code gap: device coverage gap. SD-01..SD-04 (H-SD1..H-SD5, H-SD7, H-SD8, H-SD10) need a camera with a microSD card that has recordings; H-SD6 remaining states need the same; H-SD9 needs the TUTK camera reachable. H-SD7 note: the live-only Home / return path was checked with the archive panel present (BLOCK_RESUME resumed=true, Live in ~0.6 s), which is Phase 3 behaviour, not H-SD7.
