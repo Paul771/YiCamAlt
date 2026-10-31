@@ -1,11 +1,12 @@
 // FILE: ArchiveCoordinatorTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive screen state (SD-01..SD-05; D-01, D-02, D-04..D-07) in virtual time.
 //   SCOPE: loading before the first Live, D-07 status / list states with retry, day selection and labels, days
 //     dialog refresh, seek / pause / live with forced mute, ended and start-failed hints, TUTK hide rule (D-06) incl.
 //     network loss, link drop, mid-segment silence and no-units (checker addendum), background marker, unsupported
-//     transport, midnight crossing, log marker.
+//     transport, midnight crossing, log marker; ruler position (rulerMs) in Live / archive, «Живой» day, Live midnight
+//     roll-over (plan 04-11).
 //   DEPENDS: M-UI-LIVEVIEW (ArchiveCoordinator), M-SD-ARCHIVE (PlaybackController, SdTime, FakeArchivePort,
 //     SdFixtures), TraceRecorder, RedactionScanner
 //   LINKS: V-M-UI-LIVEVIEW, M-UI-LIVEVIEW
@@ -48,7 +49,9 @@ import java.time.ZoneOffset
 //   zone / wallNow / today - Europe/Moscow, 2026-10-30T09:00Z (12:00 local), 2026-10-30.
 //   TODAY_SEG / MIDNIGHT_SEG / OLD_SEG - index entries (ISO UTC start, seconds).
 //   Script - scripted 817 tfstat (null = no reply) and index entries (null = no reply).
-//   Rig - port + controller + coordinator + mute counter; rig(...) builds and starts it on backgroundScope.
+//   Rig - port + controller + coordinator + mute counter; rig(...) builds and starts it on backgroundScope;
+//     wallStart / movingWall: constant wall clock or wallStart + virtual time (shared by controller and coordinator).
+//   wallSec(start) - moving wall time floored to whole seconds.
 //   step(ms) - advance virtual time and run due tasks.
 //   obs(uc, iso) - recorded key-frame observation.
 //   playingAt(r, iso) - seek and deliver a recorded key frame -> Playing.
@@ -56,7 +59,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1).
+//   PREVIOUS: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
 // END_CHANGE_SUMMARY
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -97,7 +101,10 @@ class ArchiveCoordinatorTest {
         script: Script = Script(entries = listOf(TODAY_SEG, MIDNIGHT_SEG, OLD_SEG)),
         epoch: Int = 1,
         start: Boolean = true,
+        wallStart: Long = wallNow,
+        movingWall: Boolean = false,
     ): Rig {
+        val wall: () -> Long = if (movingWall) { { wallStart + currentTime } } else { { wallStart } }
         val tutk = transport == TransportType.TUTK
         val port = FakeArchivePort(transport ?: TransportType.UNKNOWN, encrypted = true, bigEndian = !tutk)
         port.liveEpoch.value = epoch
@@ -117,14 +124,14 @@ class ArchiveCoordinatorTest {
                 }
             }
         }
-        val controller = PlaybackController(port, backgroundScope, { currentTime }, { wallNow })
+        val controller = PlaybackController(port, backgroundScope, { currentTime }, wall)
         lateinit var r: Rig
         val coord = ArchiveCoordinator(
             port = port,
             transport = transport,
             scope = backgroundScope,
             clock = { currentTime },
-            wallClock = { wallNow },
+            wallClock = wall,
             zone = zone,
             forceMute = { r.mutes++ },
             controller = controller,
@@ -141,6 +148,9 @@ class ArchiveCoordinatorTest {
         advanceTimeBy(ms)
         runCurrent()
     }
+
+    // Wall time floored to whole seconds for a moving-wall rig.
+    private fun TestScope.wallSec(start: Long = wallNow) = (start + currentTime) / 1000 * 1000
 
     private fun obs(uc: Int, iso: String) = FrameObservation(uc, utc(iso) / 1000, true, 1)
 
@@ -320,6 +330,90 @@ class ArchiveCoordinatorTest {
         r.coord.close()
     }
     // END_BLOCK_DAY_TESTS
+
+    // START_BLOCK_RULER_TESTS
+    @Test
+    fun `in Live the ruler follows the wall clock`() = runTest {
+        val r = rig(movingWall = true)
+        assertEquals(wallSec(), r.ui.rulerMs)
+        assertNull(r.ui.cursorMs)
+        val first = r.ui.rulerMs!!
+        step(1_000)
+        assertEquals(wallSec(), r.ui.rulerMs)
+        assertEquals(first + 1_000, r.ui.rulerMs)
+        step(5_000)
+        assertEquals(first + 6_000, r.ui.rulerMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `after goLive the ruler tracks the wall clock, not the last archive position`() = runTest {
+        val r = rig(movingWall = true)
+        playingAt(r, "2026-10-30T06:15:00Z")
+        assertEquals(utc("2026-10-30T06:15:00Z"), r.ui.rulerMs)
+        r.coord.goLive()
+        runCurrent()
+        step(500)
+        assertEquals(wallSec(), r.ui.rulerMs)
+        assertNotEquals(utc("2026-10-30T06:15:00Z"), r.ui.rulerMs)
+        assertNull(r.ui.cursorMs)
+        assertFalse(r.ui.inArchive)
+        step(3_000)
+        assertEquals(wallSec(), r.ui.rulerMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `goLive from a past day selects today`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        r.coord.selectDay(LocalDate.of(2026, 10, 29))
+        playingAt(r, "2026-10-29T10:10:00Z")
+        assertEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay)
+        r.coord.goLive()
+        runCurrent()
+        assertEquals(today, r.ui.selectedDay)
+        assertEquals("Сегодня ▾", r.ui.dayLabel)
+        assertTrue(r.ui.rulerMs != null)
+        r.coord.close()
+    }
+
+    @Test
+    fun `in Live with a past day selected the ruler has no live position`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        r.coord.selectDay(LocalDate.of(2026, 10, 29))
+        step(1_000)
+        assertEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay)
+        assertNull(r.ui.rulerMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `in archive rulerMs equals the playback position`() = runTest {
+        val r = rig()
+        r.coord.seek(utc("2026-10-30T06:15:00Z"))
+        val starting = r.controller.state.value as PlaybackState.Starting
+        assertEquals(starting.atMs, r.ui.rulerMs)
+        val uc = r.port.expected!!
+        r.port.frame = obs(uc, "2026-10-30T06:15:02Z")
+        step(500)
+        val playing = r.controller.state.value as PlaybackState.Playing
+        assertEquals(playing.positionMs, r.ui.rulerMs)
+        assertEquals(r.ui.cursorMs, r.ui.rulerMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `live day rolls over at midnight`() = runTest {
+        val start = utc("2026-10-30T20:59:58Z") // 23:59:58 local
+        val r = rig(wallStart = start, movingWall = true)
+        assertEquals(today, r.ui.selectedDay)
+        step(3_000)
+        assertEquals(LocalDate.of(2026, 10, 31), r.ui.selectedDay)
+        assertEquals("Сегодня ▾", r.ui.dayLabel)
+        assertEquals(wallSec(start), r.ui.rulerMs)
+        r.coord.close()
+    }
+    // END_BLOCK_RULER_TESTS
 
     // START_BLOCK_PLAYBACK_TESTS
     @Test

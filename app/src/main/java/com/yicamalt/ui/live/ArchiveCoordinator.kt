@@ -69,7 +69,7 @@ data class ArchiveUi(
     val panel: ArchivePanel, val message: String?, val showRetry: Boolean,
     val today: LocalDate, val selectedDay: LocalDate, val dayLabel: String, val recordedDays: Set<LocalDate>, val daysDialogOpen: Boolean,
     val dayStartMs: Long, val dayEndMs: Long, val segments: List<Segment>,
-    val cursorMs: Long?, val inArchive: Boolean, val playing: Boolean, val pauseLabel: String?, val hint: String?, val showLiveButton: Boolean,
+    val cursorMs: Long?, val rulerMs: Long?, val inArchive: Boolean, val playing: Boolean, val pauseLabel: String?, val hint: String?, val showLiveButton: Boolean,
 ) {
     override fun toString() = "ArchiveUi(panel=$panel, segments=${segments.size}, inArchive=$inArchive, playing=$playing)"
 
@@ -85,7 +85,7 @@ data class ArchiveUi(
             panel = ArchivePanel.LOADING, message = ArchiveTexts.LOADING, showRetry = false,
             today = today, selectedDay = today, dayLabel = ArchiveTexts.dayLabel(today, today), recordedDays = emptySet(),
             daysDialogOpen = false, dayStartMs = dayStartMs, dayEndMs = dayEndMs, segments = emptyList(),
-            cursorMs = null, inArchive = false, playing = false, pauseLabel = null, hint = null, showLiveButton = false,
+            cursorMs = null, rulerMs = null, inArchive = false, playing = false, pauseLabel = null, hint = null, showLiveButton = false,
         )
     }
 }
@@ -516,6 +516,7 @@ class ArchiveCoordinator(
             dayEndMs = bounds.last + 1,
             segments = if (panel == ArchivePanel.HIDDEN) emptyList() else SdTimeline.segmentsForDay(all, selectedDay, zone),
             cursorMs = cursorOf(s),
+            rulerMs = null,
             inArchive = inArchive,
             playing = s is PlaybackState.Playing,
             pauseLabel = pauseLabel,
