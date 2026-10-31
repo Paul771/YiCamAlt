@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinator.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One screen state for the SD archive under the live view: card status, recorded days, the selected day's
 //     timeline and playback (SD-01..SD-05; D-01, D-02, D-04..D-07). Live video keeps running under every state.
@@ -7,6 +7,9 @@
 //     index), retry, days dialog with a stale-index refresh, day selection, seek / pause / continue / live with
 //     forced mute (D-05), background pause, TUTK hide rule (D-06), midnight crossing, ruler position (archive
 //     position or live wall time), «Живой» back to today, Live day roll-over at local midnight. Value-free logs.
+//     Refresh: first liveEpoch full load; index-only refresh on every later liveEpoch, every refreshMs while today is
+//     shown / healthy / foreground, before a seek (plan 04-12 Task 2), on openDays when stale; never overlapping;
+//     failure keeps the old list.
 //   DEPENDS: M-SD-ARCHIVE (ArchiveLinkPort, ArchiveSupport, SdIndexRepository, PlaybackController, SdTimeline, SdTime),
 //     camera (TransportType), kotlinx.coroutines, Timber
 //   LINKS: M-UI-LIVEVIEW, V-M-UI-LIVEVIEW, M-SD-ARCHIVE
@@ -48,16 +51,23 @@ import java.util.Locale
 //   ArchiveUi - archive part of the camera screen (panel + message + retry, days, timeline, cursor, rulerMs, playback labels);
 //     ArchiveUi.initial(today, dayStartMs, dayEndMs) - IDLE state before the coordinator exists.
 //   ArchiveTexts - Russian archive texts (D-07) and dayLabel(day, today).
-//   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground.
+//   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground;
+//     internal refresh policy (BLOCK_ARCHIVE_REFRESH: launchLoad reasons, shouldPoll).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-12 (W-1): today's index is refreshed (index only, BLOCK_ARCHIVE_REFRESH) on
+//     every liveEpoch increase after the first and every refreshMs (60 s) while today's TIMELINE / NO_RECORDINGS
+//     panel is shown, the link is healthy and the app is not backgrounded (onBackground sets the flag, the next
+//     liveEpoch increase clears it). The poll counts from the last success or attempt, so a failed refresh waits
+//     for the next slot and keeps the old list; a refresh never starts while another load runs. Discretion: today's
+//     NO_RECORDINGS panel is polled too, so a fresh card's first recording appears without user action.
+//   PREVIOUS: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
 //     clock floored to 1 s in Live for today; «Живой» selects today; the Live day rolls over at local midnight.
 //     cursorMs semantics unchanged. (device defect 2): ArchivePanel.IDLE; the spinner (LOADING) is shown only while
 //     a status / index fetch is in flight on a healthy link; LIST_FAILED only after a real failure; liveEpoch reload
 //     of LOADING / LIST_FAILED unchanged.
-//   PREVIOUS: v0.2.0 - GSD plan 04-06 GREEN. INVARIANTS: nothing is sent before the first liveEpoch > 0; a full
+//   EARLIER: v0.2.0 - GSD plan 04-06 GREEN. INVARIANTS: nothing is sent before the first liveEpoch > 0; a full
 //     load (816 then index) runs on the first liveEpoch and again on a liveEpoch / retry while the last load ended in
 //     LOADING / LIST_FAILED; NoCard / Abnormal never ask for the index; a stale-index refresh (openDays) keeps the
 //     old data on failure. Sound is forced off on entering the archive and on «Живой» (D-05). TUTK hide (D-06): only
@@ -156,6 +166,8 @@ class ArchiveCoordinator(
     private var lastToday: LocalDate = selectedDay
     private var daysDialogOpen = false
     private var loadedAt: Long? = null
+    private var refreshAttemptAt: Long? = null // last index-only refresh start (success or not)
+    private var backgrounded = false // set by onBackground, cleared by the next liveEpoch increase
     private var lastEpoch = 0
 
     // Playback tracking for the TUTK hide rule and the cursor day.
@@ -235,7 +247,7 @@ class ArchiveCoordinator(
         synchronized(lock) {
             if (!active()) return
             if (loadJob?.isActive == true) return
-            launchLoad(full = true)
+            launchLoad(full = true, reason = "retry")
         }
     }
 
@@ -253,8 +265,8 @@ class ArchiveCoordinator(
             if (loadJob?.isActive != true) {
                 val at = loadedAt
                 when {
-                    panel == ArchivePanel.LIST_FAILED -> launchLoad(full = true)
-                    at != null && clock() - at > refreshMs -> launchLoad(full = false)
+                    panel == ArchivePanel.LIST_FAILED -> launchLoad(full = true, reason = "days")
+                    at != null && clock() - at > refreshMs -> launchLoad(full = false, reason = "days")
                 }
             }
             publish()
@@ -334,11 +346,14 @@ class ArchiveCoordinator(
     //   PURPOSE: App to background: archive playback becomes Paused(BACKGROUND) at the same position (D-05).
     //   INPUTS: none
     //   OUTPUTS: none
-    //   SIDE_EFFECTS: PlaybackController.onSessionStopped
-    //   LINKS: D-05
+    //   SIDE_EFFECTS: PlaybackController.onSessionStopped; stops the periodic index poll until the next liveEpoch
+    //   LINKS: D-05, BLOCK_ARCHIVE_REFRESH
     // END_CONTRACT: onBackground
     fun onBackground() {
-        if (!synchronized(lock) { started && !closed }) return
+        synchronized(lock) {
+            if (!started || closed) return
+            backgrounded = true // no index polling until the next liveEpoch increase
+        }
         controller.onSessionStopped()
         onPlayback(controller.state.value)
     }
@@ -353,21 +368,41 @@ class ArchiveCoordinator(
         synchronized(lock) {
             if (closed || hidden) return
             if (epoch != lastEpoch && controller.state.value is PlaybackState.Starting) liveThroughout = false
+            val prevEpoch = lastEpoch
             lastEpoch = epoch
             val needLoad = epoch > 0 && loadJob?.isActive != true &&
                 (panel == ArchivePanel.LOADING || panel == ArchivePanel.LIST_FAILED)
-            if (needLoad) launchLoad(full = true)
+            if (needLoad) launchLoad(full = true, reason = "first")
+            val increased = epoch > prevEpoch && epoch > 0
+            if (increased) backgrounded = false // a resumed link = foreground again
+            if (increased && !needLoad && loadJob?.isActive != true &&
+                (panel == ArchivePanel.TIMELINE || panel == ArchivePanel.NO_RECORDINGS)
+            ) {
+                launchLoad(full = false, reason = "epoch")
+            }
         }
     }
 
-    // Under lock.
-    private fun launchLoad(full: Boolean) {
+    // Under lock. Reasons: first, retry, epoch, periodic, days, seek.
+    private fun launchLoad(full: Boolean, reason: String) {
+        // START_BLOCK_ARCHIVE_REFRESH
+        Timber.i("[LiveView][archive][BLOCK_ARCHIVE_REFRESH] reason=%s full=%b", reason, full)
         if (full && panel != ArchivePanel.LOADING) {
             panel = ArchivePanel.LOADING
             publish()
         }
+        if (!full) refreshAttemptAt = clock()
         fetching = true
         loadJob = scope.launch { load(full) }
+        // END_BLOCK_ARCHIVE_REFRESH
+    }
+
+    // Under lock: today's list is due for an index-only refresh (refreshMs since the last success or attempt).
+    private fun shouldPoll(): Boolean {
+        val last = maxOf(loadedAt ?: return false, refreshAttemptAt ?: Long.MIN_VALUE)
+        return !backgrounded && loadJob?.isActive != true && port.linkHealthy() &&
+            (panel == ArchivePanel.TIMELINE || panel == ArchivePanel.NO_RECORDINGS) &&
+            selectedDay == today() && clock() - last >= refreshMs
     }
 
     private suspend fun load(full: Boolean) {
@@ -415,6 +450,7 @@ class ArchiveCoordinator(
             if (closed || hidden) return
             val s = controller.state.value
             if (s is PlaybackState.Starting && port.linkHealthy() && port.framesIn() != unitsAtStart) unitsSeen = true
+            if (shouldPoll()) launchLoad(full = false, reason = "periodic")
         }
         onPlayback(controller.state.value)
     }
