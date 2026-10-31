@@ -95,3 +95,16 @@ Both cameras now have a card. Values are not recorded here.
 2. **«Загрузка записей…» spinner while the link is down or failed.** With a failed or retrying link (AuthFailed, retry badge) the archive panel shows the loading spinner indefinitely next to the red error.
 3. **Stale recording list (verifier W-1).** The index is fetched once on connect; it is refreshed only when the day dialog is opened after 60 s. Today's timeline stops at the time it was loaded and later seeks are clamped to `last end - 6 s`.
 4. **Reconnect loop after silence outside a known segment (verifier W-2).** See 04-VERIFICATION.md.
+
+## Session 2026-10-31, part 3: gap-closure build (04-10..04-12) on the TUTK camera with a card
+
+Build: 944 JVM tests, 0 failures, 1 skipped; installed with `adb install -r`. Values are not recorded here.
+
+| Check | Result | Evidence |
+|---|---|---|
+| H-SD11 ruler follows the clock in Live and after «Живой» | PASS | Label 17:10:37 -> 17:11:16 -> 17:11:37 across screenshots; `Playing -> Live`, `gate-released` ~1.2 s later; the label stayed on the clock |
+| H-SD13 recent footage seekable without the day dialog | PASS | `BLOCK_ARCHIVE_REFRESH reason=seek` -> `seek-resolve refreshed=true` -> `BLOCK_SEEK result=Archive` -> Playing 0.5 s; `reason=periodic` ~every 60 s; a seek past the end resolved to Live |
+| H-SD10 reconnect during archive playback | PASS | Wi-Fi off: position frozen (`link-unhealthy`); `BLOCK_STALL mode=ARCHIVE keepsAttempt=false` at 35 s; Wi-Fi on: playback resumed from the same moment in 0.8 s (`BLOCK_SILENT_RESEEK count=1`); no SILENT, no Exhausted |
+| H-SD12 no spinner on a failed link | PARTIAL | No spinner with Wi-Fi off, timeline kept; list reloaded on return. AuthFailed variant not reproduced |
+| H-SD14 end of recording, no loop | PARTIAL | No loop observed; the camera records continuously so the natural end was not reached on the device; unit tests cover it |
+| Observation | LIVE stall | 10 s LIVE stall at 17:13:47 about 30 s after returning from archive to Live; supervisor reconnected in ~3 s by itself (`attempt=2`). Not investigated; Phase 3 stall behaviour is unchanged |

@@ -88,41 +88,41 @@ result: blocked (TUTK camera unreachable) — not exercised 2026-10-31 (connect 
 steps: while a recording plays, turn Wi-Fi off, wait for the retry badge, turn it back on.
 expected: playback resumes at the same moment (± a few seconds) without user action; retry schedule as live (2 / 5 / 10 / 20 s, 5 attempts); no «Записи закончились» and no jump to another segment.
 requirement: SD-03 (D-04)
-result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
+result: passed (2026-10-31, TUTK camera): Wi-Fi off during archive playback froze the position at 17:02:18 (`link-unhealthy`), ARCHIVE stall at 35 s (`BLOCK_STALL mode=ARCHIVE keepsAttempt=false`), Wi-Fi on -> reconnect and playback resumed from 17:02:19 (`BLOCK_SILENT_RESEEK stalled=true count=1`, Starting -> Playing 0.8 s); no Paused(SILENT), no Exhausted
 
 ### H-SD11. Ruler follows live time after «Живой»
 steps: open the camera; note the ruler label follows the clock (two screenshots ~5 s apart); drag onto a recorded segment and release (playback starts, label «Запись HH:mm:ss»); tap «Живой».
 expected: within ~1 s the ruler label shows the current time again and keeps advancing (two screenshots ~5 s apart differ by ~5 s); it does NOT stay at the last archive time.
 requirement: SD-02 / SD-04 (device defect 1, plan 04-11)
-result: pending
+result: passed (2026-10-31, TUTK camera with card): in Live the ruler label advanced 17:10:37 -> 17:11:16 -> 17:11:37 between screenshots; after a seek to a recorded segment and «Живой» (`Playing -> Live`, `gate-released` 1.2 s) the label returned to the clock and kept advancing
 
 ### H-SD12. No spinner while the link is failed / retrying / waiting
 steps: power the camera off (or turn the phone's Wi-Fi off) while the camera screen is open and wait for «Повтор (n/5)» / AuthFailed / Waiting; then power the camera back on / Wi-Fi on.
 expected: the area under the day button is empty (no «Загрузка записей…» spinner); «Не удалось получить список» only if a list request really failed. After the badge returns to Live the timeline appears by itself (log `BLOCK_ARCHIVE_REFRESH` or `BLOCK_ARCHIVE_LOAD`). After a camera power-on the camera may reject the password for a few minutes (known) — that is the AuthFailed case to check.
 requirement: SD-05 (device defect 2, plan 04-11)
-result: pending
+result: partial (2026-10-31): with Wi-Fi off the panel kept the timeline and showed no spinner, playback position frozen (`reason=link-unhealthy`); the list reloaded itself after Wi-Fi returned (`BLOCK_ARCHIVE_REFRESH`/`LOAD`). The AuthFailed variant (password rejected after camera power-on) was not reproduced; covered by unit tests only
 
 ### H-SD13. Recent footage on today seekable without opening the day dialog (W-1)
 steps: keep the camera screen open for more than 5 min (do not open the day dialog); drag the ruler to 2-3 min before now and release.
 expected: playback starts at the chosen moment (label within a few seconds of the target); the segment on the ruler reaches close to now; log shows `BLOCK_ARCHIVE_REFRESH reason=periodic` at ~60 s intervals and / or `reason=seek` before the `BLOCK_SEEK`.
 requirement: SD-02 / SD-03 (device defect 3, W-1, plan 04-12)
-result: pending
+result: passed (2026-10-31): seek on today from Live to 17:00:58 without opening the day dialog: `BLOCK_ARCHIVE_REFRESH reason=seek` then `seek-resolve refreshed=true`, `BLOCK_SEEK result=Archive`, Playing 0.5 s later; `reason=periodic` fired at ~60 s intervals; a seek past the end of the list resolved to Live (`result=Live`) without a loop
 
 ### H-SD14. End of recording without a reconnect loop (W-2)
 steps: drag to ~20 s before the last recorded moment (or right up to now on a continuously recording camera, then let it play into the end) and wait 60 s.
 expected: «Записи закончились» within ~30 s after the picture stops; the badge never shows «Подключение…» (no `BLOCK_STALL ... mode=ARCHIVE`). If the camera goes silent mid-way instead: at most 2 reconnects, then «Нет записи в это время» with «Продолжить» and live video playing (`BLOCK_PLAYBACK_STATE ... reason=silent-reseek-cap`).
 requirement: SD-03 (D-04; device defect 4, W-2, plan 04-10)
-result: pending
+result: partial (2026-10-31): no reconnect loop in any observed case (seek past the end -> Live; playback 17:15 -> 17:17 on a continuously recording camera, periodic refresh kept extending the list, never reached the end). The natural end «Записи закончились» and the SILENT cap were not reached on the device (camera records continuously); covered by unit tests only
 
 ## Summary
 
 total: 14
-passed: 1
+passed: 4
 issues: 0
-pending: 4
-partial: 0
+pending: 0
+partial: 2
 skipped: 0
-blocked: 9
+blocked: 8
 
 ## Gaps
 
