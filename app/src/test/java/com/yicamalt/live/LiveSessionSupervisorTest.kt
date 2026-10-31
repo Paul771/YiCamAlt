@@ -1,9 +1,11 @@
 // FILE: LiveSessionSupervisorTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the live session supervisor (D-01..D-03, D-10, LIVE-04/05/10/11) in virtual time.
 //   SCOPE: classification table, backoff schedule, wrong-password / kick allowances, fatal, healthy reset, network
-//     loss / change, stall watchdog, drain, stop / resume, quality requests, log markers + redaction.
+//     loss / change, stall watchdog, drain, stop / resume, quality requests, log markers + redaction; Phase 4 stream
+//     modes (archive / paused stall windows, quality gating), liveEpoch, reply forwarding, SupervisorArchivePort;
+//     plan 04-10 ARCHIVE stall attempt rule and archiveStallCount.
 //   DEPENDS: M-LIVE-SESSION (LiveSessionSupervisor), LiveFakes, TraceRecorder, RedactionScanner, RedactionFixtures
 //   LINKS: V-M-LIVE-SESSION, M-LIVE-SESSION
 //   ROLE: TEST
@@ -12,21 +14,28 @@
 
 // START_MODULE_MAP
 //   Env - one supervisor wired to fakes on the test scheduler; records every state via an unconfined collector.
-//   LiveSessionSupervisorTest - one test per behaviour bullet of plan 03-06.
+//   LiveSessionSupervisorTest - one test per behaviour bullet of plan 03-06, plan 04-06 Task 1 and plan 04-10 Task 1.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-06 RED: full behaviour suite.
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2c): ARCHIVE stall-closed links keep the attempt counter (walk to
+//     Exhausted), LIVE stall and long ARCHIVE playback keep the reset rule, archiveStallCount via the port.
+//   PREVIOUS: v0.2.0 - GSD plan 04-06: mode-aware stall window, quality gating outside LIVE, liveEpoch, replies,
+//     archive port delegation.
+//   PREVIOUS: v0.1.0 - GSD plan 03-06 RED: full behaviour suite.
 // END_CHANGE_SUMMARY
 package com.yicamalt.live
 
 import com.yicamalt.camera.TransportType
+import com.yicamalt.stream.FrameObservation
 import com.yicamalt.stream.LinkCapabilities
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkInfo
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkState
+import com.yicamalt.stream.StreamMode
 import com.yicamalt.test.RedactionFixtures
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
@@ -700,4 +709,258 @@ class LiveSessionSupervisorTest {
         assertTrue(recorder.all().any { it.message.startsWith("[LiveSession][supervisor][") })
     }
     // END_BLOCK_LOG_MARKERS
+
+    // START_BLOCK_STREAM_MODE_TESTS
+    @Test
+    fun `ARCHIVE mode stall window is 35 s`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.advance(11_000)
+        assertTrue(e.link.closeReasons.isEmpty())
+        e.advance(23_000)
+        assertTrue(e.link.closeReasons.isEmpty())
+        e.advance(1_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+    }
+
+    @Test
+    fun `PAUSED mode never stalls`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream()
+        e.sup.setStreamMode(StreamMode.PAUSED)
+        e.advance(120_000)
+        assertTrue(e.link.closeReasons.isEmpty())
+        assertTrue(e.state is SupervisorState.Live)
+        e.sup.setStreamMode(StreamMode.LIVE)
+        e.advance(9_000)
+        assertTrue(e.link.closeReasons.isEmpty())
+        e.advance(1_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+    }
+
+    @Test
+    fun `stream mode reaches the live link`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.sup.setStreamMode(StreamMode.PAUSED)
+        assertEquals(listOf(StreamMode.ARCHIVE, StreamMode.PAUSED), e.link.modes)
+    }
+
+    @Test
+    fun `a new link starts in LIVE`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.link.flow.value = failed(LinkErrorKind.NETWORK)
+        e.ts.runCurrent()
+        e.advance(2_000)
+        assertEquals(2, e.factory.opens)
+        assertTrue(e.link.modes.isEmpty())
+        e.stream()
+        assertTrue(e.link.modes.isEmpty())
+        // LIVE window again: 10 s, not 35 s.
+        e.advance(10_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+    }
+
+    @Test
+    fun `no quality requests outside LIVE`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream(tutkLan)
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.session.keyFrame = KeyFrameObservation(1, 640, 360)
+        e.session.frames += 25
+        e.advance(1_000)
+        assertTrue(e.link.resolutions.isEmpty())
+        e.sup.setQuality(Quality.SD)
+        e.ts.runCurrent()
+        assertTrue(e.link.resolutions.isEmpty())
+        assertEquals(Quality.SD, e.sup.qualityState.value.manual)
+    }
+
+    @Test
+    fun `quality requests in LIVE are unchanged`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream(tutkLan)
+        e.session.keyFrame = KeyFrameObservation(1, 640, 360)
+        e.advance(1_000)
+        assertEquals(listOf(1), e.link.resolutions)
+    }
+
+    @Test
+    fun `liveEpoch counts links that reached Live`() = runTest(dispatcher) {
+        val e = env()
+        assertEquals(0, e.sup.liveEpoch.value)
+        e.startNow()
+        assertEquals(0, e.sup.liveEpoch.value)
+        e.stream()
+        assertEquals(1, e.sup.liveEpoch.value)
+        e.link.flow.value = failed(LinkErrorKind.NETWORK)
+        e.ts.runCurrent()
+        e.advance(2_000)
+        assertEquals(1, e.sup.liveEpoch.value)
+        e.stream()
+        assertEquals(2, e.sup.liveEpoch.value)
+    }
+
+    @Test
+    fun `replies are forwarded`() = runTest(dispatcher) {
+        val e = env()
+        val got = mutableListOf<LinkIoCtrlReply>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { e.sup.ioCtrlReplies.collect { got += it } }
+        e.startNow()
+        e.stream()
+        assertTrue(e.link.replies.tryEmit(LinkIoCtrlReply(9032, ByteArray(12))))
+        e.ts.runCurrent()
+        assertEquals(1, got.size)
+        assertEquals(9032, got[0].type)
+        assertEquals(12, got[0].payload.size)
+    }
+
+    @Test
+    fun `archive port delegates`() = runTest(dispatcher) {
+        val e = env()
+        val port = e.sup.archivePort(TransportType.TNP, true)
+        assertTrue(port.bigEndian)
+        assertTrue(port.encrypted)
+        assertEquals(TransportType.TNP, port.transport)
+        assertFalse(e.sup.archivePort(TransportType.TUTK, false).bigEndian)
+        assertFalse(port.isLive())
+        assertFalse(port.linkHealthy())
+        assertFalse(port.sendIoCtrl(816, ByteArray(4)))
+        assertNull(port.nextUseCount())
+        assertEquals(0L, port.framesIn())
+        e.startNow()
+        assertFalse(port.isLive())
+        assertFalse(port.linkHealthy())
+        e.stream()
+        assertTrue(port.isLive())
+        assertTrue(port.linkHealthy())
+        assertSame(e.sup.liveEpoch, port.liveEpoch)
+        assertEquals(1, port.liveEpoch.value)
+
+        assertTrue(port.sendIoCtrl(816, ByteArray(4)))
+        assertEquals(816, e.link.sentIoCtrl.single().first)
+        e.link.sendIoCtrlResult = false
+        assertFalse(port.sendIoCtrl(9031, ByteArray(20)))
+
+        assertEquals(1, port.nextUseCount())
+        assertEquals(2, port.nextUseCount())
+        assertEquals(3, e.link.requestResolution(1)) // one shared counter
+
+        port.expectGeneration(7)
+        assertEquals(7, e.session.expected)
+        assertEquals(1, e.session.expectCalls)
+        assertNull(port.lastFrame())
+        val obs = FrameObservation(7, 1_000, true, 1)
+        e.session.frame = obs
+        assertSame(obs, port.lastFrame())
+        e.session.frames = 42
+        assertEquals(42L, port.framesIn())
+
+        port.setStreamMode(StreamMode.ARCHIVE)
+        assertEquals(listOf(StreamMode.ARCHIVE), e.link.modes)
+
+        assertEquals(1, port.liveResolution())
+        e.sup.setQuality(Quality.SD)
+        assertEquals(2, port.liveResolution())
+        e.sup.setQuality(Quality.HD)
+        assertEquals(1, port.liveResolution())
+
+        e.net.set(false)
+        e.ts.runCurrent()
+        assertTrue(port.isLive())
+        assertFalse(port.linkHealthy())
+        e.net.set(true)
+        e.ts.runCurrent()
+        assertTrue(port.linkHealthy())
+
+        e.link.flow.value = failed(LinkErrorKind.NETWORK)
+        e.ts.runCurrent()
+        assertTrue(e.state is SupervisorState.Waiting)
+        assertFalse(port.isLive())
+        assertFalse(port.linkHealthy())
+        assertNull(port.nextUseCount())
+    }
+
+    @Test
+    fun `ARCHIVE stall-closed links do not reset the attempt counter`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        val delays = listOf(2_000L, 5_000L, 10_000L, 20_000L)
+        for (i in 0..3) {
+            e.stream()
+            e.sup.setStreamMode(StreamMode.ARCHIVE)
+            // healthyResetMs (30 s) passes before the 35 s ARCHIVE stall fires.
+            e.advance(35_000)
+            assertEquals(listOf("stall"), e.link.closeReasons)
+            assertEquals(SupervisorState.Waiting(i + 2, delays[i], ErrorClass.NETWORK, null), e.state)
+            e.advance(delays[i])
+        }
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.advance(35_000)
+        assertEquals(SupervisorState.Exhausted(null), e.state)
+        assertEquals(5, e.factory.opens)
+    }
+
+    @Test
+    fun `LIVE stall after a healthy stream still resets the attempt counter`() = runTest(dispatcher) {
+        val e = env()
+        e.factory.script += failed(LinkErrorKind.TIMEOUT)
+        e.startNow()
+        assertEquals(SupervisorState.Waiting(2, 2_000, ErrorClass.NETWORK, err(LinkErrorKind.TIMEOUT)), e.state)
+        e.advance(2_000)
+        e.stream()
+        repeat(31) {
+            e.session.frames += 25
+            e.advance(1_000)
+        }
+        e.advance(10_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(SupervisorState.Waiting(2, 2_000, ErrorClass.NETWORK, null), e.state)
+    }
+
+    @Test
+    fun `ARCHIVE stall after a long archive playback still resets the attempt counter`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        repeat(60) {
+            e.session.frames += 25
+            e.advance(1_000)
+        }
+        e.advance(35_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(SupervisorState.Waiting(2, 2_000, ErrorClass.NETWORK, null), e.state)
+    }
+
+    @Test
+    fun `archiveStallCount counts only ARCHIVE stalls`() = runTest(dispatcher) {
+        val e = env()
+        assertEquals(0, e.sup.archiveStallCount())
+        e.startNow()
+        e.stream()
+        e.advance(10_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(0, e.sup.archiveStallCount())
+        e.advance(2_000)
+        assertEquals(2, e.factory.opens)
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.advance(35_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(1, e.sup.archiveStallCount())
+        assertEquals(1, e.sup.archivePort(TransportType.TNP, true).archiveStallCount())
+    }
+    // END_BLOCK_STREAM_MODE_TESTS
 }

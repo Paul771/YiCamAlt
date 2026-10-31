@@ -1,5 +1,5 @@
 // FILE: LiveFakes.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Deterministic fakes of the live-session ports for virtual-time supervisor tests.
 //   SCOPE: FakeCameraLink, FakeLinkFactory, FakeNetworkMonitor, FakeMediaSession / FakeMediaSessionFactory,
@@ -18,30 +18,39 @@ import com.yicamalt.stream.AudioUnitSink
 import com.yicamalt.stream.CameraLink
 import com.yicamalt.stream.CameraLinkFactory
 import com.yicamalt.stream.FrameInfo
+import com.yicamalt.stream.FrameObservation
 import com.yicamalt.stream.LinkCapabilities
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
 import com.yicamalt.stream.P2pCredentialsSource
+import com.yicamalt.stream.StreamMode
 import com.yicamalt.stream.VideoUnit
 import com.yicamalt.stream.VideoUnitSink
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
 // START_MODULE_MAP
 //   LIVE_DEVICE_ID / LIVE_SYNTH_* - synthetic id and credential literals (also fed to RedactionScanner).
 //   liveCreds(password) - synthetic P2pCredentials.
-//   FakeCameraLink - controllable state flow; records start / close reasons / audio-sink order / resolution requests.
+//   FakeCameraLink - controllable state flow; records start / close reasons / audio-sink order / resolution requests;
+//     Phase 4: replies (ioCtrlReplies), sentIoCtrl / sendIoCtrlResult / onIoCtrl, nextUseCount (shared counter), modes.
 //   FakeLinkFactory - returns scripted links (initial state per open or a lambda); records open times + passwords.
 //   FakeNetworkMonitor - MutableStateFlow<NetState> with set(available) / bump() helpers.
-//   FakeMediaSession / FakeMediaSessionFactory - frames counter, key frame, release count.
+//   FakeMediaSession / FakeMediaSessionFactory - frames counter, key frame, release count; expected / expectCalls /
+//     frame (archive generation gate, 04-06).
 //   FakeCredentialsSource - counts credentialsFor / refreshCredentials; scripted stored / refreshed values.
 //   SYNTH_I264 / SYNTH_P264 / videoInfo / keyUnit / pUnit - plain H.264 transport units (default 1920x1080, useCount 3).
 //   adtsFrame / aacUnit - one valid ADTS frame and an unencrypted AAC AudioUnit (codec 138).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 03-10: synthetic video / audio unit builders for DefaultMediaSessionTest and
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-06: archive port members on FakeCameraLink (replies, sendIoCtrl, nextUseCount,
+//     setStreamMode) and FakeMediaSession (expectGeneration, lastFrame).
+//   PREVIOUS: v0.2.0 - GSD plan 03-10: synthetic video / audio unit builders for DefaultMediaSessionTest and
 //     LiveViewModelTest (FakeCameraLink already records videoSink and audioSinkSet).
 //   PREVIOUS: v0.1.0 - GSD plan 03-06: fakes for LiveSessionSupervisorTest.
 // END_CHANGE_SUMMARY
@@ -84,6 +93,27 @@ class FakeCameraLink(override val deviceId: String, initial: LinkState = LinkSta
     val resolutions = mutableListOf<Int>()
     val capabilitiesFlow = MutableStateFlow(LinkCapabilities())
     override val capabilities: StateFlow<LinkCapabilities> get() = capabilitiesFlow
+
+    // Phase 4 archive port members.
+    val replies = MutableSharedFlow<LinkIoCtrlReply>(extraBufferCapacity = 16)
+    override val ioCtrlReplies: SharedFlow<LinkIoCtrlReply> get() = replies
+    val sentIoCtrl = mutableListOf<Pair<Int, ByteArray>>()
+    var sendIoCtrlResult = true
+    // Called after an accepted send (e.g. to script a reply on [replies]).
+    var onIoCtrl: (type: Int, payload: ByteArray) -> Unit = { _, _ -> }
+    val modes = mutableListOf<StreamMode>()
+
+    override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean {
+        sentIoCtrl += type to payload
+        if (sendIoCtrlResult) onIoCtrl(type, payload)
+        return sendIoCtrlResult
+    }
+
+    override fun nextUseCount(): Int? = ++useCount
+
+    override fun setStreamMode(mode: StreamMode) {
+        modes += mode
+    }
 
     override fun start(sink: VideoUnitSink) {
         startCalls++
@@ -149,10 +179,18 @@ class FakeMediaSession : MediaSession {
     var frames = 0L
     var keyFrame: KeyFrameObservation? = null
     var releaseCalls = 0
+    var expected: Int? = null
+    var expectCalls = 0
+    var frame: FrameObservation? = null
     override val videoSink = VideoUnitSink { frames++ }
     override val audioSink = AudioUnitSink { }
     override fun framesIn(): Long = frames
     override fun lastKeyFrame(): KeyFrameObservation? = keyFrame
+    override fun expectGeneration(useCount: Int?) {
+        expected = useCount
+        expectCalls++
+    }
+    override fun lastFrame(): FrameObservation? = frame
     override fun release() {
         releaseCalls++
     }

@@ -1,13 +1,15 @@
 // FILE: TutkCameraLink.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One TUTK IOTC/AV session per camera behind the shared CameraLink port, vendor call order.
 //   SCOPE: TutkCameraLink (IOTC_Get_SessionID -> IOTC_Connect_ByUID_Parallel with the cloud uid -> Session_Check
 //     mode mapping -> avClientStart2 with nonce + HMAC (or admin) -> 8190 / 511 start -> avRecvFrameData2 loop with
 //     little-endian FrameInfo and the vendor fatal-code list; after the start command a single IOCTRL writer
-//     (tutk-<n>-tx: 768 with an audio sink, LE 4881 from requestResolution), an avRecvIOCtrl reader (tutk-<n>-rxc)
+//     (tutk-<n>-tx: 768 with an audio sink, LE 4881 from requestResolution, any archive IOCTRL from sendIoCtrl), an
+//     avRecvIOCtrl reader (tutk-<n>-rxc, publishes every reply except 4882 on ioCtrlReplies)
 //     and, with an audio sink, an avRecvAudioData reader (tutk-<n>-rxa); connect and first-frame timers, thread guard, bounded
-//     idempotent teardown with separate AV / session release) and TutkLinkFactory (credential checks, process-once
+//     idempotent teardown with separate AV / session release; StreamMode: the -20012 limit applies only in LIVE) and
+//     TutkLinkFactory (credential checks, process-once
 //     TutkRuntime init, one session per camera).
 //   DEPENDS: M-TUTK-LINK (TutkNative, TutkCodes, TutkRuntime), M-STREAM-CORE (CameraLink, FrameHeadCodec,
 //     IoCtrlMessages, YiP2pAuth), M-P2P-CREDS (P2pCredentials), M-TNP-LINK (FailedLink)
@@ -29,14 +31,20 @@ import com.yicamalt.stream.IoCtrlMessages
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkInfo
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
+import com.yicamalt.stream.StreamMode
 import com.yicamalt.stream.VideoUnit
 import com.yicamalt.stream.VideoUnitSink
 import com.yicamalt.stream.YiP2pAuth
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import timber.log.Timber
@@ -53,7 +61,10 @@ import javax.inject.Singleton
 
 // START_MODULE_MAP
 //   TutkCameraLink - CameraLink over TutkNative: start(sink) spawns tutk-<n>-watch / -connect (-rx, -tx, -rxc, -rxa
-//     later), close(reason), setAudioSink(sink) before start, requestResolution(res) -> useCount 2, 3, ... or null.
+//     later), close(reason), setAudioSink(sink) before start, requestResolution(res) -> useCount 2, 3, ... or null,
+//     sendIoCtrl(type, payload) -> queued on tx (false before the start command / while stopping), ioCtrlReplies (all
+//     avRecvIOCtrl replies except 4882), nextUseCount() (same link-wide counter as requestResolution, null before the
+//     start command), transportBigEndian = false, setStreamMode(mode) (-20012 limit only in LIVE).
 //   TutkCameraLink.Timeouts - connectMs 30000, firstFrameMs 20000, clientStartS 15, noDataSleepMs 30,
 //     maxNoDataPolls 300, joinMs 2000, pollMs 20, ioJoinMarginMs 200, audioNoDataSleepMs 120, ioCtrlPollMs 50,
 //     txPollMs 50.
@@ -67,7 +78,11 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 03-04: tx/rxc/rxa threads (768 only with an audio sink), requestResolution LE 4881
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-02: generic IOCTRL send via tx after the start command, non-4882 replies on
+//     ioCtrlReplies (793 pages, 817), one link-wide useCount (start 1, then 2, 3, ... for requestResolution and
+//     nextUseCount), StreamMode: -20012 limit only in LIVE (vendor stops its reader during pause); outside LIVE the
+//     supervisor's mode-aware stall watchdog (04-06) is the only no-data limit.
+//   PREVIOUS: v0.3.0 - GSD plan 03-04: tx/rxc/rxa threads (768 only with an audio sink), requestResolution LE 4881
 //     via tx (useCount continues from 2), teardown joins all io threads (rx, rxa, rxc, tx; bounded by their longest
 //     sleep + ioJoinMarginMs) before releaseOnce. Audio / IOCTRL reader errors end only their own loop; the video
 //     reader alone decides session loss. Without an audio sink the start sequence and behaviour are Phase 2's.
@@ -151,7 +166,24 @@ internal class TutkCameraLink(
     @Volatile private var audioSink: AudioUnitSink? = null
     private val txQueue = LinkedBlockingQueue<TxCmd>()
     private val txRunning = AtomicBoolean(false)
-    private val resolutionUseCount = AtomicInteger(START_USE_COUNT)
+    private val useCounter = AtomicInteger(START_USE_COUNT)
+    @Volatile private var streamMode = StreamMode.LIVE
+    private val _ioCtrlReplies = MutableSharedFlow<LinkIoCtrlReply>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    // START_CONTRACT: ioCtrlReplies
+    //   PURPOSE: Hot flow of the avRecvIOCtrl replies this link does not consume itself (all but 4882).
+    //   INPUTS: none
+    //   OUTPUTS: { SharedFlow<LinkIoCtrlReply> - no replay, 16 buffered, oldest dropped; payload = the reply bytes }
+    //   SIDE_EFFECTS: none
+    //   LINKS: BLOCK_IOCTRL_REPLY, M-SD-ARCHIVE
+    // END_CONTRACT: ioCtrlReplies
+    override val ioCtrlReplies: SharedFlow<LinkIoCtrlReply> = _ioCtrlReplies.asSharedFlow()
+
+    // TUTK FrameInfo and IOCTRL payloads are little-endian.
+    override val transportBigEndian: Boolean = false
     private val audioUnits = AtomicInteger(0)
 
     // START_CONTRACT: setAudioSink
@@ -176,13 +208,60 @@ internal class TutkCameraLink(
     override fun requestResolution(resolution: Int): Int? {
         // START_BLOCK_SET_RESOLUTION
         if (!txRunning.get() || stopping || closing.get()) return null
-        val uc = resolutionUseCount.incrementAndGet()
+        val uc = useCounter.incrementAndGet()
         txQueue.offer(
             TxCmd(IoCtrlMessages.SET_RESOLUTION, IoCtrlMessages.setResolution(resolution, uc, bigEndian = false)),
         )
         Timber.d("[P2P][tutk][BLOCK_SET_RESOLUTION] cam=%d res=%d useCount=%d", camIndex, resolution, uc)
         return uc
         // END_BLOCK_SET_RESOLUTION
+    }
+
+    // START_CONTRACT: sendIoCtrl
+    //   PURPOSE: Queue any IOCTRL for tutk-<n>-tx once the start command succeeded; never a native call here.
+    //   INPUTS: { type: Int - IOCTRL type (e.g. 792 archive list); payload: ByteArray - copied before queueing }
+    //   OUTPUTS: { Boolean - true when queued; false before the start command was sent, while stopping or after close }
+    //   SIDE_EFFECTS: one TxCmd on txQueue; one BLOCK_SEND_IOCTRL log line (type and size only)
+    //   LINKS: BLOCK_TX_LOOP, M-SD-ARCHIVE
+    // END_CONTRACT: sendIoCtrl
+    override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean {
+        // START_BLOCK_SEND_IOCTRL
+        if (!txRunning.get() || stopping || closing.get()) {
+            Timber.d("[P2P][tutk][BLOCK_SEND_IOCTRL] cam=%d type=%d bytes=%d queued=false", camIndex, type, payload.size)
+            return false
+        }
+        txQueue.offer(TxCmd(type, payload.copyOf()))
+        Timber.d("[P2P][tutk][BLOCK_SEND_IOCTRL] cam=%d type=%d bytes=%d queued=true", camIndex, type, payload.size)
+        return true
+        // END_BLOCK_SEND_IOCTRL
+    }
+
+    // START_CONTRACT: nextUseCount
+    //   PURPOSE: Take the next useCount from the one link-wide counter (start command 1, then 2, 3, ...).
+    //   INPUTS: none
+    //   OUTPUTS: { Int? - next useCount; null before the start command was sent, while stopping or after close }
+    //   SIDE_EFFECTS: advances the counter shared with requestResolution
+    //   LINKS: requestResolution, M-SD-ARCHIVE
+    // END_CONTRACT: nextUseCount
+    override fun nextUseCount(): Int? {
+        if (!txRunning.get() || stopping || closing.get()) return null
+        return useCounter.incrementAndGet()
+    }
+
+    // START_CONTRACT: setStreamMode
+    //   PURPOSE: Tell the video reader what the session is doing: LIVE keeps the -20012 limit (maxNoDataPolls in a
+    //     row -> Failed(TIMEOUT, -20012)); ARCHIVE and PAUSED never end the session on -20012 (pause, gaps between
+    //     recordings), the supervisor's mode-aware stall watchdog is then the only no-data limit.
+    //   INPUTS: { mode: StreamMode }
+    //   OUTPUTS: { Unit - effective from the next avRecvFrameData2 result }
+    //   SIDE_EFFECTS: one BLOCK_STREAM_MODE log line (mode name only)
+    //   LINKS: BLOCK_READ_LOOP, M-SD-ARCHIVE
+    // END_CONTRACT: setStreamMode
+    override fun setStreamMode(mode: StreamMode) {
+        // START_BLOCK_STREAM_MODE
+        streamMode = mode
+        Timber.d("[P2P][tutk][BLOCK_STREAM_MODE] cam=%d mode=%s", camIndex, mode.name)
+        // END_BLOCK_STREAM_MODE
     }
 
     // START_CONTRACT: start
@@ -329,7 +408,7 @@ internal class TutkCameraLink(
     }
 
     // START_CONTRACT: txLoop
-    //   PURPOSE: tutk-<n>-tx: the single IOCTRL writer after the start command (768, 4881).
+    //   PURPOSE: tutk-<n>-tx: the single IOCTRL writer after the start command (768, 4881, sendIoCtrl commands).
     //   INPUTS: none (txQueue)
     //   OUTPUTS: { Unit - ends on stop or an IOCTRL_END_CODES result; never fails the link }
     //   SIDE_EFFECTS: native.sendIoCtrl on the captured av; one BLOCK_TX_LOOP log line per command
@@ -359,9 +438,10 @@ internal class TutkCameraLink(
     // START_CONTRACT: ioCtrlLoop
     //   PURPOSE: tutk-<n>-rxc: vendor avRecvIOCtrl(av, type, buf[1024], 1024, 0) polling, sleep ioCtrlPollMs.
     //   INPUTS: none
-    //   OUTPUTS: { Unit - >= 0 consumes one reply (4882 logged with its size); IOCTRL_END_CODES end this loop only;
-    //     never fails the link (the video reader decides session loss) }
-    //   SIDE_EFFECTS: one BLOCK_IOCTRL_LOOP log line per 4882 and on exit
+    //   OUTPUTS: { Unit - >= 0 consumes one reply (4882 logged with its size; any other type published on
+    //     ioCtrlReplies); IOCTRL_END_CODES end this loop only; never fails the link (the video reader decides session
+    //     loss) }
+    //   SIDE_EFFECTS: one BLOCK_IOCTRL_LOOP log line per 4882 and on exit; one BLOCK_IOCTRL_REPLY line per published reply
     //   LINKS: TutkNative.recvIoCtrl
     // END_CONTRACT: ioCtrlLoop
     private fun ioCtrlLoop() {
@@ -376,6 +456,12 @@ internal class TutkCameraLink(
                 replies++
                 if (r.type == IoCtrlMessages.SET_RESOLUTION_RESP) {
                     Timber.d("[P2P][tutk][BLOCK_IOCTRL_LOOP] cam=%d type=%d size=%d", camIndex, r.type, r.code)
+                } else {
+                    // START_BLOCK_IOCTRL_REPLY
+                    val size = r.code.coerceAtMost(buf.size)
+                    _ioCtrlReplies.tryEmit(LinkIoCtrlReply(r.type, buf.copyOf(size)))
+                    Timber.d("[P2P][tutk][BLOCK_IOCTRL_REPLY] cam=%d type=%d bytes=%d", camIndex, r.type, size)
+                    // END_BLOCK_IOCTRL_REPLY
                 }
                 continue
             }
@@ -458,7 +544,8 @@ internal class TutkCameraLink(
     //   PURPOSE: tutk-<n>-rx: avRecvFrameData2 polling into a 300000-byte buffer and a 24-byte FRAMEINFO.
     //   INPUTS: none
     //   OUTPUTS: { Unit - > 0: one VideoUnit (FrameInfo parsed little-endian) to the sink; -20012: sleep
-    //     noDataSleepMs, after maxNoDataPolls in a row Failed(TIMEOUT, -20012); -20013 / -20014: drop frames until the
+    //     noDataSleepMs, in StreamMode.LIVE after maxNoDataPolls in a row Failed(TIMEOUT, -20012) (ARCHIVE / PAUSED:
+    //     never, the counter stays 0); -20013 / -20014: drop frames until the
     //     next key frame; -20001: buffer enlarged once to LARGE_FRAME_BUF_SIZE, drop to the next key frame;
     //     FATAL_READ_CODES: Failed(classify(code)) (e.g. -20015 REMOTE_CLOSED), no reconnect; any other negative code:
     //     logged once per code, sleep noDataSleepMs, keep reading (maxNoDataPolls in a row -> Failed(classify(code)));
@@ -495,11 +582,15 @@ internal class TutkCameraLink(
                     onVideo(VideoUnit(AV_CHANNEL, frameInfo, buf.copyOf(size)))
                 }
                 r.code == TutkCodes.AV_DATA_NOREADY -> {
-                    noData++
-                    if (noData >= timeouts.maxNoDataPolls) {
-                        exit = EXIT_NO_DATA
-                        code = r.code
-                        break
+                    if (streamMode == StreamMode.LIVE) {
+                        noData++
+                        if (noData >= timeouts.maxNoDataPolls) {
+                            exit = EXIT_NO_DATA
+                            code = r.code
+                            break
+                        }
+                    } else {
+                        noData = 0
                     }
                     if (!pause()) break
                 }

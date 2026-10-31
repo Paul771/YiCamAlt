@@ -1,5 +1,5 @@
 // FILE: FrameAssembler.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Order transport video units for the decoder: keyframe gate, P-frame sequence reorder, generation filter.
 //   SCOPE: u16 sequence arithmetic, bounded pending buffer (MAX_PENDING), useCount generation, counters.
@@ -11,12 +11,16 @@
 package com.yicamalt.stream
 
 // START_MODULE_MAP
-//   FrameAssembler - class: offer(unit) -> List<VideoUnit> emitted in order, reset(), emitted, dropped, pending,
-//     MAX_PENDING (100 units).
+//   FrameAssembler - class: offer(unit) -> List<VideoUnit> emitted in order, expectGeneration(useCount) gate,
+//     reset(), emitted, dropped, pending, MAX_PENDING (100 units).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - Phase 2 review HIGH-1: I-frames (ch2) and P-frames (ch3) come from different reader
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2).
+//     expectGeneration(uc): units whose useCount low byte differs are dropped before ordering (robust to the
+//     255 -> 0 wrap); setting it drops pending of other generations and disarms when the armed generation differs.
+//     null = no gate (Phase 3 behaviour). reset() keeps the gate: decoder resets do not change the generation.
+//   PREVIOUS: v0.2.0 - Phase 2 review HIGH-1: I-frames (ch2) and P-frames (ch3) come from different reader
 //     threads, so P(I+1), P(I+2) can arrive before their I-frame. An I-frame no longer clears the pending buffer:
 //     it drops only stale pending units (seq <= I in u16 order, or another useCount generation; counted as
 //     dropped), is emitted, then drains I+1, I+2, ... from pending (vendor TnpCamera.handleVideoFrame). A P that
@@ -45,6 +49,7 @@ class FrameAssembler {
     private var armed = false
     private var lastSeq = 0
     private var generation = 0
+    private var gate: Int? = null
     private val pendingBySeq = LinkedHashMap<Int, VideoUnit>()
 
     val pending: Int get() = pendingBySeq.size
@@ -61,6 +66,11 @@ class FrameAssembler {
     fun offer(unit: VideoUnit): List<VideoUnit> {
         // START_BLOCK_ASSEMBLE_FRAMES
         val info = unit.info
+        val g = gate
+        if (g != null && (info.useCount and 0xFF) != (g and 0xFF)) {
+            dropped++
+            return emptyList()
+        }
         val seq = info.seq and SEQ_MASK
         if (info.isKeyFrame) {
             val it = pendingBySeq.values.iterator()
@@ -124,6 +134,29 @@ class FrameAssembler {
             dropped++
         }
         return emptyList()
+    }
+
+    // START_CONTRACT: expectGeneration
+    //   PURPOSE: Vendor useCount equality gate (AntsCamera handler): accept only units of [useCount] (low byte); null = no gate.
+    //   INPUTS: { useCount: Int? - generation of the last seek / go-live command; null removes the gate }
+    //   OUTPUTS: none
+    //   SIDE_EFFECTS: drops pending units of other generations (counted); disarms when the armed generation differs
+    //   LINKS: M-STREAM-CORE, FramePipeline.expectGeneration, PlaybackController.startAt
+    // END_CONTRACT: expectGeneration
+    fun expectGeneration(useCount: Int?) {
+        // START_BLOCK_GENERATION_GATE
+        gate = useCount
+        if (useCount == null) return
+        val want = useCount and 0xFF
+        val it = pendingBySeq.values.iterator()
+        while (it.hasNext()) {
+            if ((it.next().info.useCount and 0xFF) != want) {
+                it.remove()
+                dropped++
+            }
+        }
+        if (armed && (generation and 0xFF) != want) armed = false
+        // END_BLOCK_GENERATION_GATE
     }
 
     // START_CONTRACT: reset

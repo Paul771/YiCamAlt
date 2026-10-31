@@ -1,12 +1,14 @@
 // FILE: TnpCameraLink.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One TNP/CS2 PPPP session per camera, vendor call order.
 //   SCOPE: connect (PPPP_Connect / WakeUp_And_Connect) with the device_info DID, session check and mode mapping,
-//     readers on ch 0,1,2,3,6 (ch1 audio -> optional AudioUnitSink), the 4881 -> 9029 -> 768 startup burst from a single writer, authResult check on every
+//     readers on ch 0..7 (ch1 audio -> optional AudioUnitSink; 2/3/6 live and 4/5/7 recorded video -> VideoUnitSink), the 4881 -> 9029 -> 768 startup burst from a single writer, authResult check on every
 //     ch0 reply, header version adoption (whole start sequence re-sent once), kick handling, connect and first-frame
 //     timeouts, thread guard (any Throwable -> Failed(INTERNAL)), bounded idempotent teardown, in-session
-//     resolution requests (4881) through the single writer, 4882 abilityRet -> LinkCapabilities.
+//     resolution requests (4881) through the single writer, 4882 abilityRet -> LinkCapabilities, generic IOCTRL
+//     send (archive commands) through the single writer after the burst, non-consumed ch0 replies on ioCtrlReplies,
+//     one link-wide useCount shared by 4881 and archive commands.
 //   DEPENDS: M-P2P-NATIVE (PpppNative, PpppCodes), M-STREAM-CORE (CameraLink, TnpCodec, IoCtrlMessages, YiP2pAuth),
 //     M-P2P-CREDS (P2pCredentials)
 //   LINKS: M-TNP-LINK, V-M-TNP-LINK
@@ -26,6 +28,7 @@ import com.yicamalt.stream.LinkCapabilities
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkInfo
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
@@ -33,8 +36,12 @@ import com.yicamalt.stream.TnpCodec
 import com.yicamalt.stream.VideoUnit
 import com.yicamalt.stream.VideoUnitSink
 import com.yicamalt.stream.YiP2pAuth
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import timber.log.Timber
@@ -53,14 +60,23 @@ import java.util.concurrent.atomic.AtomicInteger
 //     pollMs 20, ioJoinMarginMs 200 (readers / writer are joined for readTimeoutMs + margin before ForceClose).
 //   TnpCameraLink.modeOf - vendor bMode 0..3 -> P2P, RELAY, TCP_RELAY, SDEV_RELAY, else UNKNOWN.
 //   TnpCameraLink.FLAG_P2P / FLAG_RELAY - connect flag bytes 0x49 / 0xDF.
-//   TnpCameraLink.READER_CHANNELS - 0, 1, 2, 3, 6.
+//   TnpCameraLink.READER_CHANNELS - 0, 1, 2, 3, 4, 5, 6, 7 (4 / 5 / 7 = recorded I / P / new record).
 //   TnpCameraLink.setAudioSink - ch1 units (ioType 2, body > 24) go to the sink, encrypted = header version >= 2.
-//   TnpCameraLink.requestResolution - queues 4881 [res, useCount 3, 4, ...] on the writer; null if not connected.
+//   TnpCameraLink.requestResolution - queues 4881 [res, useCount from the link-wide counter] on the writer; null if
+//     not connected.
+//   TnpCameraLink.sendIoCtrl - queues any IOCTRL (current header version, next command number) after the burst.
+//   TnpCameraLink.ioCtrlReplies - authResult-0 ch0 replies other than 4882 / 9033 (hot, buffer 16 drop-oldest).
+//   TnpCameraLink.nextUseCount - link-wide useCount (3, 4, ... after the burst's fixed 1 / 2); null before the burst.
+//   TnpCameraLink.transportBigEndian - true. setStreamMode keeps the default: TNP has no no-data limit after the
+//     first frame.
 //   TnpCameraLink.capabilities - resolutionSwitch=false once a 4882 reply carries abilityRet 1.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 03-02: ch1 audio -> AudioUnitSink (encrypted = header version >= 2), requestResolution
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-00: record readers ch4/5/7 (vendor TnpCamera.startThread), generic IOCTRL send
+//     via the single writer after the burst, non-consumed ch0 replies on ioCtrlReplies, one link-wide useCount shared
+//     by 4881 and archive commands; burst unchanged.
+//   PREVIOUS: v0.3.0 - GSD plan 03-02: ch1 audio -> AudioUnitSink (encrypted = header version >= 2), requestResolution
 //     via txQueue (useCount from 3), 4882 abilityRet 1 -> resolutionSwitch=false; burst unchanged. A throwing audio
 //     sink is logged once (class name) and audio dropped, video keeps running. requestResolution only enqueues, and
 //     only after the start burst is queued (so 4881 useCount 1 always leads); never calls native.
@@ -130,9 +146,16 @@ internal class TnpCameraLink(
     private val videoUnits = AtomicInteger(0)
     private val audioUnits = AtomicInteger(0)
     private val audioSinkErrorLogged = AtomicBoolean(false)
-    private val resolutionUseCount = AtomicInteger(USE_COUNT_START_RT)
+    // ONE link-wide useCount: the burst uses fixed 1 / 2, every later 4881 or archive command takes the next value.
+    private val useCounter = AtomicInteger(USE_COUNT_START_RT)
     private val _capabilities = MutableStateFlow(LinkCapabilities())
     override val capabilities: StateFlow<LinkCapabilities> = _capabilities.asStateFlow()
+    private val _ioCtrlReplies = MutableSharedFlow<LinkIoCtrlReply>(
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    override val ioCtrlReplies: SharedFlow<LinkIoCtrlReply> = _ioCtrlReplies.asSharedFlow()
+    override val transportBigEndian: Boolean = true
     private val threadLock = Any()
     private val liveLock = Any()
     private val threads = CopyOnWriteArrayList<Thread>()
@@ -157,7 +180,7 @@ internal class TnpCameraLink(
 
     // START_CONTRACT: start
     //   PURPOSE: Begin the session without blocking the caller.
-    //   INPUTS: { sink: VideoUnitSink - receives ch2/ch3/ch6 units from reader threads }
+    //   INPUTS: { sink: VideoUnitSink - receives ch2/3/6 live and ch4/5/7 recorded units from reader threads }
     //   OUTPUTS: { Unit - state goes Connecting; a second call (or a call after close) is ignored }
     //   SIDE_EFFECTS: spawns p2p-<n>-watch and p2p-<n>-connect
     //   LINKS: M-TNP-LINK
@@ -192,17 +215,14 @@ internal class TnpCameraLink(
     // END_CONTRACT: requestResolution
     override fun requestResolution(resolution: Int): Int? {
         // START_BLOCK_SET_RESOLUTION
-        val st = _state.value
-        val ready = !closing.get() && !stopping && handle >= 0 && burstQueued &&
-            (st is LinkState.Connected || st is LinkState.Streaming)
-        if (!ready) {
+        if (!canSend()) {
             Timber.d(
                 "[P2P][tnp][BLOCK_SET_RESOLUTION] cam=%d res=%d useCount=%d queued=%b",
                 camIndex, resolution, 0, false,
             )
             return null
         }
-        val uc = resolutionUseCount.incrementAndGet()
+        val uc = useCounter.incrementAndGet()
         val queued = txQueue.offer(
             TxItem(buildCommand(IoCtrlMessages.SET_RESOLUTION, IoCtrlMessages.setResolution(resolution, uc))),
         )
@@ -212,6 +232,50 @@ internal class TnpCameraLink(
         )
         return if (queued) uc else null
         // END_BLOCK_SET_RESOLUTION
+    }
+
+    // True while commands may be queued: connected or streaming, start burst queued, not closing.
+    private fun canSend(): Boolean {
+        val st = _state.value
+        return !closing.get() && !stopping && handle >= 0 && burstQueued &&
+            (st is LinkState.Connected || st is LinkState.Streaming)
+    }
+
+    // START_CONTRACT: nextUseCount
+    //   PURPOSE: Hand out the next value of the ONE link-wide useCount (shared with 4881; the burst keeps its fixed
+    //     1 / 2, also on the header-version resend).
+    //   INPUTS: none
+    //   OUTPUTS: { Int? - 3, 4, ... in call order across nextUseCount and requestResolution; null when canSend() is
+    //     false (before the burst is queued, not connected, closing) }
+    //   SIDE_EFFECTS: increments the counter only when a value is returned
+    //   LINKS: M-TNP-LINK, requestResolution, sendIoCtrl
+    // END_CONTRACT: nextUseCount
+    override fun nextUseCount(): Int? = if (!canSend()) null else useCounter.incrementAndGet()
+
+    // START_CONTRACT: sendIoCtrl
+    //   PURPOSE: Queue one arbitrary IOCTRL (archive 9030 / 9029 / 816 ...) on the single writer.
+    //   INPUTS: { type: Int - IOCTRL type; payload: ByteArray - big-endian payload built by the caller }
+    //   OUTPUTS: { Boolean - true when queued; false before the start burst, when not Connected/Streaming or closing }
+    //   SIDE_EFFECTS: one txQueue.offer (current header version, next command number, fresh authInfo); never blocks and
+    //     never calls native (any caller thread)
+    //   LINKS: M-TNP-LINK, BLOCK_TX_LOOP, TnpCodec.commandUnit
+    // END_CONTRACT: sendIoCtrl
+    override fun sendIoCtrl(type: Int, payload: ByteArray): Boolean {
+        // START_BLOCK_SEND_IOCTRL
+        if (!canSend()) {
+            Timber.d(
+                "[P2P][tnp][BLOCK_SEND_IOCTRL] cam=%d type=%d bytes=%d queued=%b",
+                camIndex, type, payload.size, false,
+            )
+            return false
+        }
+        val queued = txQueue.offer(TxItem(buildCommand(type, payload)))
+        Timber.d(
+            "[P2P][tnp][BLOCK_SEND_IOCTRL] cam=%d type=%d bytes=%d queued=%b",
+            camIndex, type, payload.size, queued,
+        )
+        return queued
+        // END_BLOCK_SEND_IOCTRL
     }
 
     // START_CONTRACT: close
@@ -229,7 +293,7 @@ internal class TnpCameraLink(
     // START_BLOCK_CONNECT
     // START_CONTRACT: runConnect
     //   PURPOSE: Vendor order on p2p-<n>-connect: PPPP_Connect (or WakeUp_And_Connect) with flag 0x49 (0xDF when relay
-    //     is forced), InitString and the license device key -> PPPP_Check -> readers ch 0,1,2,3,6 (each made its first
+    //     is forced), InitString and the license device key -> PPPP_Check -> readers ch 0..7 (each made its first
     //     read) -> burst 4881, 9029, 768 queued back to back to the single writer.
     //   INPUTS: none (credentials, options)
     //   OUTPUTS: { Unit - state Connected(info) or a terminal state via failWith }
@@ -354,7 +418,7 @@ internal class TnpCameraLink(
     // START_BLOCK_READ_LOOP
     // START_CONTRACT: readerLoop
     //   PURPOSE: Per-channel reader p2p-<n>-rx<ch>: exact 8-byte head, validateHead, exact body, dispatch.
-    //   INPUTS: { ch: Int - 0 command, 1 audio (audio sink or discarded), 2/3/6 video; firstRead: CountDownLatch - released after the
+    //   INPUTS: { ch: Int - 0 command, 1 audio (audio sink or discarded), 2/3/6 live and 4/5/7 recorded video; firstRead: CountDownLatch - released after the
     //     first native read returns, so the burst never precedes a running reader }
     //   OUTPUTS: { Unit - exit closed (-3014 / -3019 / stopping) quietly; error -> failWith(classify(code));
     //     dirty head -> failWith(PROTOCOL, -9000) }
@@ -471,6 +535,17 @@ internal class TnpCameraLink(
                 camIndex, PpppCodes.name(IoCtrlMessages.kickCode(reply.payload)),
             )
             terminate(REASON_KICKED, LinkState.Closed(REASON_KICKED))
+            return
+        }
+        if (reply.type != IoCtrlMessages.SET_RESOLUTION_RESP) {
+            // START_BLOCK_IOCTRL_REPLY
+            // Replies the link does not consume (archive 9031 / 817 ...) go to collectors; dropped when none listen.
+            _ioCtrlReplies.tryEmit(LinkIoCtrlReply(reply.type, reply.payload))
+            Timber.d(
+                "[P2P][tnp][BLOCK_IOCTRL_REPLY] cam=%d type=%d bytes=%d",
+                camIndex, reply.type, reply.payload.size,
+            )
+            // END_BLOCK_IOCTRL_REPLY
         }
     }
     // END_BLOCK_READ_LOOP
@@ -721,7 +796,8 @@ internal class TnpCameraLink(
         val FLAG_RELAY: Byte = 0xDF.toByte()
         const val DEFAULT_HEADER_VERSION = 2
         val READER_CHANNELS = listOf(
-            TnpCodec.CH_COMMAND, TnpCodec.CH_AUDIO, TnpCodec.CH_IFRAME, TnpCodec.CH_PFRAME, TnpCodec.CH_NEW_LIVE,
+            TnpCodec.CH_COMMAND, TnpCodec.CH_AUDIO, TnpCodec.CH_IFRAME, TnpCodec.CH_PFRAME,
+            TnpCodec.CH_RECORD_I, TnpCodec.CH_RECORD_P, TnpCodec.CH_NEW_LIVE, TnpCodec.CH_NEW_RECORD,
         )
         const val REASON_ERROR = "error"
         const val REASON_TIMEOUT = "timeout"

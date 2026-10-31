@@ -1,24 +1,46 @@
 # YiCamAlt — Текущее состояние проекта
 
-> Дата: 2026-10-23
+> Дата: 2026-10-31
 > Формат: Markdown-снимок состояния для быстрой ориентации.
 > Канонические GRACE-артефакты: `docs/*.xml` (requirements, technology, development-plan, verification-plan, knowledge-graph, operational-packets).
 
 ---
 
-## 0. Текущий фокус (2026-10-23)
+## 0. Текущий фокус (2026-10-31)
 
 План и статус передаются на другую машину **только через Git**. Точка входа для агента на новом компьютере: `HANDOFF.md` (bootstrap, список загрузок, проверки окружения) + этот файл.
 
 | Параметр | Значение |
 |---|---|
-| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 3 — ветка `gsd/phase-3-live-view` |
-| Текущий фокус | **GSD Phase 3 (03-live-view): implemented, device verification pending** — экран живого видео реализован и проверен только на JVM (планы 03-00…03-12); проверка на телефоне — план 03-13 по `03-HUMAN-UAT.md` (H-L1…H-L9, все pending) |
-| Планы GSD | `.planning/phases/03-live-view/` (текущая фаза); фаза 2 — `.planning/phases/02-p2p/` (проверки H1-H7 в `02-HUMAN-UAT.md` ещё открыты); фаза 1 — `.planning/phases/01-secrets-camera-list/` |
+| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 4 — ветка `gsd/phase-4-sd-archive` |
+| Текущий фокус | **GSD Phase 4 (04-sd-archive): implemented, device verification pending** — архив SD-карты на экране камеры реализован и проверен только на JVM (планы 04-00…04-07, GRACE-синхронизация 04-08); проверка на телефоне — план 04-09 по `04-HUMAN-UAT.md` (H-SD1…H-SD10, все pending) |
+| Планы GSD | `.planning/phases/04-sd-archive/` (текущая фаза); фаза 3 — `.planning/phases/03-live-view/` (`03-HUMAN-UAT.md`: 7 passed, 2 partial); фаза 2 — `.planning/phases/02-p2p/`; фаза 1 — `.planning/phases/01-secrets-camera-list/` |
 | Инструкция | `INSTRUCTIONS.md` — эмулятор, mitmproxy, CA, установка APK, диагностика |
 | Устройство | физический телефон Mi 9 по USB; эмулятор не нужен (VT-x выключен в BIOS, см. 0.2) |
-| Блокер | нет для кода; TNP-поведение фазы 3 остаётся JVM-only, пока не пройдена проверка фазы 2 H1 (TNP-камера на Wi-Fi) |
-| Следующий шаг | план 03-13 на телефоне: H-L1…H-L9; H-L3 и TNP-часть H-L4 — только после фазы 2 H1 |
+| Блокер | для проверки SD-01…SD-04 нужна камера с microSD-картой, на которой есть записи: в TNP-камере «Спальня» карты нет (tfstat=5), TUTK-камера на пробе 04-04 была недоступна |
+| Следующий шаг | вставить microSD в камеру и дать ей писать не меньше часа, затем план 04-09 на телефоне: H-SD1…H-SD10; H-SD6 («Нет SD-карты») можно проверить на TNP-камере уже сейчас |
+
+### 0.8 GSD Phase 4: архив SD-карты (2026-10-31)
+
+Под видео на экране камеры: кнопка дня («Сегодня ▾»), диалог-календарь с точками на днях с записями, 24-часовая
+линейка с отрезками записей, центральный курсор, pinch-масштаб (15 мин…24 ч) и перемотка отпусканием пальца;
+пауза / «Продолжить» / «Живой» в той же P2P-сессии, без второго подключения. Состояния D-07: «Загрузка записей…»,
+«Нет SD-карты», «SD-карта не готова», «Не удалось получить список» + «Повторить», «За этот день записей нет».
+Звук выключается при входе в архив; после возврата из фона архив не стартует сам, показывает «Продолжить».
+
+Новый модуль: **M-SD-ARCHIVE** (`archive/`: SdArchiveCodec, SdTime, SdTypes / ArchiveLinkPort, SdTimeline,
+PlaybackCommands, SdIndexRepository, PlaybackController). Расширены: M-STREAM-CORE (archive-члены CameraLink,
+LinkIoCtrlReply, StreamMode, FrameObservation, гейт поколения useCount в FrameAssembler / FramePipeline, каналы
+записи TNP 4 / 5 / 7), M-TNP-LINK и M-TUTK-LINK (произвольный IOCTRL, ответы, общий useCount, режим потока),
+M-LIVE-SESSION (режимы потока, окно остановки 35 с в архиве, liveEpoch, SupervisorArchivePort), M-UI-LIVEVIEW
+(ArchiveCoordinator, ArchivePanel, TimelineRuler, TimelineMath, CalendarGrid), M-UI-LIVE-PROBE (отладочный SdProbe).
+Порт ArchiveLinkPort получил два члена сверх исходного плана: `framesIn()` (таймаут старта считается только пока
+приходят кадры любого поколения) и `linkHealthy()` (таймеры воспроизведения идут только при живой связи).
+
+Проверено только на JVM (полный набор зелёный, `assembleDebug` собирается). Проба на устройстве 04-04
+(`04-PROBE.md`): обмены 816/817 и 9031/9032 работают на реальной TNP-камере, но в ней **нет SD-карты** (tfstat=5,
+список пуст); TUTK-камера была недоступна, поэтому архив на TUTK не проверен. Время на проводе (`WIRE_IS_UTC = true`)
+и поведение на границе отрезков не проверены. Требования SD-01…SD-05 не отмечены выполненными до плана 04-09.
 
 ### 0.7 GSD Phase 3: экран живого видео (2026-10-23)
 
@@ -164,6 +186,7 @@ Intel VT-x / AMD SVM в UEFI, перезагрузиться. Альтернат
 | **Phase-3 (Streaming Core)** | 🟡 `in-progress` | **M-EVENT done** (23 unit-теста; suite 91/91 green). P2P-шаги 8-13 — GSD Phase 2; шаги 3, 14, 15, 16 — GSD Phase 3 |
 | **GSD Phase 2 (02-p2p)** | 🟡 реализована, ждёт устройства | живое видео по P2P (TNP + TUTK), проверки H1-H7 в `02-HUMAN-UAT.md` открыты |
 | **GSD Phase 3 (03-live-view)** | 🟡 implemented, device verification pending | M-LIVE-SESSION, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-UI-LIVEVIEW; JVM-набор и `assembleDebug` зелёные; H-L1…H-L9 pending (`03-HUMAN-UAT.md`, план 03-13) |
+| **GSD Phase 4 (04-sd-archive)** | 🟡 implemented, device verification pending | новый M-SD-ARCHIVE (шаг 17 GRACE Phase-3); JVM-набор и `assembleDebug` зелёные; H-SD1…H-SD10 pending (`04-HUMAN-UAT.md`, план 04-09); нужна microSD с записями |
 | Phase-4 (Notifications & Polish) | ⏳ не начата | M-PUSH, M-MEDIA, M-ONBOARDING, M-UI-* polish |
 
 **Evidence-3** (навигация Login → shell на эмуляторе) — **отложена** (нет эмулятора/устройства в окружении).

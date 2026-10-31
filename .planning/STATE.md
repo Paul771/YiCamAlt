@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-12-PLAN.md
-last_updated: "2026-10-30T11:33:49.950Z"
-last_activity: 2026-10-30
+status: completed
+stopped_at: Completed 04-13-PLAN.md (device re-check recorded; phase human_needed)
+last_updated: "2026-10-31T15:51:30.389Z"
+last_activity: 2026-10-31
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 40
-  completed_plans: 39
+  completed_phases: 3
+  total_plans: 54
+  completed_plans: 53
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 03 — live-view
+**Current focus:** Phase 4 — Архив SD-карты
 
 ## Current Position
 
-Phase: 4
+Phase: 5
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-10-30
+Status: Gap closure plans 04-10..04-13 done; device re-check: H-SD10, H-SD11, H-SD13 passed, H-SD12, H-SD14 partial; phase stays human_needed
+Last activity: 2026-10-31
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -78,6 +78,20 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P10 | 45min | 2 tasks | 7 files |
 | Phase 03 P11 | 20min | 2 tasks | 3 files |
 | Phase 03 P12 | 45min | 2 tasks | 5 files |
+| Phase 04 P00 | 35min | 3 tasks | 7 files |
+| Phase 04 P01 | 15min | 3 tasks | 6 files |
+| Phase 04 P02 | 25min | 2 tasks | 3 files |
+| Phase 04 P03 | 20min | 3 tasks | 9 files |
+| Phase 04 P05 | 35min | 3 tasks | 11 files |
+| Phase 04 P04 | 45min | 3 tasks | 9 files |
+| Phase 04 P06 | 75min | 3 tasks | 8 files |
+| Phase 04 P07 | 45min | 3 tasks | 7 files |
+| Phase 04 P08 | 20min | 2 tasks | 5 files |
+| Phase 04 P09 | 15min | 3 tasks | 3 files |
+| Phase 04 P10 | 40min | 3 tasks | 7 files |
+| Phase 04 P11 | 6min | 3 tasks | 5 files |
+| Phase 04 P12 | 25min | 2 tasks | 2 files |
+| Phase 04 P13 | ~1h | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -135,6 +149,32 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-11: video slot stable across portrait/fullscreen; fullscreen exit forces PORTRAIT then OrientationEventListener restores UNSPECIFIED
 - [Phase 03]: 03-11: camera tap opens LiveViewScreen, long press opens the debug LiveProbeScreen
 - [Phase 03]: Phase 3 GRACE V-M records stay in-progress (JVM-verified); H-L1..H-L9 pending in 03-HUMAN-UAT.md, none passed
+- [Phase 04]: TNP canSend() gate shared by requestResolution, sendIoCtrl, nextUseCount; one link-wide useCount after burst 1/2
+- [Phase 04]: TNP ioCtrlReplies publishes only authResult-0 ch0 replies other than 4882/9033; TNP setStreamMode stays no-op
+- [Phase 04]: SD wire time = UTC fields (SdTime.WIRE_IS_UTC seam); dayBounds half-open via atStartOfDay
+- [Phase 04]: parseTnpIndex: <12 B null, truncated -> empty (vendor); parseTutkIndexPage null unless size/12-1 == count
+- [Phase 04]: TUTK sendIoCtrl/nextUseCount share the requestResolution guard; outside LIVE the -20012 counter resets, pause pacing unchanged
+- [Phase 04]: 04-03: segments merge on gap <= 2 s inclusive; resolveSeek gives Live within 10 s of now or in the future
+- [Phase 04]: 04-03: TUTK index paging capped at 1000 replies incl. rejected pages; per-reply 10 s timeout
+- [Phase 04]: ArchiveLinkPort.framesIn() added: start timeout counts only while units arrive; 04-04/04-06 ports must forward MediaSession.framesIn()
+- [Phase 04]: PlaybackController serialises calls/ticker/collector with one lock; timers keyed on linkHealthy() only
+- [Phase 04]: 04-04: TNP camera has no SD card (tfstat=5, verified); TUTK unverified (unreachable); SD-01..SD-04 device scenarios need a microSD before 04-09, H-SD6 checkable on TNP
+- [Phase 04]: 04-04: WIRE_IS_UTC stays true (no deltaS; TNP 817 isUtc=1 supporting only); BOUNDARY_MS 8000 and both transports kept (unverified)
+- [Phase 04]: 04-06: supervisor stall window counts from max(last frame growth, last setStreamMode); HD/SD requests only in LIVE
+- [Phase 04]: 04-06: TUTK hide needs Failed(NO_FRAMES) + no Playing ever + liveThroughout (set on entry into Starting from non-Starting, cleared by unhealthy or liveEpoch change) + units arriving
+- [Phase 04]: 04-06: openDays refresh re-fetches only the index, keeps old data on failure; selected day follows the cursor only on a cursor day change
+- [Phase 04]: 04-07: custom month grid (no material3 DatePicker badge); today tappable without recordings; months = contiguous recorded range incl. today
+- [Phase 04]: 04-07: fullscreen-only overlay pause/Живой; ruler follows the cursor only while untouched; pure pinch never seeks
+- [Phase 04]: 04-08: M-SD-ARCHIVE is GRACE Phase-3 step-17; H-SD1..H-SD10 pending in 04-HUMAN-UAT.md, need a microSD with recordings (H-SD6 checkable on TNP)
+- [Phase 04]: 04-09: D-06 not applied (TUTK unreachable, no evidence); TUTK archive set unchanged
+- [Phase 04]: 04-09: device run PARTIAL - H-SD6 no-card passed, other H-SD not exercised (no SD card); phase stays human_needed
+- [Phase 04]: 04-10: ARCHIVE stall close counts as unhealthy only if frames stopped growing < healthyResetMs after Streaming (W-2c)
+- [Phase 04]: 04-10: 2 consecutive ARCHIVE-stall reconnects at one position (+-2 s) -> Paused(SILENT) with live video; network drops never count (W-2b)
+- [Phase 04]: 04-10: position at/after last known segment end with no next segment = end-near, ENDED at 30 s (W-2a)
+- [Phase 04]: 04-11: ruler position is a new field ArchiveUi.rulerMs; cursorMs keeps its archive-only meaning
+- [Phase 04]: 04-11: ArchivePanel.IDLE is display-only; internal LOADING kept so the next liveEpoch reloads a missing list
+- [Phase 04]: 04-12: one 60 s refreshMs rule for dialog refresh and periodic poll; today's NO_RECORDINGS polled too; pre-seek refresh only when index older than 5 s, 3 s wait then old list
+- [Phase 04]: 04-13: H-SD12 and H-SD14 partial (AuthFailed variant / natural end not reached on device); phase 4 stays human_needed
 
 ### Pending Todos
 
@@ -148,6 +188,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-23T10:07:08.832Z
-Stopped at: Completed 03-12-PLAN.md
+Last session: 2026-10-31T15:22:28.276Z
+Stopped at: Completed 04-13-PLAN.md (device re-check recorded; phase human_needed)
 Resume file: None

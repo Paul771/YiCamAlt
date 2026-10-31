@@ -1,5 +1,5 @@
 // FILE: LiveProbeViewModelTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify the debug live-probe orchestration: refusals, one factory.open per press off Main, no start after
 //     close during an in-flight open, status line and Russian messages, close on leave, decoder reset -> pipeline reset.
@@ -24,7 +24,9 @@
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - device fix: relay-only unavailable for TUTK (toggle ignored, LinkOptions(false),
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-04: the link sink is now the SdProbeTee in front of the FramePipeline;
+//     sdProbeEnabled false before Streaming, true while streaming, false after Stop.
+//   PREVIOUS: v0.3.0 - device fix: relay-only unavailable for TUTK (toggle ignored, LinkOptions(false),
 //     relayForced=no in status and BLOCK_CONNECT_PRESSED, relayAvailable=false); TNP relay test also checks the log.
 //   PREVIOUS: v0.2.0 - Phase 2 review MED-4 / LOW-8 / LOW-10: retry once then success, retry once then final
 //     failure (exactly 2 opens), no retry on other errors or after Stop, Connect disabled until the link is closed,
@@ -366,20 +368,28 @@ class LiveProbeViewModelTest {
 
     // START_BLOCK_CONNECT_AND_STATUS
     @Test
-    fun `connect opens once with the relay option and starts a FramePipeline`() = runTest(dispatcher) {
-        val (v, link) = connectedVm()
-        assertEquals(listOf(LinkOptions(false)), factory.options.toList())
-        assertTrue(link.sink is com.yicamalt.stream.FramePipeline)
-        link.flow.value = LinkState.Connecting
-        runCurrent()
-        v.connect()
-        link.flow.value = LinkState.Streaming(tnpP2pLan, authOk = true)
-        runCurrent()
-        v.connect()
-        runCurrent()
-        assertEquals(1, factory.calls.get())
-        assertFalse(v.snap().canConnect)
-    }
+    fun `connect opens once with the relay option and starts the SD probe tee before the FramePipeline`() =
+        runTest(dispatcher) {
+            val (v, link) = connectedVm()
+            assertEquals(listOf(LinkOptions(false)), factory.options.toList())
+            // Plan 04-04: the link feeds a SdProbeTee, which forwards every unit to the session's FramePipeline.
+            val tee = link.sink as? SdProbeTee
+            assertTrue(tee != null, "sink=${link.sink}")
+            link.flow.value = LinkState.Connecting
+            runCurrent()
+            assertFalse(v.snap().sdProbeEnabled)
+            v.connect()
+            link.flow.value = LinkState.Streaming(tnpP2pLan, authOk = true)
+            runCurrent()
+            assertTrue(v.snap().sdProbeEnabled)
+            v.connect()
+            runCurrent()
+            assertEquals(1, factory.calls.get())
+            assertFalse(v.snap().canConnect)
+            v.stop()
+            runCurrent()
+            assertFalse(v.snap().sdProbeEnabled)
+        }
 
     @Test
     fun `force relay is passed to the factory`() = runTest(dispatcher) {

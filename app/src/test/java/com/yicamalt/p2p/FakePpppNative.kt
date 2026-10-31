@@ -1,5 +1,5 @@
 // FILE: FakePpppNative.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scripted JVM fake of the vendor PPPP surface so TNP link logic is testable without native code.
 //   SCOPE: scripted init/connect/check results, blocking connect released by connectBreak, per-channel byte queues
@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit
 //   FakePpppNative - PpppNative implementation driven by public scripting vars.
 //   initResult / apiVersionValue / connectResult / connectBlocks / checkResult / writeResult - scripted outcomes.
 //   enqueue(channel, bytes) / enqueueUnit(channel, bytes) - bytes the camera "sends" on a channel.
+//   enqueueVideo(channel, frameHead, payload) - TNPHead(2, IOTYPE_VIDEO) + 24-byte frame head + payload on any channel.
 //   replyIoCtrl(type, authResult, payload, version) - enqueue a ch0 TNPHead + IOCtrlHead reply (authResult s32 at offset 8).
 //   checkBlocks - check() waits until forceClose/connectBreak, then returns -3014.
 //   injectRemoteClose(channel) - reads on that channel return -3012 from now on.
@@ -35,7 +36,8 @@ import java.util.concurrent.TimeUnit
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - Phase 2 review LOW-8 / LOW-9: connectHold (connect that ignores Connect_Break) and the
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-00: enqueueVideo for record channels 4 / 5 / 7.
+//   PREVIOUS: v0.3.0 - Phase 2 review LOW-8 / LOW-9: connectHold (connect that ignores Connect_Break) and the
 //     in-flight read count seen by forceClose.
 //   PREVIOUS: v0.2.0 - GSD plan 02-07: enqueueUnit, replyIoCtrl, checkBlocks; "data ch=<n> bytes=<k>" trace entry
 //     after a read that returned bytes (lets TnpCameraLinkTest prove no ch0 data was consumed inside the burst).
@@ -72,6 +74,10 @@ class FakePpppNative : PpppNative {
     }
 
     fun enqueueUnit(channel: Int, bytes: ByteArray) = enqueue(channel, bytes)
+
+    // One framed video unit on [channel]: TNPHead(version 2, IOTYPE_VIDEO, head + payload) + frameHead + payload.
+    fun enqueueVideo(channel: Int, frameHead: ByteArray, payload: ByteArray) =
+        enqueue(channel, TnpCodec.encodeHead(2, TnpCodec.IOTYPE_VIDEO, frameHead.size + payload.size) + frameHead + payload)
 
     // ch0 reply as the camera sends it: TNPHead(version, 3, 40 + payload) + IOCtrlHead(type, number 1, 0, size,
     // authResult s32 BE at offset 8, zero rest) + payload.

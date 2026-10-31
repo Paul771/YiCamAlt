@@ -1,5 +1,5 @@
 // FILE: FramePipeline.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Turn transport VideoUnits into DecodableFrames: order, decrypt I-frames, convert to Annex-B, extract csd.
 //   SCOPE: codec mapping (78 H.264, 81 H.265, else unsupported once), FrameAssembler gate, IFrameDecryptor on key
@@ -15,11 +15,13 @@ import timber.log.Timber
 
 // START_MODULE_MAP
 //   PipelineStats - snapshot: framesIn, keyFrames, emitted, dropped, decryptOk, framing, unsupportedCodec.
-//   FramePipeline - VideoUnitSink: onVideoUnit(unit), stats(), reset().
+//   FramePipeline - VideoUnitSink: onVideoUnit(unit), stats(), reset(), expectGeneration(useCount).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-05.
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2);
+//     expectGeneration is @Synchronized with onVideoUnit / reset.
+//   PREVIOUS: v0.1.0 - GSD plan 02-05.
 //     INVARIANT: the password reaches only IFrameDecryptor; logs carry NAL type numbers, framing, sizes and booleans,
 //     never payload bytes. Fail-open: a frame whose decrypt check fails is still forwarded (vendor behaviour);
 //     decryptOk in stats reports the result. Units arrive from two reader threads (ch2 I, ch3 P), so
@@ -157,6 +159,19 @@ class FramePipeline(
         assembler.reset()
         lastCsd = emptyList()
         firstKeyLogged = false
+        snapshot = buildStats()
+    }
+
+    // START_CONTRACT: expectGeneration
+    //   PURPOSE: Set (or clear with null) the useCount equality gate of the assembler, serialised with onVideoUnit.
+    //   INPUTS: { useCount: Int? - generation of the last seek / go-live command }
+    //   OUTPUTS: none
+    //   SIDE_EFFECTS: assembler drops pending of other generations; stats snapshot refreshed
+    //   LINKS: FrameAssembler.expectGeneration, DefaultMediaSession.expectGeneration
+    // END_CONTRACT: expectGeneration
+    @Synchronized
+    fun expectGeneration(useCount: Int?) {
+        assembler.expectGeneration(useCount)
         snapshot = buildStats()
     }
 

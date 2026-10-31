@@ -1,9 +1,9 @@
 // FILE: TnpCodecTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Byte-exact contract for TNP command units, head parsing/validation, IOCTRL replies and frame units.
 //   SCOPE: commandUnit 4881 / 9029 / 768, parseHead round trip, validateHead per channel, parseIoCtrlReply,
-//          splitFrameUnit.
+//          splitFrameUnit, record channel 4 / 5 / 7 buffer limits.
 //   DEPENDS: M-STREAM-CORE (TnpCodec, IoCtrlMessages, YiP2pAuth)
 //   LINKS: V-M-STREAM-CORE
 //   ROLE: TEST
@@ -30,13 +30,22 @@ import java.util.Random
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 02-04: wire-layer vectors.
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-00: record channels 4 / 5 / 7 vendor buffer limits.
+//   PREVIOUS: v0.1.0 - GSD plan 02-04: wire-layer vectors.
 // END_CHANGE_SUMMARY
 
 class TnpCodecTest {
 
     private fun bytes(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
     private val ZERO_AUTH = ByteArray(32)
+
+    @Test
+    fun `record channels have vendor buffer limits`() {
+        assertEquals(1_048_576, TnpCodec.maxDataSize(4))
+        assertEquals(307_200, TnpCodec.maxDataSize(5))
+        assertEquals(1_048_576, TnpCodec.maxDataSize(7))
+        assertNull(TnpCodec.maxDataSize(8))
+    }
 
     @Test
     fun `4881 command unit is 56 bytes byte exact`() {

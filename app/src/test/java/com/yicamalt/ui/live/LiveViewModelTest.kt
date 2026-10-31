@@ -1,8 +1,9 @@
 // FILE: LiveViewModelTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the live view model: badge table (D-04), auto-connect, retry / connect, sound
-//     (D-05, D-07), HD/SD (D-06, D-07), snapshot messages, lifecycle stop / resume (D-10), debug line, video size.
+//     (D-05, D-07), HD/SD (D-06, D-07), snapshot messages, lifecycle stop / resume (D-10), debug line, video size;
+//     Phase 4 archive state and actions (SD-01..SD-05, D-01..D-07).
 //   SCOPE: JVM only, virtual time; real LiveSessionSupervisor + DefaultMediaSession over LiveFakes (FakeLinkFactory,
 //     FakeNetworkMonitor, FakeCredentialsSource), fake LiveEnvironment outputs and a fake SnapshotStore.
 //   DEPENDS: M-UI-LIVEVIEW (LiveViewModel, badgeFor), M-LIVE-SESSION, LiveFakes, TraceRecorder, RedactionScanner
@@ -14,6 +15,9 @@ package com.yicamalt.ui.live
 
 import android.graphics.Bitmap
 import android.view.Surface
+import com.yicamalt.archive.SdFixtures
+import com.yicamalt.archive.SdFixtures.utc
+import com.yicamalt.archive.SdTime
 import com.yicamalt.camera.TransportType
 import com.yicamalt.live.ErrorClass
 import com.yicamalt.live.FakeCameraLink
@@ -25,6 +29,7 @@ import com.yicamalt.live.LIVE_SECRETS
 import com.yicamalt.live.SupervisorState
 import com.yicamalt.live.aacUnit
 import com.yicamalt.live.keyUnit
+import com.yicamalt.live.liveCreds
 import com.yicamalt.live.pUnit
 import com.yicamalt.media.AudioOutStatus
 import com.yicamalt.media.DecoderStatus
@@ -38,8 +43,10 @@ import com.yicamalt.stream.LinkCapabilities
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkInfo
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkState
+import com.yicamalt.stream.StreamMode
 import com.yicamalt.test.RedactionFixtures
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
@@ -66,17 +73,26 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 // START_MODULE_MAP
 //   FakeVideoOutput - LiveVideoOutput with MutableStateFlows for status / size, reset events, frame + release counts.
 //   FakeAudioOutput - LiveAudioOutput counting frames and releases.
-//   FakeLiveEnvironment - test dispatcher as io, scheduler clock, records created outputs.
+//   FakeLiveEnvironment - test dispatcher as io, scheduler clock, wall clock 2026-10-30T09:00Z + virtual time,
+//     zone Europe/Moscow, records created outputs.
 //   FakeSnapshotStore - scripted SnapshotResult, call counter.
-//   LiveViewModelTest - badge table + one test per view-model behaviour bullet of plan 03-10 Task 2.
+//   LiveViewModelTest - badge table + one test per view-model behaviour bullet of plan 03-10 Task 2 and plan 04-06
+//     Task 3 (archiveVm: link scripted to answer 816 / 9031).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-10 RED.
+//   LAST_CHANGE: v0.2.1 - GSD plan 04-11: the archive state starts IDLE (no spinner before a fetch).
+//   PREVIOUS: v0.2.0 - GSD plan 04-06: archive state, forced mute, quality hidden in archive, background marker
+//     across auto-resume, closeScreen closes the coordinator.
+//   EARLIER: v0.1.0 - GSD plan 03-10 RED.
 // END_CHANGE_SUMMARY
 
 private class FakeVideoOutput : LiveVideoOutput {
@@ -120,6 +136,8 @@ private class FakeLiveEnvironment(
     val audios = mutableListOf<FakeAudioOutput>()
     override val io: CoroutineDispatcher get() = dispatcher
     override fun now(): Long = scheduler.currentTime
+    override fun wallNow(): Long = Instant.parse("2026-10-30T09:00:00Z").toEpochMilli() + scheduler.currentTime
+    override fun zone(): ZoneId = ZoneId.of("Europe/Moscow")
     override fun video(): LiveVideoOutput = FakeVideoOutput().also { videos += it }
     override fun audio(): LiveAudioOutput = FakeAudioOutput().also { audios += it }
 }
@@ -602,4 +620,167 @@ class LiveViewModelTest {
         assertEquals(2, env.videos[0].frames.size)
     }
     // END_BLOCK_DEBUG_AND_VIDEO
+
+    // START_BLOCK_ARCHIVE_TESTS
+    // Opens the screen with a link that answers 816 (card ok) and 9031 (one segment today, 09:00-10:00 local),
+    // then brings the first link to Streaming.
+    private fun TestScope.archiveVm(): LiveViewModel {
+        val v = newVm()
+        links.configure = { l ->
+            l.onIoCtrl = { type, _ ->
+                when (type) {
+                    816 -> l.replies.tryEmit(LinkIoCtrlReply(817, SdFixtures.deviceInfo(tfstat = 0, total = 100)))
+                    9031 -> l.replies.tryEmit(
+                        LinkIoCtrlReply(
+                            9032,
+                            SdFixtures.tnpIndex(SdTime.toWire(utc("2026-10-30T06:00:00Z"), ZoneOffset.UTC) to 3_600),
+                        ),
+                    )
+                }
+            }
+        }
+        v.open(LIVE_DEVICE_ID, "Кухня")
+        runCurrent()
+        link.flow.value = LinkState.Streaming(tnpLan, authOk = true)
+        runCurrent()
+        return v
+    }
+
+    private val ARCHIVE_PAUSE_TYPES = setOf(767, 12718, 794)
+
+    @Test
+    fun `archive state starts IDLE after open on a TNP camera`() = vmTest {
+        val v = newVm()
+        v.open(LIVE_DEVICE_ID, "Кухня")
+        runCurrent()
+        assertEquals(ArchivePanel.IDLE, v.archive.value.panel)
+        assertNull(v.archive.value.message)
+        assertTrue(link.sentIoCtrl.isEmpty())
+    }
+
+    @Test
+    fun `archive is hidden on an unsupported transport`() = vmTest {
+        creds.stored = liveCreds(transport = TransportType.LANGTAO)
+        val v = newVm()
+        v.open(LIVE_DEVICE_ID, "Кухня")
+        runCurrent()
+        assertEquals(ArchivePanel.HIDDEN, v.archive.value.panel)
+        assertEquals("Архив SD на этой камере недоступен", v.archive.value.message)
+    }
+
+    @Test
+    fun `archive timeline loads after Live`() = vmTest {
+        val v = archiveVm()
+        assertEquals(ArchivePanel.TIMELINE, v.archive.value.panel)
+        assertEquals(1, v.archive.value.segments.size)
+        assertEquals(listOf(816, 9031), link.sentIoCtrl.map { it.first })
+    }
+
+    @Test
+    fun `archiveSeek mutes sound`() = vmTest {
+        val v = archiveVm()
+        v.toggleMute()
+        runCurrent()
+        assertFalse(v.snap().muted)
+        assertEquals(1, env.audios.size)
+        v.archiveSeek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        assertTrue(v.snap().muted)
+        assertEquals(1, env.audios[0].releaseCalls)
+        assertTrue(v.archive.value.inArchive)
+        assertEquals(9030, link.sentIoCtrl.last().first)
+        recorder.assertMarkerAppeared("BLOCK_ARCHIVE_ACTION")
+    }
+
+    @Test
+    fun `archiveGoLive mutes sound and leaves the archive`() = vmTest {
+        val v = archiveVm()
+        v.archiveSeek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        v.toggleMute()
+        runCurrent()
+        assertFalse(v.snap().muted)
+        v.archiveGoLive()
+        runCurrent()
+        assertTrue(v.snap().muted)
+        assertFalse(v.archive.value.inArchive)
+    }
+
+    @Test
+    fun `quality button hidden while in archive`() = vmTest {
+        val v = archiveVm()
+        link.videoSink!!.onVideoUnit(keyUnit(seq = 1, width = 1920, height = 1080))
+        advance(1_000)
+        assertTrue(v.snap().qualityVisible)
+        v.archiveSeek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        assertFalse(v.snap().qualityVisible)
+    }
+
+    @Test
+    fun `onStop during archive playback keeps the continue label and stops with background`() = vmTest {
+        val v = archiveVm()
+        v.archiveSeek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        assertEquals(ArchiveTexts.PAUSE, v.archive.value.pauseLabel)
+        v.onStop()
+        runCurrent()
+        assertEquals("Продолжить", v.archive.value.pauseLabel)
+        assertTrue(links.links[0].closeReasons.contains("background"))
+    }
+
+    @Test
+    fun `onStart within 5 min after archive background resumes live and keeps the marker`() = vmTest {
+        val v = archiveVm()
+        v.archiveSeek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        v.onStop()
+        runCurrent()
+        advance(60_000)
+        v.onStart()
+        runCurrent()
+        assertEquals(2, links.opens)
+        link.flow.value = LinkState.Streaming(tnpLan, authOk = true)
+        runCurrent()
+        advance(2_000)
+        val second = links.links[1]
+        assertTrue(second.sentIoCtrl.none { it.first in ARCHIVE_PAUSE_TYPES }, "${second.sentIoCtrl.map { it.first }}")
+        assertFalse(second.modes.contains(StreamMode.PAUSED))
+        assertEquals("Продолжить", v.archive.value.pauseLabel)
+        assertTrue(v.archive.value.inArchive)
+        assertEquals(utc("2026-10-30T06:15:00Z"), v.archive.value.cursorMs)
+        v.archiveTogglePause()
+        runCurrent()
+        assertEquals(9030, second.sentIoCtrl.last().first)
+        assertEquals(ArchiveTexts.PAUSE, v.archive.value.pauseLabel)
+    }
+
+    @Test
+    fun `day actions reach the archive state`() = vmTest {
+        val v = archiveVm()
+        v.archiveOpenDays()
+        assertTrue(v.archive.value.daysDialogOpen)
+        v.archiveCloseDays()
+        assertFalse(v.archive.value.daysDialogOpen)
+        v.archiveSelectDay(LocalDate.of(2026, 10, 1))
+        assertEquals(LocalDate.of(2026, 10, 30), v.archive.value.selectedDay)
+        v.archiveRetry()
+        runCurrent()
+        assertEquals(ArchivePanel.TIMELINE, v.archive.value.panel)
+        assertEquals(2, link.sentIoCtrl.count { it.first == 9031 })
+    }
+
+    @Test
+    fun `closeScreen closes the coordinator`() = vmTest {
+        val v = archiveVm()
+        v.closeScreen()
+        runCurrent()
+        val sent = link.sentIoCtrl.size
+        v.archiveSeek(utc("2026-10-30T06:15:00Z"))
+        v.archiveRetry()
+        advance(60_000)
+        assertEquals(sent, link.sentIoCtrl.size)
+        vm = null
+    }
+    // END_BLOCK_ARCHIVE_TESTS
 }

@@ -14,8 +14,9 @@
 
 - [ ] **Phase 1: Секреты и реальный список камер** - Санитария секретов, проба эндпоинтов/регионов, разбор списка камер и P2P-реквизитов
 - [ ] **Phase 2: Нативный P2P и первый кадр** - Вендорские .so из локального APK, JNI-шимы, чистое Kotlin-ядро протокола, первое видео по LAN и удалённо
-- [x] **Phase 3: Полноценный live-view** - Супервизор сессии, переподключение, звук, HD/SD, снимок, полноэкранный режим, корректная остановка (completed 2026-10-30)
-- [ ] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию
+- [x] **Phase 3: Полноценный live-view** - Супервизор сессии, переподключение, звук, HD/SD, снимок, полноэкранный режим, корректная остановка
+ (completed 2026-10-30)
+- [x] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию (all 10 plans done; device verification partial, human_needed: no SD card) (completed 2026-10-31)
 - [ ] **Phase 5: Лента событий** - Реальный эндпоинт алертов, превью и 6-секундные клипы, фильтры, офлайн-кэш, переход к записи SD
 - [ ] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
 
@@ -121,7 +122,22 @@ Plans:
   2. Пользователь видит 24-часовую шкалу выбранного дня с записанными отрезками, запускает воспроизведение с выбранного момента и перематывает по шкале
   3. Пользователь ставит паузу, продолжает и одним действием возвращается к живому видео
   4. Если SD-карты нет или за день нет записей, пользователь видит понятное состояние, а не пустую шкалу или зависание
-**Plans**: TBD
+**Plans**: 14 plans (10 executed + 4 gap closure)
+Plans:
+- [x] 04-00-PLAN.md — CameraLink archive port (sendIoCtrl, replies, useCount, stream mode) + TNP ch4/5/7, generic IOCTRL
+- [x] 04-01-PLAN.md — SdArchiveCodec + SdTime: byte-exact archive payloads/parsers, UTC wire time (TDD)
+- [x] 04-02-PLAN.md — TUTK link: generic IOCTRL, 793 replies, shared useCount, -20012 limit only in LIVE
+- [x] 04-03-PLAN.md — Archive core: port contract, SdTimeline (days/segments/seek), PlaybackCommands, SdIndexRepository
+- [x] 04-04-PLAN.md — Device probe on both cameras (SD status, index, play/pause/live), 04-PROBE.md, wire-time decision
+- [x] 04-05-PLAN.md — useCount generation gate, media-session frame observation, PlaybackController state machine
+- [x] 04-06-PLAN.md — Mode-aware supervisor + SupervisorArchivePort, ArchiveCoordinator, LiveViewModel archive API
+- [x] 04-07-PLAN.md — Archive UI under the video: timeline ruler, day month-grid dialog, pause/«Живой», D-07 texts
+- [x] 04-08-PLAN.md — GRACE docs sync (M-SD-ARCHIVE, V-M-SD-ARCHIVE, graph) + 04-HUMAN-UAT.md
+- [x] 04-09-PLAN.md — Device verification H-SD1..H-SD9, D-06 decision for TUTK
+- [ ] 04-10-PLAN.md — Gap W-2: past-end ENDED, silent re-seek cap (Paused SILENT), ARCHIVE-stall links keep the attempt counter
+- [ ] 04-11-PLAN.md — Gaps (device 1, 2): ruler follows live time after «Живой» (rulerMs), spinner only while a fetch is in flight (IDLE)
+- [ ] 04-12-PLAN.md — Gap W-1: index refresh on reconnect / every 60 s / before seeks (pending seek ≤3 s), SILENT hint
+- [ ] 04-13-PLAN.md — GRACE docs sync, full gate, device re-check of defects 1-4 (H-SD11..H-SD14)
 **Research**: needs `/gsd:research-phase` (HIGH) — недокументированные IOCTRL-пакеты SD-воспроизведения (9030, ch4/5), формат индекса дней/отрезков
 **UI hint**: yes
 
@@ -159,6 +175,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
 | 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
-| 4. Архив SD-карты | 0/TBD | Not started | - |
+| 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/TBD | Not started | - |
 | 6. Релизная сборка и проверка на телефоне | 0/TBD | Not started | - |

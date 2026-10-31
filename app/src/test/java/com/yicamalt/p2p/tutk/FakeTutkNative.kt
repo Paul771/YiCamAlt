@@ -1,5 +1,5 @@
 // FILE: FakeTutkNative.kt
-// VERSION: 0.5.0
+// VERSION: 0.6.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Scriptable JVM fake of TutkNative: records every call (with the calling thread name) and returns
 //     configured codes, so runtime and link tests run without the vendor libraries.
@@ -15,6 +15,7 @@ package com.yicamalt.p2p.tutk
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 
 // START_MODULE_MAP
@@ -38,10 +39,14 @@ import java.util.concurrent.TimeUnit
 //   sendIoCtrlBlock / sendThreads / sendInFlight / sendInFlightAtStop - a latch that holds every sendIoCtrl except
 //     767 (a writer blocked in avSendIOCtrl), the calling thread name per sendIoCtrl, sends running now / at the
 //     first stop call.
+//   recvPermits - when set, every recvFrame first takes one permit (bounded 10 s, then proceeds): the test releases
+//     permits to script exactly how many recvFrame results (frames or empty-queue AV_ER_DATA_NOREADY) happen; stop
+//     releases a large batch so a held reader can leave.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.0 - GSD plan 03-04: sendIoCtrlBlock latch, sendThreads, sendInFlight(AtStop), ioCtrlEndCode,
+//   LAST_CHANGE: v0.6.0 - GSD plan 04-02: recvPermits semaphore to pace recvFrame for the stream-mode no-data tests.
+//   PREVIOUS: v0.5.0 - GSD plan 03-04: sendIoCtrlBlock latch, sendThreads, sendInFlight(AtStop), ioCtrlEndCode,
 //     recvAudioAtNs for the TUTK tx / rxc / rxa thread tests.
 //   PREVIOUS: v0.4.0 - GSD plan 03-03: audioQueue / audioEndCode, ioCtrlQueue / IoCtrlReply, cleanAudioBuf;
 //     in-flight tracking covers recvAudio and recvIoCtrl.
@@ -78,6 +83,9 @@ class FakeTutkNative : TutkNative {
     val recvInFlight = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile var recvInFlightAtStop = -1
     val bufSizes = CopyOnWriteArrayList<Int>()
+
+    // When set, each recvFrame waits for one permit (bounded 10 s) before it reads the scripted queue.
+    @Volatile var recvPermits: Semaphore? = null
 
     @Volatile private var connectAborted = false
     @Volatile private var clientAborted = false
@@ -190,6 +198,7 @@ class FakeTutkNative : TutkNative {
     override fun recvFrame(av: Int, buf: ByteArray, frameInfo: ByteArray): RecvResult {
         recvInFlight.incrementAndGet()
         try {
+            recvPermits?.tryAcquire(10, TimeUnit.SECONDS)
             record("recvFrame av=$av")
             bufSizes += buf.size
             if (recvDelayMs > 0) Thread.sleep(recvDelayMs)
@@ -245,6 +254,7 @@ class FakeTutkNative : TutkNative {
         if (recvInFlightAtStop < 0) recvInFlightAtStop = recvInFlight.get()
         if (sendInFlightAtStop < 0) sendInFlightAtStop = sendInFlight.get()
         record("stop av=$av sid=$sid")
+        recvPermits?.release(STOP_PERMITS)
         if (sid >= 0) {
             clientAborted = true
             clientStartGate?.countDown()
@@ -253,5 +263,6 @@ class FakeTutkNative : TutkNative {
 
     private companion object {
         const val STOP_TYPE = 767
+        const val STOP_PERMITS = 1_000_000
     }
 }

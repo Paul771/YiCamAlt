@@ -1,9 +1,10 @@
 // FILE: CameraLink.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Transport-neutral port for one live P2P session to one camera (TNP now, TUTK conditionally).
 //   SCOPE: CameraLink / CameraLinkFactory / P2pCredentialsSource ports and the LinkState, LinkInfo, LinkMode,
-//     LinkError, LinkErrorKind, LinkOptions, LinkCapabilities values they expose.
+//     LinkError, LinkErrorKind, LinkOptions, LinkCapabilities values they expose; Phase 4 archive members (generic
+//     IOCTRL send / replies, link-wide useCount, payload byte order, stream mode).
 //   DEPENDS: M-P2P-CREDS (P2pCredentials, TransportType)
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK
 //   ROLE: TYPES
@@ -14,6 +15,7 @@ package com.yicamalt.stream
 import com.yicamalt.camera.P2pCredentials
 import com.yicamalt.camera.TransportType
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 // START_MODULE_MAP
@@ -25,14 +27,17 @@ import kotlinx.coroutines.flow.StateFlow
 //   LinkOptions - per-press options (forceRelay).
 //   LinkCapabilities - resolutionSwitch (null = unknown, false = 4881 unsupported); UNKNOWN shared constant flow.
 //   CameraLink - one session: deviceId, state flow, start(sink), close(reason); default members setAudioSink(sink),
-//     requestResolution(resolution) -> useCount?, capabilities flow.
+//     requestResolution(resolution) -> useCount?, capabilities flow; Phase 4 defaults sendIoCtrl(type, payload) -> Boolean,
+//     ioCtrlReplies flow, nextUseCount() -> Int?, transportBigEndian, setStreamMode(mode).
 //   CameraLinkFactory - open(credentials, options); one session per camera.
 //   P2pCredentialsSource - credentialsFor(deviceId) -> P2pCredentials?; refreshCredentials(deviceId) (suspend, one
 //     cloud refresh then the stored value; default = credentialsFor).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 03-00: Phase 3 port members with default bodies so existing links and test fakes
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-00: Phase 4 archive port members with default bodies (sendIoCtrl, ioCtrlReplies,
+//     nextUseCount, transportBigEndian, setStreamMode). INVARIANT kept: links never retry or reconnect.
+//   PREVIOUS: v0.3.0 - GSD plan 03-00: Phase 3 port members with default bodies so existing links and test fakes
 //     compile unchanged: setAudioSink, requestResolution, capabilities; LinkCapabilities value. Closed reason set gains
 //     stall and network-change. INVARIANT kept: links never retry or reconnect.
 //   PREVIOUS: v0.2.0 - Phase 2 review MED-4: P2pCredentialsSource.refreshCredentials, used by the single automatic
@@ -101,6 +106,21 @@ interface CameraLink {
     fun requestResolution(resolution: Int): Int? = null
 
     val capabilities: StateFlow<LinkCapabilities> get() = LinkCapabilities.UNKNOWN
+
+    // Non-blocking: queues one IOCTRL on the link writer. false when not connected, before the start command/burst, or closing.
+    fun sendIoCtrl(type: Int, payload: ByteArray): Boolean = false
+
+    // Replies the link does not consume (not 4882 / 9033); TNP only with authResult 0. Hot flow, no replay.
+    val ioCtrlReplies: SharedFlow<LinkIoCtrlReply> get() = LinkIoCtrlReply.NONE
+
+    // Next value of the ONE link-wide useCount (low byte goes on the wire); null when the link cannot send now.
+    fun nextUseCount(): Int? = null
+
+    // Byte order of IOCTRL payloads: TNP big-endian, TUTK little-endian.
+    val transportBigEndian: Boolean get() = true
+
+    // Informs the link what is streaming (TUTK suspends its -20012 limit outside LIVE). Default: ignored.
+    fun setStreamMode(mode: StreamMode) {}
 }
 
 interface CameraLinkFactory {

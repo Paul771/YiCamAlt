@@ -1,5 +1,5 @@
 // FILE: TnpCameraLinkTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TnpCameraLink over FakePpppNative: vendor call order, burst bytes, mode mapping,
 //     every failure code, partial reads, header version rule, kick, timeouts, cancellation, no retry, log hygiene.
@@ -22,6 +22,7 @@ import com.yicamalt.stream.IoCtrlMessages
 import com.yicamalt.stream.LinkError
 import com.yicamalt.stream.LinkErrorKind
 import com.yicamalt.stream.LinkInfo
+import com.yicamalt.stream.LinkIoCtrlReply
 import com.yicamalt.stream.LinkMode
 import com.yicamalt.stream.LinkOptions
 import com.yicamalt.stream.LinkState
@@ -31,10 +32,17 @@ import com.yicamalt.stream.VideoUnitSink
 import com.yicamalt.test.RedactionFixtures
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onSubscription
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -42,13 +50,14 @@ import java.nio.ByteBuffer
 import java.util.Random
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 // START_MODULE_MAP
 //   creds / newLink / videoUnit / audioUnit / typeOf / numberOf - builders and wire readers.
 //   awaitTrue / awaitState - polling helpers bounded at 3 s.
-//   order tests - connect, check, five readers before the burst, 56/52/56 bytes, no ch0 data inside the burst.
+//   order tests - connect, check, eight readers (ch0..7) before the burst, 56/52/56 bytes, no ch0 data inside the burst.
 //   burst bytes - payloads, numbers 1..3, auth comma at 15, one nonce prefix per link.
 //   flag / mode tests - 0x49 / 0xDF, wakeup, bMode 0..3, lan, resolution 1 / 2.
 //   failure tests - -3006, check failure, dirty head, -3012 without retry, auth 1 / 4, 9033 kick.
@@ -68,10 +77,16 @@ import java.util.concurrent.atomic.AtomicLong
 //     throwing audio sink does not stop video.
 //   requestResolution - 4881 [res, useCount 3, 4, ...] through the single writer; null before connect / after close.
 //   abilityRet - 4882 with abilityRet 1 -> capabilities.resolutionSwitch == false; 0 keeps null.
+//   streamingLink / recordHead / collectReplies - archive helpers (Streaming link, liveFlag-1 head, reply collector).
+//   archive transport - record units on ch4 / 5 / 7 reach the video sink; sendIoCtrl false before the burst, one ch0
+//     command after it; nextUseCount 3, 4 (requestResolution), 5 shared; non-consumed authResult-0 replies on
+//     ioCtrlReplies (not 4882, not authResult 7); transportBigEndian; BLOCK_SEND_IOCTRL / BLOCK_IOCTRL_REPLY markers.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 03-02: ch1 audio routing, requestResolution through txQueue, 4882 abilityRet
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-00: readers on ch0..7, record channels, generic IOCTRL send / replies,
+//     link-wide useCount.
+//   PREVIOUS: v0.3.0 - GSD plan 03-02: ch1 audio routing, requestResolution through txQueue, 4882 abilityRet
 //     capability; log hygiene covers BLOCK_AUDIO_UNIT and BLOCK_SET_RESOLUTION.
 //   PREVIOUS: v0.2.0 - Phase 2 review: HIGH-2 (whole start sequence re-sent once, mismatched reply skipped),
 //     MED-3 (authResult on every reply, unknown ignored), MED-7 (thread guard, empty password), LOW-8 (deferred
@@ -204,7 +219,7 @@ class TnpCameraLinkTest {
         assertEquals("connect flag=0x49 wakeup=false", calls[0])
         assertEquals("check", calls[1])
         val firstWrite = calls.indexOfFirst { it.startsWith("write") }
-        listOf(0, 1, 2, 3, 6).forEach { ch ->
+        listOf(0, 1, 2, 3, 4, 5, 6, 7).forEach { ch ->
             val r = calls.indexOf("read ch=$ch")
             assertTrue(r in 2 until firstWrite, "read ch=$ch at $r, first write at $firstWrite: $calls")
         }
@@ -801,6 +816,146 @@ class TnpCameraLinkTest {
     }
     // END_BLOCK_RESOLUTION_TESTS
 
+    // START_BLOCK_ARCHIVE_TRANSPORT_TESTS
+    private fun streamingLink(fake: FakePpppNative, sink: VideoUnitSink = RecordingSink()): TnpCameraLink {
+        val link = newLink(fake)
+        link.start(sink)
+        awaitBurst(fake)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
+        fake.enqueueUnit(2, videoUnit())
+        awaitState(link) { it is LinkState.Streaming && it.authOk }
+        return link
+    }
+
+    // Recorded frame head: liveFlag 1 (byte 3) marks a unit read from the SD card.
+    private fun recordHead(key: Boolean, seq: Int): ByteArray =
+        frameHead(78, if (key) 1 else 0, seq).also { it[3] = 1 }
+
+    // Collects ioCtrlReplies on a background scope; the subscription is live before return.
+    private fun collectReplies(link: TnpCameraLink): Pair<CopyOnWriteArrayList<LinkIoCtrlReply>, CoroutineScope> {
+        val got = CopyOnWriteArrayList<LinkIoCtrlReply>()
+        val scope = CoroutineScope(Dispatchers.Default)
+        val subscribed = CountDownLatch(1)
+        link.ioCtrlReplies.onSubscription { subscribed.countDown() }.onEach { got += it }.launchIn(scope)
+        assertTrue(subscribed.await(2, TimeUnit.SECONDS), "ioCtrlReplies subscription")
+        return got to scope
+    }
+
+    @Test
+    fun `readers run on channels 0 to 7`() {
+        val fake = FakePpppNative()
+        newLink(fake).start(RecordingSink())
+        awaitBurst(fake)
+        listOf(0, 1, 2, 3, 4, 5, 6, 7).forEach { ch ->
+            assertTrue(fake.calls.contains("read ch=$ch"), "read ch=$ch: ${fake.calls}")
+        }
+    }
+
+    @Test
+    fun `record I on ch4, P on ch5 and new record on ch7 reach the sink`() {
+        val fake = FakePpppNative()
+        val sink = RecordingSink()
+        newLink(fake).start(sink)
+        awaitBurst(fake)
+        fake.enqueueVideo(RECORD_I, recordHead(key = true, seq = 1), ByteArray(40))
+        awaitTrue(what = { "units=${sink.units}" }) { sink.units.size == 1 }
+        fake.enqueueVideo(RECORD_P, recordHead(key = false, seq = 2), ByteArray(20))
+        awaitTrue(what = { "units=${sink.units}" }) { sink.units.size == 2 }
+        fake.enqueueVideo(NEW_RECORD, recordHead(key = true, seq = 3), ByteArray(40))
+        awaitTrue(what = { "units=${sink.units}" }) { sink.units.size == 3 }
+        assertEquals(listOf(4, 5, 7), sink.units.map { it.channel })
+        assertTrue(sink.units.all { it.info.liveFlag == 1 }, sink.units.toString())
+        assertEquals(listOf(true, false, true), sink.units.map { it.info.isKeyFrame })
+    }
+
+    @Test
+    fun `sendIoCtrl before the burst returns false and writes nothing`() {
+        val fake = FakePpppNative().apply { connectBlocks = true }
+        val link = newLink(fake)
+        assertFalse(link.sendIoCtrl(ARCHIVE_TYPE, ByteArray(4)))
+        link.start(RecordingSink())
+        awaitTrue { fake.calls.any { it.startsWith("connect ") } }
+        assertFalse(link.sendIoCtrl(ARCHIVE_TYPE, ByteArray(4)))
+        Thread.sleep(50)
+        assertTrue(fake.written.isEmpty(), fake.written.size.toString())
+    }
+
+    @Test
+    fun `sendIoCtrl after the burst writes one command unit`() {
+        val fake = FakePpppNative()
+        val link = streamingLink(fake)
+        assertTrue(link.sendIoCtrl(ARCHIVE_TYPE, ByteArray(4)))
+        awaitTrue(2_000, { "written=${fake.written.size}" }) { fake.written.size == 4 }
+        val (ch, unit) = fake.written[3]
+        assertEquals(TnpCodec.CH_COMMAND, ch)
+        assertEquals(ARCHIVE_TYPE, typeOf(unit))
+        assertArrayEquals(ByteArray(4), payloadOf(unit))
+        assertEquals(4, numberOf(unit))
+        assertEquals(2, unit[0].toInt())
+        link.close()
+        assertFalse(link.sendIoCtrl(ARCHIVE_TYPE, ByteArray(4)))
+    }
+
+    @Test
+    fun `nextUseCount continues after the burst and is shared with requestResolution`() {
+        val fake = FakePpppNative()
+        val link = newLink(fake)
+        assertNull(link.nextUseCount())
+        link.start(RecordingSink())
+        awaitBurst(fake)
+        fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
+        fake.enqueueUnit(2, videoUnit())
+        awaitState(link) { it is LinkState.Streaming && it.authOk }
+        assertEquals(3, link.nextUseCount())
+        assertEquals(4, link.requestResolution(2))
+        assertEquals(5, link.nextUseCount())
+        link.close()
+        assertNull(link.nextUseCount())
+    }
+
+    @Test
+    fun `ch0 replies other than 4882 and 9033 are published with authResult 0 only`() {
+        val fake = FakePpppNative()
+        val link = streamingLink(fake)
+        val (got, scope) = collectReplies(link)
+        try {
+            fake.replyIoCtrl(IoCtrlMessages.SET_RESOLUTION_RESP, 0)
+            fake.replyIoCtrl(ARCHIVE_REPLY_TYPE, 7, ByteArray(48))
+            fake.replyIoCtrl(ARCHIVE_REPLY_TYPE, 0, ByteArray(48) { it.toByte() })
+            awaitTrue(what = { "replies=$got" }) { got.isNotEmpty() }
+            Thread.sleep(100)
+            assertEquals(1, got.size, got.toString())
+            assertEquals(ARCHIVE_REPLY_TYPE, got.single().type)
+            assertArrayEquals(ByteArray(48) { it.toByte() }, got.single().payload)
+            assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `transportBigEndian is true`() {
+        assertTrue(newLink(FakePpppNative()).transportBigEndian)
+    }
+
+    @Test
+    fun `archive ioctrl paths log their markers and no secret`() {
+        val fake = FakePpppNative()
+        val link = streamingLink(fake)
+        val (got, scope) = collectReplies(link)
+        try {
+            assertTrue(link.sendIoCtrl(ARCHIVE_TYPE, ByteArray(4)))
+            fake.replyIoCtrl(ARCHIVE_REPLY_TYPE, 0, ByteArray(48))
+            awaitTrue(what = { "replies=$got" }) { got.size == 1 }
+        } finally {
+            scope.cancel()
+        }
+        recorder.assertMarkerAppeared("BLOCK_SEND_IOCTRL")
+        recorder.assertMarkerAppeared("BLOCK_IOCTRL_REPLY")
+        RedactionScanner().assertClean(recorder.bufferText(), extraLiterals = SECRETS)
+    }
+    // END_BLOCK_ARCHIVE_TRANSPORT_TESTS
+
     // START_BLOCK_LOG_HYGIENE
     @Test
     fun `happy and failure paths log every marker and no secret`() {
@@ -869,5 +1024,10 @@ class TnpCameraLinkTest {
         private val SECRETS = RedactionFixtures.ALL_SECRETS + listOf(PASSWORD, LICENSE_KEY)
         private val CAM = AtomicInteger(100)
         private const val OTHER_REPLY_TYPE = 0x2346
+        private const val ARCHIVE_TYPE = 816
+        private const val ARCHIVE_REPLY_TYPE = 817
+        private const val RECORD_I = 4
+        private const val RECORD_P = 5
+        private const val NEW_RECORD = 7
     }
 }
