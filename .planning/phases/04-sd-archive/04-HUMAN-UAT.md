@@ -32,7 +32,7 @@ Markers to look for: `[Archive][status][BLOCK_SD_STATUS]`, `[Archive][index][BLO
 steps: open a camera with a recorded SD card, tap the day button under the video.
 expected: recorded days carry a dot; other days are greyed and not tappable (today stays tappable); the default selection is «Сегодня».
 requirement: SD-01 (D-02)
-result: passed (2026-10-31, TNP + TUTK cameras with cards): both cameras load the index (TNP 7 segments, TUTK 59) and show the day button; the dot marks on the day dialog were not looked at this session, only that the dialog source (`days=`) is filled (`BLOCK_ARCHIVE_LOAD days=30` on TUTK, `days=1` on TNP) — calendar dots still unchecked by eye
+result: partial (2026-10-31, TNP + TUTK cameras with cards): both cameras load the index (TNP 7 segments, TUTK 59) and show the day button; the dot marks on the day dialog were not looked at this session, only that the dialog source (`days=`) is filled (`BLOCK_ARCHIVE_LOAD days=30` on TUTK, `days=1` on TNP) — calendar dots still unchecked by eye
 
 ### H-SD2. Timeline of the selected day
 steps: pick a day with recordings; scroll the ruler, pinch in and out.
@@ -82,7 +82,7 @@ result: partial (2026-10-31, TNP): snapshot saved in the archive (`BLOCK_SAVE_SN
 steps: power on the TUTK camera, open it, wait for the archive panel; afterwards pull the diag log and run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks`.
 expected: the archive works on TUTK, or is hidden with «Архив SD на этой камере недоступен» (D-06); RealLogScanTest executed (skipped=0) with failures=0.
 requirement: SD-01..SD-05 (D-06)
-result: blocked (TUTK camera unreachable) — not exercised 2026-10-31 (connect timeout); D-06 not applied (no evidence). Redaction sweep part done: RealLogScanTest over the pulled 4645-line log, skipped=0, failures=0
+result: passed (2026-10-31): TUTK live regression: video, LAN badge, HD button, archive index and playback on the TUTK camera (04-DEVICE-VERIFICATION.md, parts 2 and 3); redaction sweep PASS (RealLogScanTest, 5966-line log, 0 findings)
 
 ### H-SD10. Reconnect during archive playback
 steps: while a recording plays, turn Wi-Fi off, wait for the retry badge, turn it back on.
@@ -117,14 +117,14 @@ result: partial (2026-10-31): no reconnect loop in any observed case (seek past 
 ## Summary
 
 total: 14
-passed: 11
+passed: 9
 issues: 0
 pending: 0
-partial: 3
+partial: 4
 skipped: 0
 not_exercised: 1
-blocked: 1
+blocked: 0
 
 ## Gaps
 
-- No failures. Not a code gap: device coverage gap. SD-01..SD-04 (H-SD1..H-SD5, H-SD7, H-SD8, H-SD10) need a camera with a microSD card that has recordings; H-SD6 remaining states need the same; H-SD9 needs the TUTK camera reachable. H-SD7 note: the live-only Home / return path was checked with the archive panel present (BLOCK_RESUME resumed=true, Live in ~0.6 s), which is Phase 3 behaviour, not H-SD7.
+- No failures on the device. Open coverage, none of it a known code defect: H-SD1 calendar dots by eye; H-SD4 crossing a segment boundary; H-SD8 zoom gestures in the archive; H-SD12 the AuthFailed variant; H-SD14 the natural end of the last recording (needs a camera that stops recording) and the SILENT cap on a device. TNP over relay (LIVE-07) and a Wi-Fi -> 4G switch need a phone with mobile data. Unit tests cover the logic behind each.
