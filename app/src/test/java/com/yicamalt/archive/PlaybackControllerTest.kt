@@ -1,5 +1,5 @@
 // FILE: PlaybackControllerTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive playback state machine (SD-03, SD-04; decisions D-04, D-05).
 //   SCOPE: seek / snap / live / no recording / not ready, start timeout (only while units arrive), pause, resume,
@@ -40,12 +40,16 @@ import java.time.ZoneOffset
 //   seekCmds(uc, iso) - expected TNP 9030 list.
 //   playingAt(controller, port, iso, seekIso) - seek, deliver a recorded key frame, assert Playing.
 //   epochBump(port) - healthy again + new liveEpoch.
+//   stallClose(port) / count9030(port) / silentTwice(controller, port) - ARCHIVE stall close, 9030 count, two
+//     silent reconnects to Paused(SILENT) (plan 04-10 Task 3).
 //   PlaybackControllerTest - one test per behaviour bullet of plan 04-05 Task 3 plus the checker addendum and
 //     plan 04-10 Tasks 2-3.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-10 (W-2a): ENDED past the last known end, before the 35 s stall.
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2b): silent re-seek cap to Paused(SILENT), network drops never count,
+//     new position / resume reset the count.
+//   PREVIOUS: v0.2.0 - GSD plan 04-10 (W-2a): ENDED past the last known end, before the 35 s stall.
 //   PREVIOUS: v0.1.0 - GSD plan 04-05: playback state machine contract (RED first).
 // END_CHANGE_SUMMARY
 

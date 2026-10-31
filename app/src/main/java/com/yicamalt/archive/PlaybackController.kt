@@ -1,5 +1,5 @@
 // FILE: PlaybackController.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Archive playback state machine over ArchiveLinkPort: seek, pause, resume, back to live, segment
 //            boundaries, end of recording, reconnect and background (SD-03, SD-04; decisions D-04, D-05).
@@ -27,16 +27,21 @@ import timber.log.Timber
 import java.time.ZoneId
 
 // START_MODULE_MAP
-//   PauseReason - USER | ENDED | BACKGROUND.
+//   PauseReason - USER | ENDED | BACKGROUND | SILENT (repeated ARCHIVE-stall reconnects at one position).
 //   FailReason - NOT_READY | NO_FRAMES | NO_RECORDING.
 //   PlaybackState - Live | Starting(atMs, useCount; -1 = waiting for a healthy link) | Playing(positionMs, useCount)
 //     | Paused(positionMs, reason) | Failed(positionMs, reason).
 //   PlaybackController - state, start, setSegments, seek, pause, resume, goLive, onSessionStopped, close,
-//     Timing (tick 500 ms, start timeout 20 s, boundary 8 s, ended 30 s, end-near 10 s), isReconnecting (tests).
+//     Timing (tick 500 ms, start timeout 20 s, boundary 8 s, ended 30 s, end-near 10 s, maxSilentReseeks 2),
+//     isReconnecting (tests).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-10 (W-2a): a position at or after the last known segment end with no next
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2b): a reconnect whose previous link was closed by the ARCHIVE stall
+//     (port.archiveStallCount grew since the last sent seek) at the same position (+-2 s) counts as a silent
+//     re-seek; at 2 the controller goes Paused(SILENT) with live video instead of re-seeking; network drops never
+//     count; user seek / resume / goLive / pause reset the count.
+//   PREVIOUS: v0.2.0 - GSD plan 04-10 (W-2a): a position at or after the last known segment end with no next
 //     segment counts as end-near, so 30 s without a key frame there gives Paused(ENDED) before the 35 s ARCHIVE
 //     stall (log reason ended-past-index).
 //   PREVIOUS: v0.1.0 - GSD plan 04-05: playback state machine (research Pattern 1 / 5, P5-P8; D-04, D-05).
@@ -50,6 +55,7 @@ import java.time.ZoneId
 //     ticker and liveEpoch collector are serialised by one lock (thread-confined state).
 // END_CHANGE_SUMMARY
 
+// SILENT = repeated ARCHIVE-stall reconnects at one position without progress (W-2b).
 enum class PauseReason { USER, ENDED, BACKGROUND, SILENT }
 enum class FailReason { NOT_READY, NO_FRAMES, NO_RECORDING }
 
@@ -75,11 +81,13 @@ class PlaybackController(
         val boundaryMs: Long = 8_000,
         val endedMs: Long = 30_000,
         val endNearMs: Long = 10_000,
+        val maxSilentReseeks: Int = 2,
     )
 
     private companion object {
         const val NO_UC = -1
         const val NEXT_AFTER_MS = 1_000L
+        const val SAME_POSITION_MS = 2_000L
     }
 
     private val lock = Any()
@@ -103,6 +111,9 @@ class PlaybackController(
     private var seenKeys = 0L
     private var pendingLiveUc: Int? = null
     private var liveAt = 0L
+    private var stallsAtSend = 0        // port.archiveStallCount() when the last seek was sent
+    private var silentReseeks = 0       // consecutive ARCHIVE-stall reconnects at silentPos
+    private var silentPos: Long? = null
 
     // START_CONTRACT: start
     //   PURPOSE: Launch the ticker (tickMs) and the liveEpoch collector in scope; the current epoch is not replayed.
@@ -150,6 +161,7 @@ class PlaybackController(
     fun seek(targetMs: Long) {
         synchronized(lock) {
             if (closed) return
+            resetSilent()
             // START_BLOCK_SEEK
             val target = SdTimeline.resolveSeek(segments, targetMs, wallClock())
             val result: String
@@ -179,6 +191,7 @@ class PlaybackController(
     fun pause() {
         synchronized(lock) {
             if (closed) return
+            resetSilent()
             val pos = activePosition() ?: return
             if (port.linkHealthy()) sendPause()
             reconnecting = false
@@ -196,6 +209,7 @@ class PlaybackController(
     fun resume() {
         synchronized(lock) {
             if (closed) return
+            resetSilent()
             when (val s = _state.value) {
                 is PlaybackState.Paused -> startAt(s.positionMs, "resume")
                 is PlaybackState.Failed -> if (s.reason != FailReason.NO_RECORDING) startAt(s.positionMs, "resume")
@@ -215,6 +229,7 @@ class PlaybackController(
     fun goLive() {
         synchronized(lock) {
             if (closed) return
+            resetSilent()
             goLiveLocked()
         }
     }
@@ -279,6 +294,7 @@ class PlaybackController(
         for (cmd in PlaybackCommands.seek(port.transport, port.encrypted, uc, port.liveResolution(), SdTime.toWire(at, wireZone))) {
             port.sendIoCtrl(cmd.type, cmd.payload)
         }
+        stallsAtSend = port.archiveStallCount()
         seekEpoch = port.liveEpoch.value
         reconnecting = false
         timersFrozen = false
@@ -327,9 +343,9 @@ class PlaybackController(
         when (val s = _state.value) {
             is PlaybackState.Starting -> {
                 if (s.useCount != NO_UC && seekEpoch == epoch && !reconnecting) return
-                startAt(s.atMs, "reconnect")
+                if (s.useCount == NO_UC) startAt(s.atMs, "reconnect") else reseekOrGiveUp(s.atMs)
             }
-            is PlaybackState.Playing -> startAt(s.positionMs, "reconnect")
+            is PlaybackState.Playing -> reseekOrGiveUp(s.positionMs)
             is PlaybackState.Paused, is PlaybackState.Failed -> {
                 // New link starts in LIVE (supervisor): show live video, keep the saved position (D-05).
                 port.expectGeneration(null)
@@ -339,6 +355,39 @@ class PlaybackController(
                 port.expectGeneration(null)
             }
         }
+    }
+
+    private fun resetSilent() {
+        silentReseeks = 0
+        silentPos = null
+    }
+
+    // Reconnect re-seek of [pos], unless the ARCHIVE stall closed the previous link at the same position for the
+    // maxSilentReseeks-th time in a row: then Paused(SILENT) over the live video of the new link (W-2b).
+    private fun reseekOrGiveUp(pos: Long) {
+        // START_BLOCK_SILENT_RESEEK
+        val stalled = port.archiveStallCount() > stallsAtSend
+        val same = silentPos?.let { kotlin.math.abs(it - pos) <= SAME_POSITION_MS } ?: true
+        if (stalled && same) {
+            silentReseeks += 1
+            silentPos = pos
+        } else if (stalled) {
+            silentReseeks = 1
+            silentPos = pos
+        } else {
+            resetSilent()
+        }
+        Timber.i("[Archive][playback][BLOCK_SILENT_RESEEK] stalled=%b count=%d", stalled, silentReseeks)
+        if (silentReseeks >= timing.maxSilentReseeks) {
+            reconnecting = false
+            timersFrozen = false
+            pendingLiveUc = null
+            port.expectGeneration(null)          // the new link streams LIVE (supervisor reset); show it
+            setState(PlaybackState.Paused(pos, PauseReason.SILENT), "silent-reseek-cap")
+            return
+        }
+        // END_BLOCK_SILENT_RESEEK
+        startAt(pos, "reconnect")
     }
 
     private fun matches(a: Int, b: Int) = (a and 0xFF) == (b and 0xFF)
