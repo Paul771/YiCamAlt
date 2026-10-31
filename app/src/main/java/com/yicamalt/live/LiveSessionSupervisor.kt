@@ -1,5 +1,5 @@
 // FILE: LiveSessionSupervisor.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One live screen's session owner: one link at a time, bounded reconnect, network events, stall watchdog,
 //     quality requests and the background-resume rule (D-01..D-03, D-10, LIVE-04/05/10/11).
@@ -48,7 +48,8 @@ import timber.log.Timber
 
 // START_MODULE_MAP
 //   LiveSessionSupervisor - state / qualityState / currentLinkState; start, retry, stop, onForeground, setQuality;
-//     liveEpoch, ioCtrlReplies, setStreamMode, archivePort (internal accessors for SupervisorArchivePort).
+//     liveEpoch, ioCtrlReplies, setStreamMode, archivePort (internal accessors for SupervisorArchivePort);
+//     archiveStallCount - links closed by the ARCHIVE-mode stall watchdog so far (monotonic).
 //   LiveSessionSupervisor.Timing - backoff 2/5/10/20 s, 5 attempts, auth 2 s, kick 10 s, stall 10 s (archive 35 s),
 //     drain 5 s, ...
 //   classify - LinkError -> ErrorClass.
@@ -56,7 +57,14 @@ import timber.log.Timber
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-06: stream modes (research Pitfall 3). Stall window 10 s in LIVE, 35 s in
+//   LAST_CHANGE: v0.4.0 - GSD plan 04-10 (W-2c): A link closed by the stall watchdog while the stream mode was
+//     ARCHIVE, and whose frames stopped growing less than healthyResetMs after it reached Streaming (lastGrowthAt -
+//     streamingSince < 30 s), counts as one unhealthy attempt even though 30 s of Streaming passed (W-2): it does not
+//     reset attempt / wrong-password / kick allowances. An ARCHIVE stall after frames grew for >= 30 s (long
+//     playback), LIVE-mode stalls and every other outcome keep the v0.2.0 rule (healthy after 30 s of Streaming
+//     resets the counters).
+//     archiveStallCount() exposes the number of ARCHIVE stall closes for the playback silent re-seek cap.
+//   PREVIOUS: v0.3.0 - GSD plan 04-06: stream modes (research Pitfall 3). Stall window 10 s in LIVE, 35 s in
 //     ARCHIVE, off in PAUSED; the window counts from the later of the last frame growth and the last mode switch.
 //     Automatic and manual HD/SD requests are sent only in LIVE (manual choice still stored). A link reaching
 //     Streaming resets the mode to LIVE before it becomes the live link, then liveEpoch += 1 after Live is published.
@@ -109,6 +117,7 @@ class LiveSessionSupervisor(
         var lastGrowthAt = 0L
         var lastKeyFrame: KeyFrameObservation? = null
         var healthy = false
+        var archiveStall = false    // closed by the ARCHIVE stall before frames grew for healthyResetMs (W-2c)
     }
 
     private val _state = MutableStateFlow<SupervisorState>(SupervisorState.Idle)
@@ -138,6 +147,7 @@ class LiveSessionSupervisor(
     @Volatile private var stoppedAtMs: Long? = null
     @Volatile private var streamMode = StreamMode.LIVE
     @Volatile private var modeSince = 0L
+    @Volatile private var archiveStalls = 0
 
     // START_CONTRACT: start
     //   PURPOSE: Fresh run: counters reset, any current link closed ("user"), pending resume cleared.
@@ -263,7 +273,7 @@ class LiveSessionSupervisor(
 
     internal fun liveLinkOrNull(): CameraLink? = liveLink
 
-    internal fun archiveStallCount(): Int = 0
+    internal fun archiveStallCount(): Int = archiveStalls
 
     internal fun sessionOrNull(): MediaSession? = synchronized(lock) { currentSession }
 
@@ -287,6 +297,11 @@ class LiveSessionSupervisor(
     //   INPUTS: { my: Int - run token }
     //   OUTPUTS: { Unit }
     //   SIDE_EFFECTS: opens / closes links, publishes state
+    //   RULE: A link closed by the stall watchdog while the stream mode was ARCHIVE, and whose frames stopped growing
+    //     less than healthyResetMs after it reached Streaming (lastGrowthAt - streamingSince < 30 s), counts as one
+    //     unhealthy attempt even though 30 s of Streaming passed (W-2): it does not reset attempt / wrong-password /
+    //     kick allowances. An ARCHIVE stall after frames grew for >= 30 s (long playback), LIVE-mode stalls and every
+    //     other outcome keep the v0.2.0 rule (healthy after 30 s of Streaming resets the counters).
     //   LINKS: M-LIVE-SESSION
     // END_CONTRACT: runLoop
     private suspend fun runLoop(my: Int) {
@@ -574,11 +589,12 @@ class LiveSessionSupervisor(
         }
         val own = end.second
         val terminal = end.first
+        val healthy = w.healthy && !w.archiveStall
         return when {
-            own != null -> Outcome(classifyClosed(own), null, own, w.healthy)
-            terminal is LinkState.Failed -> Outcome(classify(terminal.error), terminal.error, null, w.healthy)
-            terminal is LinkState.Closed -> Outcome(classifyClosed(terminal.reason), null, null, w.healthy)
-            else -> Outcome(ErrorClass.NETWORK, null, null, w.healthy)
+            own != null -> Outcome(classifyClosed(own), null, own, healthy)
+            terminal is LinkState.Failed -> Outcome(classify(terminal.error), terminal.error, null, healthy)
+            terminal is LinkState.Closed -> Outcome(classifyClosed(terminal.reason), null, null, healthy)
+            else -> Outcome(ErrorClass.NETWORK, null, null, healthy)
         }
     }
 
@@ -596,7 +612,15 @@ class LiveSessionSupervisor(
             val window = if (mode == StreamMode.ARCHIVE) timing.archiveStallMs else timing.stallMs
             val idle = t - maxOf(w.lastGrowthAt, modeSince)
             if (idle >= window) {
-                Timber.w("[LiveSession][supervisor][BLOCK_STALL] idleMs=%d mode=%s", idle, mode.name)
+                val archive = mode == StreamMode.ARCHIVE
+                if (archive) {
+                    archiveStalls += 1
+                    w.archiveStall = (w.lastGrowthAt - w.streamingSince) < timing.healthyResetMs
+                }
+                Timber.w(
+                    "[LiveSession][supervisor][BLOCK_STALL] idleMs=%d mode=%s keepsAttempt=%b",
+                    idle, mode.name, w.archiveStall,
+                )
                 requestClose(REASON_STALL)
                 return
             }

@@ -1,10 +1,11 @@
 // FILE: LiveSessionSupervisorTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the live session supervisor (D-01..D-03, D-10, LIVE-04/05/10/11) in virtual time.
 //   SCOPE: classification table, backoff schedule, wrong-password / kick allowances, fatal, healthy reset, network
 //     loss / change, stall watchdog, drain, stop / resume, quality requests, log markers + redaction; Phase 4 stream
-//     modes (archive / paused stall windows, quality gating), liveEpoch, reply forwarding, SupervisorArchivePort.
+//     modes (archive / paused stall windows, quality gating), liveEpoch, reply forwarding, SupervisorArchivePort;
+//     plan 04-10 ARCHIVE stall attempt rule and archiveStallCount.
 //   DEPENDS: M-LIVE-SESSION (LiveSessionSupervisor), LiveFakes, TraceRecorder, RedactionScanner, RedactionFixtures
 //   LINKS: V-M-LIVE-SESSION, M-LIVE-SESSION
 //   ROLE: TEST
@@ -13,11 +14,13 @@
 
 // START_MODULE_MAP
 //   Env - one supervisor wired to fakes on the test scheduler; records every state via an unconfined collector.
-//   LiveSessionSupervisorTest - one test per behaviour bullet of plan 03-06 and plan 04-06 Task 1.
+//   LiveSessionSupervisorTest - one test per behaviour bullet of plan 03-06, plan 04-06 Task 1 and plan 04-10 Task 1.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-06: mode-aware stall window, quality gating outside LIVE, liveEpoch, replies,
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2c): ARCHIVE stall-closed links keep the attempt counter (walk to
+//     Exhausted), LIVE stall and long ARCHIVE playback keep the reset rule, archiveStallCount via the port.
+//   PREVIOUS: v0.2.0 - GSD plan 04-06: mode-aware stall window, quality gating outside LIVE, liveEpoch, replies,
 //     archive port delegation.
 //   PREVIOUS: v0.1.0 - GSD plan 03-06 RED: full behaviour suite.
 // END_CHANGE_SUMMARY
