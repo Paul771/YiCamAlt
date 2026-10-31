@@ -1,5 +1,5 @@
 // FILE: ArchivePanel.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Archive part of the camera screen under the video (SD-01..SD-05; D-01, D-02, D-03, D-07): day button,
 //     pause / continue and «Живой» buttons, the timeline ruler or the D-07 state text, and the day dialog.
@@ -55,12 +55,15 @@ import java.time.YearMonth
 import java.time.ZoneId
 
 // START_MODULE_MAP
-//   ArchivePanel - composable: day button, pause / continue, «Живой», ruler or D-07 state text, hint
+//   ArchivePanel - composable: day button, pause / continue, «Живой», ruler (follows rulerMs), empty IDLE area or
+//     D-07 state text, hint
 //   DayPickerDialog - composable: month grid dialog, recorded days dotted and tappable, others disabled
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-07: custom month grid instead of Material3 DatePicker (BOM 2024.02.00 /
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: ruler follows ui.rulerMs (live wall time / archive position); IDLE empty
+//     state, spinner only for LOADING.
+//   PREVIOUS: v0.1.0 - GSD plan 04-07: custom month grid instead of Material3 DatePicker (BOM 2024.02.00 /
 //     material3 1.2 has SelectableDates but no per-day badge; D-02 needs a dot on recorded days).
 //     Discretion call: today stays tappable even without recordings so the user can return to the default day (D-02);
 //     every other day without recordings is disabled. State boxes are 64 dp high like the ruler (no layout jump).
@@ -73,6 +76,8 @@ private val PANEL_HEIGHT = 64.dp
 //   INPUTS: { ui: ArchiveUi; zone: ZoneId - display zone; nowMs: Long - wall clock for today's initial centre;
 //     onOpenDays, onTogglePause, onLive, onRetry: () -> Unit; onSeek: (Long) -> Unit; modifier }
 //   OUTPUTS: { Unit - composable }
+//     IDLE renders an empty 64 dp area (no text, no spinner); LOADING is the only spinner; the TIMELINE ruler
+//     centre follows ui.rulerMs.
 //   SIDE_EFFECTS: callbacks only; BLOCK_ARCHIVE_PANEL log on a panel change (panel name only)
 //   LINKS: M-UI-LIVEVIEW, LiveViewModel.archiveOpenDays / archiveSeek / archiveTogglePause / archiveGoLive / archiveRetry
 // END_CONTRACT: ArchivePanel
@@ -135,7 +140,7 @@ fun ArchivePanel(
                 segments = ui.segments,
                 dayStartMs = ui.dayStartMs,
                 dayEndMs = ui.dayEndMs,
-                cursorMs = ui.cursorMs,
+                cursorMs = ui.rulerMs,
                 initialCenterMs = TimelineMath.initialCenter(
                     ui.selectedDay == ui.today, nowMs, ui.dayStartMs, ui.dayEndMs, ui.segments,
                 ),

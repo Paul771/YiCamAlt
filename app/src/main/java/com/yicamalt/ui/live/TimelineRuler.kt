@@ -1,9 +1,10 @@
 // FILE: TimelineRuler.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Canvas timeline ruler of one day for the SD archive (SD-03, D-03): recorded segments, ticks, centre
 //     cursor; drag pans, pinch zooms (15 min..24 h, default 3 h); on release after a real move it seeks to the centre.
-//   SCOPE: composable only; all math in TimelineMath. Follows the playback cursor while the user is not touching it.
+//   SCOPE: composable only; all math in TimelineMath. While the user is not touching it, follows cursorMs: the
+//     archive position or the live wall time (about 1 Hz).
 //     Value-free logs (no times).
 //   DEPENDS: M-UI-LIVEVIEW (TimelineMath), M-SD-ARCHIVE (Segment), Compose foundation / material3, Timber
 //   LINKS: M-UI-LIVEVIEW, V-M-UI-LIVEVIEW
@@ -49,7 +50,9 @@ import java.time.format.DateTimeFormatter
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-07: created. Centre state is keyed on the day; while a finger is down the
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: contract only - cursorMs is now fed from ArchiveUi.rulerMs (live wall time
+//     in Live for today, archive position in the archive); code unchanged.
+//   PREVIOUS: v0.1.0 - GSD plan 04-07: created. Centre state is keyed on the day; while a finger is down the
 //     playback cursor does not move the ruler; a pure pinch never seeks (TimelineMath release rule).
 // END_CHANGE_SUMMARY
 
@@ -58,7 +61,8 @@ private val CENTER_LABEL: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm
 // START_CONTRACT: TimelineRuler
 //   PURPOSE: Draw the day ruler and turn gestures into a seek.
 //   INPUTS: { segments: List<Segment> - recorded segments of the day; dayStartMs, dayEndMs: Long - day bounds;
-//     cursorMs: Long? - playback position (null = live); initialCenterMs: Long - centre on first show of a day;
+//     cursorMs: Long? - position the centre follows while untouched: archive position, or the live wall time (about
+//     1 Hz) - null keeps the current centre; initialCenterMs: Long - centre on first show of a day;
 //     zone: ZoneId - label zone; onSeek: (Long) -> Unit - centre time after a real move; modifier }
 //   OUTPUTS: { Unit - composable, 64 dp high }
 //   SIDE_EFFECTS: onSeek; BLOCK_TIMELINE_GESTURE log
