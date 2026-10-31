@@ -67,7 +67,7 @@ import java.util.Locale
 //   EARLIER: v0.1.0 - GSD plan 04-06 RED: signatures only.
 // END_CHANGE_SUMMARY
 
-enum class ArchivePanel { HIDDEN, LOADING, NO_CARD, CARD_ERROR, LIST_FAILED, NO_RECORDINGS, TIMELINE }
+enum class ArchivePanel { HIDDEN, IDLE, LOADING, NO_CARD, CARD_ERROR, LIST_FAILED, NO_RECORDINGS, TIMELINE }
 
 // cursorMs - archive position (null in Live). rulerMs - where the ruler centre follows: the archive position
 // (Starting.atMs / Playing / Paused / Failed position) in the archive; in Live, the wall clock floored to whole
@@ -514,6 +514,7 @@ class ArchiveCoordinator(
         val inArchive = s != PlaybackState.Live
         val message = when (panel) {
             ArchivePanel.HIDDEN -> ArchiveTexts.UNSUPPORTED
+            ArchivePanel.IDLE -> null
             ArchivePanel.LOADING -> ArchiveTexts.LOADING
             ArchivePanel.NO_CARD -> ArchiveTexts.NO_CARD
             ArchivePanel.CARD_ERROR -> ArchiveTexts.CARD_ERROR

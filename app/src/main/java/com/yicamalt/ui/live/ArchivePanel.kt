@@ -107,6 +107,7 @@ fun ArchivePanel(
             }
         }
         when (ui.panel) {
+            ArchivePanel.IDLE -> Box(modifier = Modifier.fillMaxWidth().height(PANEL_HEIGHT))
             ArchivePanel.LOADING -> Row(
                 modifier = Modifier.fillMaxWidth().height(PANEL_HEIGHT),
                 verticalAlignment = Alignment.CenterVertically,

@@ -1,5 +1,5 @@
 // FILE: LiveViewModelTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.2.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the live view model: badge table (D-04), auto-connect, retry / connect, sound
 //     (D-05, D-07), HD/SD (D-06, D-07), snapshot messages, lifecycle stop / resume (D-10), debug line, video size;
@@ -89,9 +89,10 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-06: archive state, forced mute, quality hidden in archive, background marker
+//   LAST_CHANGE: v0.2.1 - GSD plan 04-11: the archive state starts IDLE (no spinner before a fetch).
+//   PREVIOUS: v0.2.0 - GSD plan 04-06: archive state, forced mute, quality hidden in archive, background marker
 //     across auto-resume, closeScreen closes the coordinator.
-//   PREVIOUS: v0.1.0 - GSD plan 03-10 RED.
+//   EARLIER: v0.1.0 - GSD plan 03-10 RED.
 // END_CHANGE_SUMMARY
 
 private class FakeVideoOutput : LiveVideoOutput {
@@ -648,12 +649,12 @@ class LiveViewModelTest {
     private val ARCHIVE_PAUSE_TYPES = setOf(767, 12718, 794)
 
     @Test
-    fun `archive state starts LOADING after open on a TNP camera`() = vmTest {
+    fun `archive state starts IDLE after open on a TNP camera`() = vmTest {
         val v = newVm()
         v.open(LIVE_DEVICE_ID, "Кухня")
         runCurrent()
-        assertEquals(ArchivePanel.LOADING, v.archive.value.panel)
-        assertEquals(ArchiveTexts.LOADING, v.archive.value.message)
+        assertEquals(ArchivePanel.IDLE, v.archive.value.panel)
+        assertNull(v.archive.value.message)
         assertTrue(link.sentIoCtrl.isEmpty())
     }
 

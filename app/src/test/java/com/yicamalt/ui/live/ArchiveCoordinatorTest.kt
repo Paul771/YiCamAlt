@@ -2,7 +2,7 @@
 // VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive screen state (SD-01..SD-05; D-01, D-02, D-04..D-07) in virtual time.
-//   SCOPE: loading before the first Live, D-07 status / list states with retry, day selection and labels, days
+//   SCOPE: IDLE before the first Live, spinner only while a fetch is in flight on a healthy link, D-07 status / list states with retry, day selection and labels, days
 //     dialog refresh, seek / pause / live with forced mute, ended and start-failed hints, TUTK hide rule (D-06) incl.
 //     network loss, link drop, mid-segment silence and no-units (checker addendum), background marker, unsupported
 //     transport, midnight crossing, log marker; ruler position (rulerMs) in Live / archive, «Живой» day, Live midnight
@@ -59,7 +59,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1); IDLE / spinner-only-
+//     while-fetching load tests (device defect 2).
 //   PREVIOUS: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
 // END_CHANGE_SUMMARY
 
@@ -166,11 +167,12 @@ class ArchiveCoordinatorTest {
 
     // START_BLOCK_LOAD_TESTS
     @Test
-    fun `before the first Live the panel is LOADING and nothing is sent`() = runTest {
+    fun `before the first Live the panel is IDLE without a spinner and nothing is sent`() = runTest {
         val r = rig(epoch = 0)
         step(1_000)
-        assertEquals(ArchivePanel.LOADING, r.ui.panel)
-        assertEquals(ArchiveTexts.LOADING, r.ui.message)
+        assertEquals(ArchivePanel.IDLE, r.ui.panel)
+        assertNull(r.ui.message)
+        assertFalse(r.ui.showRetry)
         assertTrue(r.port.sent.isEmpty())
         r.port.liveEpoch.value = 1
         runCurrent()
@@ -263,6 +265,79 @@ class ArchiveCoordinatorTest {
         assertFalse(ui.showLiveButton)
         assertFalse(ui.daysDialogOpen)
         recorder.assertMarkerAppeared("BLOCK_ARCHIVE_LOAD")
+        r.coord.close()
+    }
+
+    @Test
+    fun `spinner while the first load is in flight on a healthy link`() = runTest {
+        val r = rig(script = Script(tfstat = null, entries = listOf(TODAY_SEG)))
+        assertEquals(ArchivePanel.LOADING, r.ui.panel)
+        assertEquals(ArchiveTexts.LOADING, r.ui.message)
+        r.coord.close()
+    }
+
+    @Test
+    fun `link drop during the first load hides the spinner`() = runTest {
+        val r = rig(script = Script(tfstat = null, entries = listOf(TODAY_SEG)))
+        r.port.healthy = false
+        step(500)
+        assertEquals(ArchivePanel.IDLE, r.ui.panel)
+        assertNull(r.ui.message)
+        r.port.healthy = null
+        step(500)
+        assertEquals(ArchivePanel.LOADING, r.ui.panel)
+        step(10_000)
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        r.coord.close()
+    }
+
+    @Test
+    fun `failed link before any load shows nothing and loads after the link returns`() = runTest {
+        val r = rig(epoch = 0)
+        r.port.healthy = false
+        r.port.live = false
+        step(30_000)
+        assertEquals(ArchivePanel.IDLE, r.ui.panel)
+        assertTrue(r.port.sent.isEmpty())
+        r.port.healthy = null
+        r.port.live = true
+        r.port.liveEpoch.value = 1
+        runCurrent()
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        r.coord.close()
+    }
+
+    @Test
+    fun `a fetch that really failed shows LIST_FAILED even with the link down, and the next liveEpoch reloads`() = runTest {
+        val script = Script(entries = null)
+        val r = rig(script = script)
+        step(10_000)
+        assertEquals(ArchivePanel.LIST_FAILED, r.ui.panel)
+        r.port.healthy = false
+        step(1_000)
+        assertEquals(ArchivePanel.LIST_FAILED, r.ui.panel)
+        assertEquals(ArchiveTexts.LIST_FAILED, r.ui.message)
+        assertTrue(r.ui.showRetry)
+        script.entries = listOf(TODAY_SEG)
+        r.port.healthy = null
+        r.port.liveEpoch.value = 2
+        runCurrent()
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        r.coord.close()
+    }
+
+    @Test
+    fun `refused index request leaves no spinner`() = runTest {
+        val r = rig(start = false)
+        r.port.sendResult = false
+        r.coord.start()
+        runCurrent()
+        assertEquals(ArchivePanel.IDLE, r.ui.panel)
+        assertNull(r.ui.message)
+        r.port.sendResult = true
+        r.port.liveEpoch.value = 2
+        runCurrent()
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
         r.coord.close()
     }
     // END_BLOCK_LOAD_TESTS
