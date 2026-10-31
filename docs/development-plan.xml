@@ -577,24 +577,40 @@
         <export-LiveAudioOutput PURPOSE="AAC output port: status, release" STATUS="implemented" />
         <fn-badgeFor PURPOSE="Pure SupervisorState -> LiveBadge mapping (D-04): Waiting after WRONG_PASSWORD / KICK = 'Подключение…' NEUTRAL, NETWORK waits = 'Повтор (n/5)' WARN" STATUS="implemented" />
         <export-ZoomMath PURPOSE="Pure Zoom (scale + translation) math: clamp 1..4x, applyGesture, fillScale, doubleTap fit/fill or 2x, isFullscreen, CONTROLS_AUTO_HIDE_MS 4000 (D-09)" STATUS="implemented" />
+        <export-ArchiveCoordinator PURPOSE="One per open (plan 04-06): turns SdIndexRepository status / index and PlaybackController state into ArchiveUi (D-07 states, days dialog, day labels, seek / pause / Продолжить / Живой with forced mute, Paused(BACKGROUND) marker, TUTK hide rule D-06); start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground" STATUS="implemented" />
+        <type-ArchiveUi PURPOSE="Value-free archive snapshot: panel (ArchivePanel HIDDEN | LOADING | NO_CARD | CARD_ERROR | LIST_FAILED | NO_RECORDINGS | TIMELINE), message, retry, days, segments, cursor, inArchive, playing, pauseLabel, hint; ArchiveTexts holds the Russian texts" STATUS="implemented" />
+        <fn-archiveActions PURPOSE="LiveViewModel.archive StateFlow&lt;ArchiveUi&gt; + archiveSeek / archiveTogglePause / archiveGoLive / archiveRetry / archiveOpenDays / archiveCloseDays / archiveSelectDay (BLOCK_ARCHIVE_ACTION)" STATUS="implemented" />
+        <export-TimelineMath PURPOSE="Pure ruler math (plan 04-07): span clamp 15 min..24 h (default 3 h), zoom, pan, xOf, visibleSegments, tick step 10 min / 1 h / 3 h, ticks, initialCenter, shouldSeekAfterGesture (moved &gt;= max(4 px, 2 s))" STATUS="implemented" />
+        <export-CalendarGrid PURPOSE="Pure Monday-first 42-cell month grid (DayCell enabled = recorded or today, marked = recorded), monthsWithRecordings contiguous range, title, weekdayHeaders" STATUS="implemented" />
+        <export-TimelineRuler PURPOSE="Composable 64 dp Canvas ruler: segments, ticks, centre cursor, pinch / pan, release-to-seek (BLOCK_TIMELINE_GESTURE)" STATUS="implemented" />
+        <export-ArchivePanel PURPOSE="Composables ArchivePanel (day button, pause / Живой row, D-07 texts, Повторить, ruler; BLOCK_ARCHIVE_PANEL) and DayPickerDialog (month grid with dots on recorded days)" STATUS="implemented" />
       </interface>
-      <depends>M-UI-SHELL, M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-STREAM-CORE, M-P2P-CREDS</depends>
+      <depends>M-UI-SHELL, M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-STREAM-CORE, M-P2P-CREDS, M-SD-ARCHIVE</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/ui/live/LiveViewScreen.kt</source>
         <source>app/src/main/java/com/yicamalt/ui/live/LiveViewModel.kt</source>
         <source>app/src/main/java/com/yicamalt/ui/live/ZoomMath.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-06">app/src/main/java/com/yicamalt/ui/live/ArchiveCoordinator.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-07">app/src/main/java/com/yicamalt/ui/live/TimelineMath.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-07">app/src/main/java/com/yicamalt/ui/live/CalendarGrid.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-07">app/src/main/java/com/yicamalt/ui/live/TimelineRuler.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-07">app/src/main/java/com/yicamalt/ui/live/ArchivePanel.kt</source>
         <tests>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/live/ArchiveCoordinatorTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/live/TimelineMathTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/live/CalendarGridTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[LiveView]</log-prefix>
-        <critical-block>BLOCK_OPEN_LIVE, BLOCK_BADGE, BLOCK_TOGGLE_AUDIO, BLOCK_QUALITY_SWITCH, BLOCK_SNAPSHOT, BLOCK_LIFECYCLE, BLOCK_REFRESH (view model); BLOCK_RENDER_VIDEO_SURFACE, BLOCK_FULLSCREEN, BLOCK_GESTURES, BLOCK_OVERLAYS, BLOCK_BIND_LIVE, BLOCK_SNAPSHOT_CAPTURE, BLOCK_LIFECYCLE (screen)</critical-block>
+        <critical-block>BLOCK_OPEN_LIVE, BLOCK_BADGE, BLOCK_TOGGLE_AUDIO, BLOCK_QUALITY_SWITCH, BLOCK_SNAPSHOT, BLOCK_LIFECYCLE, BLOCK_REFRESH, BLOCK_ARCHIVE_ACTION (view model); BLOCK_RENDER_VIDEO_SURFACE, BLOCK_FULLSCREEN, BLOCK_GESTURES, BLOCK_OVERLAYS, BLOCK_BIND_LIVE, BLOCK_SNAPSHOT_CAPTURE, BLOCK_LIFECYCLE (screen); BLOCK_ARCHIVE_LOAD, BLOCK_ARCHIVE_HIDE, BLOCK_ARCHIVE_TUTK_HIDE (coordinator); BLOCK_ARCHIVE_PANEL, BLOCK_TIMELINE_GESTURE (archive UI)</critical-block>
       </observability>
       <verification-ref>V-M-UI-LIVEVIEW</verification-ref>
       <notes>
         <note-1>2026-10-12: the full live view screen is GSD Phase 3; GSD Phase 2 ships only the debug M-UI-LIVE-PROBE screen over M-TNP-LINK + M-MEDIA-RENDER.</note-1>
         <note-2>2026-10-22 (GSD Phase 3, plan 03-00): rewritten. PTZ (CTRL-01) and the camera selector (LIVE-13) are v2; dependencies M-CAMERA-CMD and M-CAMERA-LIST dropped. JVM tests only (no emulator); device evidence H-L1, H-L6, H-L7, H-L8. MainActivity declares configChanges so rotation keeps the open session.</note-2>
         <note-3>2026-10-23 (plans 03-09, 03-10, 03-11): implemented. ZoomMath (ZoomMathTest 6), LiveViewModel (LiveViewModelTest 23, virtual time, RedactionScanner over logs and every LiveViewUi.toString()), LiveViewScreen (compile-only on the JVM; no Compose UI test, no emulator). Mute is restored on every onStop, so sound is off again after returning from background (stricter than D-05; to be confirmed on the phone in H-L5 / H-L6). Device checks H-L1, H-L4, H-L6, H-L7, H-L8 pending (03-HUMAN-UAT.md).</note-3>
+        <note-4>2026-10-31 (GSD Phase 4, plans 04-06 / 04-07): SD archive on the camera screen. ArchiveCoordinator (ArchiveCoordinatorTest 28) per open, closed with the screen; LiveViewModel v0.3.0 archive API (LiveViewModelTest 33), LiveEnvironment.wallNow / zone, onStop calls coordinator onBackground before the background stop, HD/SD hidden in the archive; TimelineMath (TimelineMathTest 14), CalendarGrid (CalendarGridTest 6), TimelineRuler and ArchivePanel / DayPickerDialog composables (compile-only, no Compose UI test); LiveViewScreen v0.2.0 shows the panel under the video in portrait and pause / Живой in the fullscreen overlay. Depends += M-SD-ARCHIVE. Device checks H-SD1..H-SD10 pending (04-HUMAN-UAT.md).</note-4>
       </notes>
     </M-UI-LIVEVIEW>
 
@@ -966,13 +982,14 @@
       </target>
       <observability>
         <log-prefix>[P2P]</log-prefix>
-        <critical-block>BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_OPEN_LINK, BLOCK_HEADER_VERSION, BLOCK_THREAD_GUARD, BLOCK_AUDIO_UNIT, BLOCK_SET_RESOLUTION</critical-block>
+        <critical-block>BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_START_BURST, BLOCK_AUTH_REPLY, BLOCK_READ_LOOP, BLOCK_FIRST_VIDEO, BLOCK_TX_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_OPEN_LINK, BLOCK_HEADER_VERSION, BLOCK_THREAD_GUARD, BLOCK_AUDIO_UNIT, BLOCK_SET_RESOLUTION, BLOCK_SEND_IOCTRL, BLOCK_IOCTRL_REPLY</critical-block>
       </observability>
       <verification-ref>V-M-TNP-LINK</verification-ref>
       <notes>
         <note-1>2026-10-16: implemented by plan 02-07 (JVM against FakePpppNative only). Plan 02-12 fixed a race between the auth reply (rx0) and the first video unit (rx2/3/6) on Streaming.authOk (TnpCameraLink v0.1.1). Device proof: 02-DEVICE-VERIFICATION.md.</note-1>
         <note-2>2026-10-16 Phase 2 review fixes (TnpCameraLink v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: "9029 is never re-sent / only 4881 is re-sent" is replaced by vendor TnpCamera behaviour: when the first ch0 reply carries another header version (1..3) the version is adopted, the whole start sequence 4881 / 9029 / 768 is queued again once (same resolution and useCounts) and that reply is skipped unparsed, so the start sequence (9029 included) goes out at most twice per connection. authResult is checked on every ch0 reply (1|2 wrong password, 4 manual retry, unknown ignored). Any Throwable on a link thread -> Failed(INTERNAL, 0). Registry released only after every link thread exited; ForceClose only after the readers left PPPP_Read. "No retry" now reads: no retry and no reconnect inside the link; the live screen may open ONE new link after WRONG_PASSWORD (M-UI-LIVE-PROBE).</note-2>
         <note-3>2026-10-23 (GSD Phase 3, plan 03-02, TnpCameraLink v0.3.0): setAudioSink, requestResolution and capabilities overrides; start burst and header-version resend unchanged. Still no retry inside the link: all reconnect policy lives in M-LIVE-SESSION. TNP behaviour is JVM-only (FakePpppNative) until Phase 2 device check H1 passes; device checks H-L3 and the TNP half of H-L4 pending.</note-3>
+        <note-4>2026-10-30 (GSD Phase 4, plan 04-00): readers on PPPP channels 0..7 (recorded video on ch4 / 5 / 7 routed to the VideoUnitSink); generic sendIoCtrl on the single writer once the start burst is queued (BLOCK_SEND_IOCTRL); ioCtrlReplies publishes authResult-0 ch0 replies other than 4882 / 9033 (BLOCK_IOCTRL_REPLY); one link-wide useCount after the burst's fixed 1 / 2 (nextUseCount, shared with requestResolution through the canSend gate); setStreamMode stays the default no-op. TnpCameraLinkTest 41. Device probe 04-04: 816 / 817 and 9031 / 9032 confirmed on the TNP camera (no SD card); recorded-channel playback unverified.</note-4>
       </notes>
     </M-TNP-LINK>
 
@@ -1019,6 +1036,10 @@
         <export-AudioPipeline PURPOSE="AudioUnitSink: TNP full-block AES-ECB decrypt with password + '0' (fail-open), codec gate, ADTS split, mute gate (muted by default, D-05), availability (true on first valid frame, false on non-AAC or none within AUDIO_PROBE_MS 6000), AudioStats; AacConfig + raw frames to an AacFrameSink" STATUS="implemented" />
         <type-AacConfig PURPOSE="objectType, sampleRate, channels, csd0 (toString without bytes)" STATUS="implemented" />
         <type-AacFrameSink PURPOSE="fun interface onAacFrame(config, frame, ptsUs) (implemented by AacDecoder, M-MEDIA-AUDIO)" STATUS="implemented" />
+        <type-LinkIoCtrlReply PURPOSE="IOCTRL reply not consumed by the link (type + payload; toString without bytes), CameraLink.ioCtrlReplies (plan 04-00)" STATUS="implemented" />
+        <type-StreamMode PURPOSE="LIVE | ARCHIVE | PAUSED; CameraLink.setStreamMode (default no-op) and the supervisor stall window" STATUS="implemented" />
+        <type-FrameObservation PURPOSE="Last gated video unit of a media session: useCount, timestampSec, recorded, keyFrames (archive cursor)" STATUS="implemented" />
+        <fn-expectGeneration PURPOSE="FrameAssembler / FramePipeline.expectGeneration(useCount?): only units whose useCount low byte equals the generation pass; null clears the gate (plan 04-05, BLOCK_GENERATION_GATE)" STATUS="implemented" />
       </interface>
       <depends>M-P2P-CREDS</depends>
       <target>
@@ -1058,6 +1079,7 @@
         <note-4>2026-10-22 (GSD Phase 3, plan 03-00): port extensions with default bodies: CameraLink.setAudioSink / requestResolution / capabilities (LinkCapabilities), AudioCodec / AudioUnit / AudioUnitSink, IoCtrlMessages.AUDIO_STOP (769, never sent) and setResolution(resolution, useCount, bigEndian) for the TUTK LE 4881. AdtsParser and AudioPipeline are planned Phase 3 audio sources.</note-4>
         <note-5>2026-10-23 (plan 03-01): AdtsParser (ADTS header checks, parseAll, 2-byte AudioSpecificConfig csd-0) and AudioPipeline (TNP audio AES-ECB on every full 16-byte block with key password + '0', fail-open; muted by default D-05; availability true after the first valid frame, false on a non-AAC codec or no valid frame within AUDIO_PROBE_MS 6000 after streaming D-07; no dropping, never routed to FramePipeline) implemented and JVM-tested.</note-5>
         <note-6>2026-10-23 (plan 03-12 GRACE sync): Phase 3 exports listed in the interface (LinkCapabilities, AudioCodec, AudioUnit, AudioUnitSink, requestResolution, setResolution, AdtsParser, AudioPipeline, AacConfig, AacFrameSink). Real TNP / TUTK audio format is device-only (H-L2, H-L3 pending).</note-6>
+        <note-7>2026-10-30 (GSD Phase 4, plans 04-00 / 04-05): CameraLink archive members with default bodies (sendIoCtrl, ioCtrlReplies, nextUseCount, transportBigEndian, setStreamMode); value types LinkIoCtrlReply (type + payload, hot flow buffer 16 drop oldest), StreamMode (LIVE | ARCHIVE | PAUSED), FrameObservation (useCount, timestampSec, recorded, keyFrames); FrameAssembler / FramePipeline expectGeneration(useCount?) = useCount low-byte equality gate (BLOCK_GENERATION_GATE), null clears it; TnpCodec CH_RECORD_I 4 / CH_RECORD_P 5 / CH_NEW_RECORD 7 recorded-video channels. JVM: TnpCodecTest 12, FrameAssemblerTest 19, FramePipelineTest 11. Used by M-SD-ARCHIVE.</note-7>
       </notes>
     </M-STREAM-CORE>
 
@@ -1125,11 +1147,13 @@
         <export-LiveProbeTexts PURPOSE="Fixed Russian refusal texts shared with tests and the device checkpoint" />
         <type-LiveProbeUi PURPOSE="UI snapshot: title, button enablement, relay-only flag, HEVC line, message, value-free status line" />
       </interface>
-      <depends>M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST</depends>
+      <depends>M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-STREAM-CORE, M-CAMERA-LIST, M-SD-ARCHIVE</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/ui/live/LiveProbeViewModel.kt</source>
         <source>app/src/main/java/com/yicamalt/ui/live/LiveProbeScreen.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-04">app/src/main/java/com/yicamalt/ui/live/SdProbe.kt</source>
         <tests>app/src/test/java/com/yicamalt/ui/live/LiveProbeViewModelTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/live/SdProbeTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[LiveProbe]</log-prefix>
@@ -1140,6 +1164,7 @@
         <note-1>2026-10-16: implemented by plan 02-09. One factory.open + one start per Connect press, off Main; the session closes on back, ON_STOP and leaving composition; no auto-reconnect. Status line: transport= state= mode= lan= relayForced= codec= decoder= hw= fps= frames= keyFrames= decryptOk= auth= error= (value-free). Opened from the camera row (M-UI-SHELL); TUTK cameras reach TutkCameraLink through TransportLinkFactory without UI change (plan 02-11).</note-1>
         <note-2>2026-10-16 Phase 2 review fixes (LiveProbeViewModel v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: "no retry" becomes "exactly one automatic retry per press, only after WRONG_PASSWORD": the camera once answered -20009 and accepted the same password moments later; the vendor treats -20009 as possibly temporary. Retry = 2 s pause ("Повторная попытка…"), P2pCredentialsSource.refreshCredentials (CameraRegistry: one list refresh), new session; never more than 2 factory.open per press, cancelled by Stop / leaving; no retry for other errors. Connect stays disabled until the closed link reports Closed / Failed. Status auth=pending until the 4882 outcome is known; TUTK codes named with TutkCodes.</note-2>
         <note-3>2026-10-23 (GSD Phase 3, plan 03-11): kept as debug screen, reachable by long-press on a camera row (tap opens M-UI-LIVEVIEW). LiveProbeViewModel / LiveProbeScreen unchanged in Phase 3; SurfaceView with setZOrderOnTop stays here only.</note-3>
+        <note-4>2026-10-30 (GSD Phase 4, plan 04-04): SdProbe debug actions (new file ui/live/SdProbe.kt): SdProbeTee before the FramePipeline (per-channel / generation counters, first recorded key frame, max timestamp jump), ProbeArchivePort (ArchiveLinkPort over the probe link; linkHealthy = isLive, framesIn = tee units), SdProbe INFO / INDEX / PLAY_NEWEST / PAUSE / RESUME / LIVE / BOUNDARY reusing SdIndexRepository and PlaybackCommands; value-free [Archive][probe][BLOCK_SD_*] lines; second button row on the long-press screen. SdProbeTest 10, LiveProbeViewModelTest 26. Depends += M-SD-ARCHIVE. Device run 04-PROBE.md: TNP camera no SD card, TUTK unreachable.</note-4>
       </notes>
     </M-UI-LIVE-PROBE>
 
@@ -1173,7 +1198,8 @@
         <export-NetStateTracker PURPOSE="Pure default-network rules: generation bumps on a different network, stale onLost ignored, same network back keeps the generation" STATUS="implemented" />
         <export-AndroidNetworkMonitor PURPOSE="@Singleton NetworkMonitor over registerDefaultNetworkCallback, no VALIDATED gate; SecurityException / RuntimeException on registration logged by class, seeded state kept" STATUS="implemented" />
         <export-LiveModule PURPOSE="Hilt: @Binds NetworkMonitor -> AndroidNetworkMonitor" STATUS="implemented" />
-        <export-DefaultMediaSession PURPOSE="Production MediaSession: key-frame tee into FramePipeline, AudioPipeline with mute gate (setMuted), resetPipeline for decoder resets, stats, audioAvailability; release ignores later units" STATUS="implemented" />
+        <export-DefaultMediaSession PURPOSE="Production MediaSession: key-frame tee into FramePipeline, AudioPipeline with mute gate (setMuted), resetPipeline for decoder resets, stats, audioAvailability; release ignores later units; expectGeneration / lastFrame (plan 04-05)" STATUS="implemented" />
+        <export-SupervisorArchivePort PURPOSE="ArchiveLinkPort over the supervisor (plan 04-06): delegation to the current live link and MediaSession; framesIn() from the current MediaSession; linkHealthy() = live link and network available and state Live; without a live link send false / useCount null" STATUS="implemented" />
       </interface>
       <depends>M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-P2P-CREDS</depends>
       <target>
@@ -1185,6 +1211,7 @@
         <source>app/src/main/java/com/yicamalt/live/AndroidNetworkMonitor.kt</source>
         <source>app/src/main/java/com/yicamalt/live/LiveModule.kt</source>
         <source>app/src/main/java/com/yicamalt/live/DefaultMediaSession.kt</source>
+        <source NOTE="GSD Phase 4, plan 04-06">app/src/main/java/com/yicamalt/live/SupervisorArchivePort.kt</source>
         <tests>app/src/test/java/com/yicamalt/live/LiveSessionSupervisorTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/QualityControllerTest.kt</tests>
         <tests>app/src/test/java/com/yicamalt/live/ResumePolicyTest.kt</tests>
@@ -1194,14 +1221,79 @@
       </target>
       <observability>
         <log-prefix>[LiveSession]</log-prefix>
-        <critical-block>BLOCK_OPEN_LINK, BLOCK_CLASSIFY, BLOCK_SCHEDULE, BLOCK_DRAIN, BLOCK_STALL, BLOCK_NETWORK, BLOCK_NETWORK_WATCH, BLOCK_STOP, BLOCK_QUALITY, BLOCK_RESUME (supervisor); BLOCK_NETWORK_EVENT (AndroidNetworkMonitor); BLOCK_KEYFRAME_TEE, BLOCK_AUDIO_ROUTE (DefaultMediaSession); BLOCK_OBSERVE_KEY_FRAME, BLOCK_SWITCH_TIMEOUT (QualityController); BLOCK_RESUME_DECISION (ResumePolicy)</critical-block>
+        <critical-block>BLOCK_OPEN_LINK, BLOCK_CLASSIFY, BLOCK_SCHEDULE, BLOCK_DRAIN, BLOCK_STALL, BLOCK_NETWORK, BLOCK_NETWORK_WATCH, BLOCK_STOP, BLOCK_QUALITY, BLOCK_RESUME (supervisor); BLOCK_NETWORK_EVENT (AndroidNetworkMonitor); BLOCK_KEYFRAME_TEE, BLOCK_AUDIO_ROUTE (DefaultMediaSession); BLOCK_OBSERVE_KEY_FRAME, BLOCK_SWITCH_TIMEOUT (QualityController); BLOCK_RESUME_DECISION (ResumePolicy); BLOCK_STREAM_MODE (supervisor, GSD Phase 4)</critical-block>
       </observability>
       <verification-ref>V-M-LIVE-SESSION</verification-ref>
       <notes>
         <note-1>2026-10-22 (GSD Phase 3, plan 03-00): port types in live/LiveSessionTypes.kt exist first so plans 03-01..03-13 compile against one set of names. Links still never retry; all retry policy lives here.</note-1>
         <note-2>2026-10-23 (plans 03-05, 03-06, 03-08, 03-10): implemented and JVM-verified in virtual time (LiveSessionSupervisorTest 38, QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7). M-TNP-LINK / M-TUTK-LINK are reached only through the CameraLinkFactory port (TransportLinkFactory binding). Device checks H-L4 (HD/SD), H-L5 (reconnect), H-L6 (background) pending.</note-2>
+        <note-3>2026-10-30 (GSD Phase 4, plans 04-05 / 04-06, supervisor v0.3.0): stream modes via setStreamMode (BLOCK_STREAM_MODE): stall window 10 s in LIVE, archiveStallMs 35 s in ARCHIVE, off in PAUSED, measured from max(last frame growth, last mode switch); a link reaching Streaming resets the mode to LIVE, then liveEpoch += 1 after Live is published; replies of every watched link forwarded on ioCtrlReplies (buffer 16, drop oldest); HD/SD requests only in LIVE; archivePort(transport, encrypted) returns SupervisorArchivePort (new file live/SupervisorArchivePort.kt: ArchiveLinkPort by pure delegation, framesIn() = current MediaSession.framesIn(), linkHealthy() = live link and network available and state Live). MediaSession gains expectGeneration / lastFrame (default bodies), DefaultMediaSession forwards the gate to FramePipeline and records the last gated FrameObservation. JVM: LiveSessionSupervisorTest 47, DefaultMediaSessionTest 12. Device: H-SD3, H-SD5, H-SD10 pending.</note-3>
       </notes>
     </M-LIVE-SESSION>
+
+    <M-SD-ARCHIVE NAME="SdArchive" TYPE="CORE_LOGIC" LAYER="1" ORDER="20" STATUS="implemented">
+      <contract>
+        <purpose>SD card archive over the live P2P session: SD status (816 / 817), 30-day recording index (9031 / 9032 TNP, 792 / 793 TUTK), days and segments, seek / pause / resume / live commands, playback state machine with the useCount generation gate (GSD Phase 4)</purpose>
+        <inputs>
+          <param name="port" type="ArchiveLinkPort (implemented by SupervisorArchivePort in M-LIVE-SESSION and ProbeArchivePort in M-UI-LIVE-PROBE)" />
+          <param name="zone" type="ZoneId (injected; wire time base via SdTime.WIRE_IS_UTC)" />
+        </inputs>
+        <outputs>
+          <param name="status" type="SdStatus (NoCard | Abnormal(tfstat) | Ok | Unknown)" />
+          <param name="index" type="IndexResult (Ok(segments) | Timeout | Malformed | NotReady)" />
+          <param name="playback" type="StateFlow of PlaybackState (Live | Starting | Playing | Paused(reason) | Failed(reason))" />
+        </outputs>
+        <errors>
+          <error code="IndexResult.Timeout" NOTE="no reply within 10 s per reply" />
+          <error code="IndexResult.Malformed" NOTE="reply that fails the vendor tolerance rules" />
+          <error code="IndexResult.NotReady" NOTE="the port refused the send (no live link / no useCount)" />
+          <error code="FailReason" NOTE="NOT_READY, NO_FRAMES (start timeout counted only while units arrive), NO_RECORDING" />
+        </errors>
+        <error-policy>No retry inside the module; link-health freeze keyed on ArchiveLinkPort.linkHealthy() and a re-seek on every liveEpoch change (D-04); background pause never auto-resumes (D-05).</error-policy>
+      </contract>
+      <interface>
+        <export-SdArchiveCodec PURPOSE="IOTYPE constants, 816 / 9031 / 792 / 9030 / 12718 / 794 payload builders in transport byte order, 9032 / 793 / 817 parsers with vendor tolerance (TNP index under 12 B null, truncated empty; TUTK page null unless size / 12 - 1 == count)" STATUS="implemented" />
+        <type-STimeDay PURPOSE="8-byte wire time: u16 year in transport order, month, day, wday (Sunday = 1), hour, minute, second; plus IndexEntry, TutkIndexPage, DeviceInfo" STATUS="implemented" />
+        <export-SdTime PURPOSE="WIRE_IS_UTC seam (true), wireZone, toWire / fromWire, DST-safe half-open dayBounds via atStartOfDay, localDate" STATUS="implemented" />
+        <export-SdTimeline PURPOSE="fromEntries (merge on gap &lt;= 2 s), daysWithRecordings, segmentsForDay (clipped at local midnight), nextSegmentStart, resolveSeek (Archive | Live within 10 s of now or future | NoRecording)" STATUS="implemented" />
+        <export-PlaybackCommands PURPOSE="seek / pause / live command lists (PlaybackCmd type + payload) per transport and p2pEncrypt: seek TNP 9030, TUTK 12718 or 794 cmd 16 (LE); pause 767 + stop record (12718 / 794 cmd 1) on both; live stop record + 9029 (TNP) or 8190 | 511 (TUTK)" STATUS="implemented" />
+        <export-SdIndexRepository PURPOSE="fetchStatus (816 -> 817 -> SdStatus) and fetchIndex(wallNowMs) over ArchiveLinkPort: subscribe before send, 10 s per-reply timeout, TUTK paging capped at 1000 replies" STATUS="implemented" />
+        <export-PlaybackController PURPOSE="SD-03 / SD-04 state machine: start, setSegments, seek, pause, resume, goLive, onSessionStopped, close; gate before send (expectGeneration -> setStreamMode -> commands), segment boundary jumps, end of recording, health-keyed timers, liveEpoch re-seek; one lock serialises calls, ticker and collector" STATUS="implemented" />
+        <type-SdStatus PURPOSE="NoCard (tfstat 5) | Abnormal(tfstat 2/3/8/9, or 0 with total 0) | Ok | Unknown (no reply); sdStatusOf(DeviceInfo?)" STATUS="implemented" />
+        <type-IndexResult PURPOSE="Ok(segments) | Timeout | Malformed | NotReady; toString carries the count only" STATUS="implemented" />
+        <type-PlaybackState PURPOSE="Live | Starting(atMs, useCount) | Playing(positionMs, useCount) | Paused(positionMs, PauseReason USER | ENDED | BACKGROUND) | Failed(positionMs, FailReason)" STATUS="implemented" />
+        <export-ArchiveLinkPort PURPOSE="Narrow session view: transport, encrypted, bigEndian, liveEpoch, ioCtrlReplies, isLive, linkHealthy (health signal for playback timers), sendIoCtrl, nextUseCount, liveResolution, expectGeneration, lastFrame, framesIn (units of any generation, added by plan 04-05 for the start timeout), setStreamMode" STATUS="implemented" />
+        <export-ArchiveSupport PURPOSE="supports(transport): TNP and TUTK today; plan 04-09 may drop TUTK from device evidence (D-06)" STATUS="implemented" />
+      </interface>
+      <depends>M-STREAM-CORE, M-P2P-CREDS</depends>
+      <target>
+        <source>app/src/main/java/com/yicamalt/archive/SdArchiveCodec.kt</source>
+        <source>app/src/main/java/com/yicamalt/archive/SdTime.kt</source>
+        <source>app/src/main/java/com/yicamalt/archive/SdTypes.kt</source>
+        <source>app/src/main/java/com/yicamalt/archive/SdTimeline.kt</source>
+        <source>app/src/main/java/com/yicamalt/archive/PlaybackCommands.kt</source>
+        <source>app/src/main/java/com/yicamalt/archive/SdIndexRepository.kt</source>
+        <source>app/src/main/java/com/yicamalt/archive/PlaybackController.kt</source>
+        <tests>app/src/test/java/com/yicamalt/archive/SdArchiveCodecTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/SdTimeTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/SdTimelineTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/SdStatusTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/PlaybackCommandsTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/SdIndexRepositoryTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/PlaybackControllerTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/SdFixtures.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/archive/FakeArchivePort.kt</tests>
+      </target>
+      <observability>
+        <log-prefix>[Archive]</log-prefix>
+        <critical-block>BLOCK_SD_STATUS, BLOCK_FETCH_INDEX (repository); BLOCK_PLAYBACK_STATE, BLOCK_SEEK (controller); BLOCK_LIST_EVENTS_REQUEST, BLOCK_PARSE_TNP_INDEX, BLOCK_PARSE_TUTK_PAGE, BLOCK_PARSE_DEVICE_INFO (codec)</critical-block>
+      </observability>
+      <verification-ref>V-M-SD-ARCHIVE</verification-ref>
+      <notes>
+        <note-1>2026-10-30 (GSD Phase 4, plans 04-01, 04-03, 04-05): implemented and JVM-verified against FakeArchivePort (SdArchiveCodecTest 21, SdTimeTest 10, SdTimelineTest 18, SdStatusTest 7, PlaybackCommandsTest 10, SdIndexRepositoryTest 17, PlaybackControllerTest 28). Logs are value-free: counts, codes, sizes, enum names; no wire times.</note-1>
+        <note-2>2026-10-30 device probe (04-PROBE.md): the TNP camera has no SD card (tfstat 5, verified: 816 / 817 and 9031 / 9032 exchanges work end-to-end, index empty); the TUTK camera was unreachable, so TUTK archive feasibility is unverified. WIRE_IS_UTC stays true and BOUNDARY_MS 8000 is kept, both unverified. SD-01..SD-04 need a camera with a microSD card that has recordings; the no-card state (H-SD6) is checkable on the TNP camera.</note-2>
+      </notes>
+    </M-SD-ARCHIVE>
 
     <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" LAYER="2" ORDER="20" STATUS="implemented">
       <contract>
@@ -1311,7 +1403,7 @@
       </target>
       <observability>
         <log-prefix>[P2P]</log-prefix>
-        <critical-block>BLOCK_INIT_TUTK, BLOCK_CLASSIFY_TUTK_CODE, BLOCK_OPEN_TUTK_LINK, BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_CLIENT_START, BLOCK_READ_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_STOP_SESSION, BLOCK_DISPATCH_LINK, BLOCK_THREAD_GUARD, BLOCK_TX_LOOP, BLOCK_IOCTRL_LOOP, BLOCK_AUDIO_LOOP, BLOCK_SET_RESOLUTION</critical-block>
+        <critical-block>BLOCK_INIT_TUTK, BLOCK_CLASSIFY_TUTK_CODE, BLOCK_OPEN_TUTK_LINK, BLOCK_CONNECT, BLOCK_CHECK_SESSION, BLOCK_CLIENT_START, BLOCK_READ_LOOP, BLOCK_WATCH, BLOCK_CLOSE, BLOCK_STOP_SESSION, BLOCK_DISPATCH_LINK, BLOCK_THREAD_GUARD, BLOCK_TX_LOOP, BLOCK_IOCTRL_LOOP, BLOCK_AUDIO_LOOP, BLOCK_SET_RESOLUTION, BLOCK_SEND_IOCTRL, BLOCK_IOCTRL_REPLY, BLOCK_STREAM_MODE</critical-block>
       </observability>
       <verification-ref>V-M-TUTK-LINK</verification-ref>
       <notes>
@@ -1321,6 +1413,7 @@
         <note-4>2026-10-16: STATUS implemented (plans 02-10 + 02-11, JVM only). Gate line from 02-DEVICE-CHECK-1.md: "GATE_2B: needed". Device proof: 02-DEVICE-VERIFICATION.md.</note-4>
         <note-5>2026-10-16 Phase 2 review fixes (TutkCameraLink v0.2.0, 02-REVIEW-FIXES.md). CHANGED INVARIANT: the read loop no longer ends on any unexpected code; only -20015, -20016, -20010, -20000, -20018, -20019, -20025, -20026 are fatal (vendor TutkCamera), other codes are logged once and skipped (300 in a row end the session); -20001 grows the buffer once to 1000000. avReleased / sidReleased replace the single released flag (late avClientStart2 after close gets avClientStop). Thread guard -> Failed(INTERNAL, 0); empty encrypted password refused. Registry released only after the link threads exited; vendor stop only after the reader was joined. "No retry" now reads: none inside the link; the live screen may open ONE new link after WRONG_PASSWORD.</note-5>
         <note-6>2026-10-23 (GSD Phase 3, plans 03-03 / 03-04): shim natives avClientCleanAudioBuf / avRecvAudioData / avRecvIOCtrl (AVAPIs 8 -> 11 natives), single IOCTRL writer tutk-&lt;n&gt;-tx, readers tutk-&lt;n&gt;-rxa (audio) and tutk-&lt;n&gt;-rxc (IOCTRL); teardown joins rx, rxa, rxc, tx before releasing the AV channel; Phase 2 start sequence byte-identical. JVM-only (FakeTutkNative, TutkCameraLinkTest 38); device checks H-L2 (audio) and H-L4 (HD/SD) pending.</note-6>
+        <note-7>2026-10-30 (GSD Phase 4, plan 04-02): generic sendIoCtrl queued on tutk-&lt;n&gt;-tx after the start command (BLOCK_SEND_IOCTRL); ioCtrlReplies publishes every avRecvIOCtrl reply except 4882 (793 index pages, 817) (BLOCK_IOCTRL_REPLY); nextUseCount shares one link-wide counter with requestResolution; transportBigEndian = false; setStreamMode(ARCHIVE | PAUSED) suspends the -20012 no-data limit, LIVE keeps 300 x 30 ms (BLOCK_STREAM_MODE). TutkCameraLinkTest 46. TUTK archive unverified on device (camera unreachable in 04-04, H-SD9 pending).</note-7>
       </notes>
     </M-TUTK-LINK>
 
@@ -1364,6 +1457,17 @@
       <step-6>ON_STOP stops the session (background), ON_START resumes once within 5 min (ResumePolicy); leaving the screen releases everything</step-6>
       <evidence>V-M-LIVE-SESSION, V-M-UI-LIVEVIEW, V-M-MEDIA-AUDIO, V-M-MEDIA-SNAPSHOT (JVM); device checks H-L1..H-L9 pending (03-HUMAN-UAT.md); log markers [LiveSession][supervisor][BLOCK_OPEN_LINK], [LiveView][vm][BLOCK_BADGE], [LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</evidence>
     </DF-LIVE-VIEW>
+
+    <DF-SD-ARCHIVE NAME="SD archive playback" TRIGGER="Camera screen open; user picks a day or releases the timeline">
+      <step-1>LiveViewModel (M-UI-LIVEVIEW) opens the LiveSessionSupervisor (M-LIVE-SESSION) and one ArchiveCoordinator per open over supervisor.archivePort(transport, encrypted) = SupervisorArchivePort</step-1>
+      <step-2>On each liveEpoch the coordinator sends 816 (device info) then 9031 (TNP) or 792 (TUTK) through SupervisorArchivePort -> CameraLink.sendIoCtrl (M-TNP-LINK / M-TUTK-LINK) via SdIndexRepository (M-SD-ARCHIVE)</step-2>
+      <step-3>Replies 817 / 9032 / 793 come back on CameraLink.ioCtrlReplies -> supervisor.ioCtrlReplies -> SdIndexRepository -> SdStatus / IndexResult -> SdTimeline segments and days -> ArchiveUi</step-3>
+      <step-4>Seek (timeline release) -> PlaybackController -> expectGeneration(useCount) on the MediaSession gate, setStreamMode(ARCHIVE), then 9030 (TNP) or 12718 / 794 cmd 16 (TUTK) from PlaybackCommands</step-4>
+      <step-5>Recorded frames (TNP ch4 / 5 / 7, TUTK AV channel) -> FramePipeline generation gate (M-STREAM-CORE) -> VideoDecoder (M-MEDIA-RENDER); lastFrame() FrameObservation drives the cursor and the Playing state</step-5>
+      <step-6>«Живой» -> PlaybackController.goLive: stop record + 9029 (TNP) or 8190 | 511 (TUTK), setStreamMode(LIVE), gate on the new useCount; pause -> 767 + stop record (12718 / 794 cmd 1) on both transports, setStreamMode(PAUSED)</step-6>
+      <evidence>V-M-SD-ARCHIVE, V-M-LIVE-SESSION, V-M-UI-LIVEVIEW, V-M-TNP-LINK, V-M-TUTK-LINK (JVM); device checks H-SD1..H-SD10 pending (04-HUMAN-UAT.md); log markers [Archive][status][BLOCK_SD_STATUS], [Archive][index][BLOCK_FETCH_INDEX], [Archive][playback][BLOCK_PLAYBACK_STATE], [LiveView][archive][BLOCK_ARCHIVE_LOAD]</evidence>
+      <note>2026-10-31 (GSD Phase 4): the archive reuses the live session; there is no second link.</note>
+    </DF-SD-ARCHIVE>
 
     <DF-EVENT-LIST NAME="EventTimelineLoad" TRIGGER="User navigates to Events tab">
       <step-1>M-UI-EVENTS requests events via M-EVENT</step-1>
@@ -1454,6 +1558,8 @@
       <phase-note>2026-10-16: GSD Phase 2 (02-p2p) implemented; device verification in 02-DEVICE-VERIFICATION.md. Plans 02-00..02-11; steps 8-13 implemented; M-TUTK-LINK needed per GATE_2B.</phase-note>
       <phase-note>2026-10-22: GSD Phase 3 (03-live-view) plans 03-00..03-13; M-UI-LIVEVIEW rewritten (no PTZ/camera selector)</phase-note>
       <phase-note>2026-10-23: GSD Phase 3 (03-live-view) implemented, JVM-verified; device checks H-L1..H-L9 pending (03-HUMAN-UAT.md). Steps 3, 14, 15, 16 implemented (plans 03-00..03-11, GRACE sync 03-12); M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-UI-SHELL extended. TNP behaviour stays JVM-only until Phase 2 device check H1 passes. Device session: plan 03-13.</phase-note>
+      <step-17 module="M-SD-ARCHIVE" status="implemented" verification="V-M-SD-ARCHIVE">SD card archive over the live session: status, index, timeline, seek / pause / live (GSD Phase 4)</step-17>
+      <phase-note>2026-10-31: GSD Phase 4 (04-sd-archive) implemented, JVM-verified; device checks H-SD1..H-SD10 pending (04-HUMAN-UAT.md, plan 04-09). Plans 04-00..04-07, GRACE sync 04-08: new module M-SD-ARCHIVE (step 17, flow DF-SD-ARCHIVE); M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-LIVE-SESSION, M-UI-LIVEVIEW, M-UI-LIVE-PROBE extended. Device probe 04-04: the TNP camera has no SD card, the TUTK camera was unreachable; SD-01..SD-04 need a microSD with recordings.</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">
