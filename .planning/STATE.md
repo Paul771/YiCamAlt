@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-07-PLAN.md
-last_updated: "2026-10-31T08:52:26.422Z"
+stopped_at: Completed 04-08-PLAN.md
+last_updated: "2026-10-31T09:08:42.922Z"
 last_activity: 2026-10-31
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 50
-  completed_plans: 47
+  completed_plans: 48
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-10-31
 
@@ -86,6 +86,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P04 | 45min | 3 tasks | 9 files |
 | Phase 04 P06 | 75min | 3 tasks | 8 files |
 | Phase 04 P07 | 45min | 3 tasks | 7 files |
+| Phase 04 P08 | 20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -159,6 +160,7 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-06: openDays refresh re-fetches only the index, keeps old data on failure; selected day follows the cursor only on a cursor day change
 - [Phase 04]: 04-07: custom month grid (no material3 DatePicker badge); today tappable without recordings; months = contiguous recorded range incl. today
 - [Phase 04]: 04-07: fullscreen-only overlay pause/Живой; ruler follows the cursor only while untouched; pure pinch never seeks
+- [Phase 04]: 04-08: M-SD-ARCHIVE is GRACE Phase-3 step-17; H-SD1..H-SD10 pending in 04-HUMAN-UAT.md, need a microSD with recordings (H-SD6 checkable on TNP)
 
 ### Pending Todos
 
@@ -172,6 +174,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-31T08:52:26.416Z
-Stopped at: Completed 04-07-PLAN.md
+Last session: 2026-10-31T09:08:42.915Z
+Stopped at: Completed 04-08-PLAN.md
 Resume file: None

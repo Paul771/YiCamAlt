@@ -132,7 +132,7 @@ Plans:
 - [x] 04-05-PLAN.md — useCount generation gate, media-session frame observation, PlaybackController state machine
 - [x] 04-06-PLAN.md — Mode-aware supervisor + SupervisorArchivePort, ArchiveCoordinator, LiveViewModel archive API
 - [x] 04-07-PLAN.md — Archive UI under the video: timeline ruler, day month-grid dialog, pause/«Живой», D-07 texts
-- [ ] 04-08-PLAN.md — GRACE docs sync (M-SD-ARCHIVE, V-M-SD-ARCHIVE, graph) + 04-HUMAN-UAT.md
+- [x] 04-08-PLAN.md — GRACE docs sync (M-SD-ARCHIVE, V-M-SD-ARCHIVE, graph) + 04-HUMAN-UAT.md
 - [ ] 04-09-PLAN.md — Device verification H-SD1..H-SD9, D-06 decision for TUTK
 **Research**: needs `/gsd:research-phase` (HIGH) — недокументированные IOCTRL-пакеты SD-воспроизведения (9030, ch4/5), формат индекса дней/отрезков
 **UI hint**: yes
@@ -171,6 +171,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
 | 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
-| 4. Архив SD-карты | 8/10 | In Progress|  |
+| 4. Архив SD-карты | 9/10 | In Progress|  |
 | 5. Лента событий | 0/TBD | Not started | - |
 | 6. Релизная сборка и проверка на телефоне | 0/TBD | Not started | - |
