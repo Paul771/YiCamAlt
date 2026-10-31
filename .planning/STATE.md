@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-09-PLAN.md (device PARTIAL, human_needed)
-last_updated: "2026-10-31T09:16:37.262Z"
+stopped_at: Completed 04-10-PLAN.md
+last_updated: "2026-10-31T13:44:43.573Z"
 last_activity: 2026-10-31
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 50
-  completed_plans: 49
+  total_plans: 54
+  completed_plans: 50
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 10 of 10
-Status: All 10 plans have summaries — phase human_needed (device run partial: H-SD6 passed, other H-SD items need a microSD card with recordings)
+Plan: 10 of 13
+Status: Gap closure in progress — 04-10 (W-2) done; 04-11..04-13 pending; phase stays human_needed
 Last activity: 2026-10-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -88,6 +88,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P07 | 45min | 3 tasks | 7 files |
 | Phase 04 P08 | 20min | 2 tasks | 5 files |
 | Phase 04 P09 | 15min | 3 tasks | 3 files |
+| Phase 04 P10 | 40min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,9 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-08: M-SD-ARCHIVE is GRACE Phase-3 step-17; H-SD1..H-SD10 pending in 04-HUMAN-UAT.md, need a microSD with recordings (H-SD6 checkable on TNP)
 - [Phase 04]: 04-09: D-06 not applied (TUTK unreachable, no evidence); TUTK archive set unchanged
 - [Phase 04]: 04-09: device run PARTIAL - H-SD6 no-card passed, other H-SD not exercised (no SD card); phase stays human_needed
+- [Phase 04]: 04-10: ARCHIVE stall close counts as unhealthy only if frames stopped growing < healthyResetMs after Streaming (W-2c)
+- [Phase 04]: 04-10: 2 consecutive ARCHIVE-stall reconnects at one position (+-2 s) -> Paused(SILENT) with live video; network drops never count (W-2b)
+- [Phase 04]: 04-10: position at/after last known segment end with no next segment = end-near, ENDED at 30 s (W-2a)
 
 ### Pending Todos
 
@@ -177,6 +181,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-31T09:16:37.256Z
-Stopped at: Completed 04-09-PLAN.md (device PARTIAL, human_needed)
+Last session: 2026-10-31T13:44:43.568Z
+Stopped at: Completed 04-10-PLAN.md
 Resume file: None
