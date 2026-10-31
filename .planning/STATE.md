@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-10-PLAN.md
-last_updated: "2026-10-31T13:44:43.573Z"
+stopped_at: Completed 04-11-PLAN.md
+last_updated: "2026-10-31T13:52:26.601Z"
 last_activity: 2026-10-31
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 54
-  completed_plans: 50
+  completed_plans: 51
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 10 of 13
-Status: Gap closure in progress — 04-10 (W-2) done; 04-11..04-13 pending; phase stays human_needed
+Plan: 11 of 13
+Status: Gap closure in progress — 04-10 (W-2), 04-11 (defects 1, 2) done; 04-12..04-13 pending; phase stays human_needed
 Last activity: 2026-10-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -89,6 +89,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P08 | 20min | 2 tasks | 5 files |
 | Phase 04 P09 | 15min | 3 tasks | 3 files |
 | Phase 04 P10 | 40min | 3 tasks | 7 files |
+| Phase 04 P11 | 6min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,8 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-10: ARCHIVE stall close counts as unhealthy only if frames stopped growing < healthyResetMs after Streaming (W-2c)
 - [Phase 04]: 04-10: 2 consecutive ARCHIVE-stall reconnects at one position (+-2 s) -> Paused(SILENT) with live video; network drops never count (W-2b)
 - [Phase 04]: 04-10: position at/after last known segment end with no next segment = end-near, ENDED at 30 s (W-2a)
+- [Phase 04]: 04-11: ruler position is a new field ArchiveUi.rulerMs; cursorMs keeps its archive-only meaning
+- [Phase 04]: 04-11: ArchivePanel.IDLE is display-only; internal LOADING kept so the next liveEpoch reloads a missing list
 
 ### Pending Todos
 
@@ -181,6 +184,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-31T13:44:43.568Z
-Stopped at: Completed 04-10-PLAN.md
+Last session: 2026-10-31T13:52:26.596Z
+Stopped at: Completed 04-11-PLAN.md
 Resume file: None
