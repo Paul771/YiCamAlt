@@ -8,7 +8,7 @@ updated: 2026-10-31
 
 ## Current Test
 
-[plan 04-09 session done 2026-10-31 (Mi 9 over USB, 04-07 APK). Waiting for a camera with a microSD card that has recordings (and the TUTK camera reachable) to run H-SD1..H-SD5, H-SD7..H-SD10 and the rest of H-SD6. Evidence: 04-DEVICE-VERIFICATION.md]
+[plan 04-13: gap-closure build (04-10..04-12) installed; H-SD11..H-SD14 re-check pending on the carded cameras.] [plan 04-09 session done 2026-10-31 (Mi 9 over USB, 04-07 APK). Waiting for a camera with a microSD card that has recordings (and the TUTK camera reachable) to run H-SD1..H-SD5, H-SD7..H-SD10 and the rest of H-SD6. Evidence: 04-DEVICE-VERIFICATION.md]
 
 ## Pre-condition
 
@@ -24,7 +24,7 @@ adb exec-out run-as com.yicamalt cat files/diag_log.txt.1 > build/device-logs/di
 adb exec-out run-as com.yicamalt cat files/diag_log.txt >> build/device-logs/diag_log.txt
 ```
 
-Markers to look for: `[Archive][status][BLOCK_SD_STATUS]`, `[Archive][index][BLOCK_FETCH_INDEX]`, `[Archive][playback][BLOCK_PLAYBACK_STATE]`, `[Archive][playback][BLOCK_SEEK]`, `[LiveView][archive][BLOCK_ARCHIVE_LOAD]`, `[LiveView][archive][BLOCK_ARCHIVE_HIDE]`, `[LiveView][archive][BLOCK_ARCHIVE_TUTK_HIDE]`, `[LiveView][vm][BLOCK_ARCHIVE_ACTION]`, `[LiveView][archive-ui][BLOCK_ARCHIVE_PANEL]`, `[LiveView][archive-ui][BLOCK_TIMELINE_GESTURE]`, `[LiveSession][supervisor][BLOCK_STREAM_MODE]`, `[P2P][tnp][BLOCK_SEND_IOCTRL]`, `[P2P][tnp][BLOCK_IOCTRL_REPLY]`, `[P2P][tutk][BLOCK_STREAM_MODE]`.
+Markers to look for: `[Archive][status][BLOCK_SD_STATUS]`, `[Archive][index][BLOCK_FETCH_INDEX]`, `[Archive][playback][BLOCK_PLAYBACK_STATE]`, `[Archive][playback][BLOCK_SEEK]`, `[LiveView][archive][BLOCK_ARCHIVE_LOAD]`, `[LiveView][archive][BLOCK_ARCHIVE_HIDE]`, `[LiveView][archive][BLOCK_ARCHIVE_TUTK_HIDE]`, `[LiveView][vm][BLOCK_ARCHIVE_ACTION]`, `[LiveView][archive-ui][BLOCK_ARCHIVE_PANEL]`, `[LiveView][archive-ui][BLOCK_TIMELINE_GESTURE]`, `[LiveSession][supervisor][BLOCK_STREAM_MODE]`, `[LiveSession][supervisor][BLOCK_STALL]` (keepsAttempt), `[LiveView][archive][BLOCK_ARCHIVE_REFRESH]`, `[Archive][playback][BLOCK_SILENT_RESEEK]`, `[P2P][tnp][BLOCK_SEND_IOCTRL]`, `[P2P][tnp][BLOCK_IOCTRL_REPLY]`, `[P2P][tutk][BLOCK_STREAM_MODE]`.
 
 ## Tests
 
@@ -44,12 +44,14 @@ result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera report
 steps: drag the ruler onto a recorded segment and release.
 expected: playback starts at that moment; the «Запись HH:mm:ss» time matches the camera's own on-picture timestamp within a few seconds (confirms the wire-time base, `SdTime.WIRE_IS_UTC`).
 requirement: SD-03 (wire-time base)
+note: recent footage on today without opening the day dialog (device defect 3 / W-1) is re-checked in H-SD13
 result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD4. Segment boundary and end of recording
 steps: start playback shortly before the end of a segment that has a following segment; then seek near the end of the last segment.
 expected: playback continues across the segment boundary without user action; at the end of the last segment the panel shows «Записи закончились».
 requirement: SD-03 (D-04)
+note: the end of the last recording without a reconnect loop (device defect 4 / W-2) is re-checked in H-SD14
 result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
 ### H-SD5. Pause, «Продолжить», «Живой»
@@ -88,12 +90,36 @@ expected: playback resumes at the same moment (± a few seconds) without user ac
 requirement: SD-03 (D-04)
 result: blocked (no SD card) — not exercised 2026-10-31: the TNP camera reports no card (tfstat=5), the TUTK camera was unreachable; needs a microSD card with at least an hour of recordings
 
+### H-SD11. Ruler follows live time after «Живой»
+steps: open the camera; note the ruler label follows the clock (two screenshots ~5 s apart); drag onto a recorded segment and release (playback starts, label «Запись HH:mm:ss»); tap «Живой».
+expected: within ~1 s the ruler label shows the current time again and keeps advancing (two screenshots ~5 s apart differ by ~5 s); it does NOT stay at the last archive time.
+requirement: SD-02 / SD-04 (device defect 1, plan 04-11)
+result: pending
+
+### H-SD12. No spinner while the link is failed / retrying / waiting
+steps: power the camera off (or turn the phone's Wi-Fi off) while the camera screen is open and wait for «Повтор (n/5)» / AuthFailed / Waiting; then power the camera back on / Wi-Fi on.
+expected: the area under the day button is empty (no «Загрузка записей…» spinner); «Не удалось получить список» only if a list request really failed. After the badge returns to Live the timeline appears by itself (log `BLOCK_ARCHIVE_REFRESH` or `BLOCK_ARCHIVE_LOAD`). After a camera power-on the camera may reject the password for a few minutes (known) — that is the AuthFailed case to check.
+requirement: SD-05 (device defect 2, plan 04-11)
+result: pending
+
+### H-SD13. Recent footage on today seekable without opening the day dialog (W-1)
+steps: keep the camera screen open for more than 5 min (do not open the day dialog); drag the ruler to 2-3 min before now and release.
+expected: playback starts at the chosen moment (label within a few seconds of the target); the segment on the ruler reaches close to now; log shows `BLOCK_ARCHIVE_REFRESH reason=periodic` at ~60 s intervals and / or `reason=seek` before the `BLOCK_SEEK`.
+requirement: SD-02 / SD-03 (device defect 3, W-1, plan 04-12)
+result: pending
+
+### H-SD14. End of recording without a reconnect loop (W-2)
+steps: drag to ~20 s before the last recorded moment (or right up to now on a continuously recording camera, then let it play into the end) and wait 60 s.
+expected: «Записи закончились» within ~30 s after the picture stops; the badge never shows «Подключение…» (no `BLOCK_STALL ... mode=ARCHIVE`). If the camera goes silent mid-way instead: at most 2 reconnects, then «Нет записи в это время» with «Продолжить» and live video playing (`BLOCK_PLAYBACK_STATE ... reason=silent-reseek-cap`).
+requirement: SD-03 (D-04; device defect 4, W-2, plan 04-10)
+result: pending
+
 ## Summary
 
-total: 10
+total: 14
 passed: 1
 issues: 0
-pending: 0
+pending: 4
 partial: 0
 skipped: 0
 blocked: 9

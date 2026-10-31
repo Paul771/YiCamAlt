@@ -1164,18 +1164,21 @@
         <marker-13>[LiveView][vm][BLOCK_ARCHIVE_ACTION]</marker-13>
         <marker-14>[LiveView][archive-ui][BLOCK_ARCHIVE_PANEL] panel=&lt;enum&gt;</marker-14>
         <marker-15>[LiveView][archive-ui][BLOCK_TIMELINE_GESTURE] released=true zoomed=&lt;b&gt; seek=&lt;b&gt;</marker-15>
+        <marker-16>[LiveView][archive][BLOCK_ARCHIVE_REFRESH] reason=&lt;first|retry|epoch|periodic|days|seek|seek-resolve&gt; full=&lt;b&gt; / refreshed=&lt;b&gt;</marker-16>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line and every LiveViewUi.toString() is RedactionScanner-clean (LIVE_SECRETS: device id, DID, passwords, InitString, license)</assertion-1>
       </required-trace-assertions>
       <notes>
         <note-1>LiveViewScreen.kt (Compose + TextureView) has no JVM or instrumented test (no emulator): only compile evidence via assembleDebug; behaviour is device-only (H-L1, H-L6, H-L7, H-L8).</note-1>
+        <note-2>Plans 04-11 / 04-12: the ArchivePanel IDLE empty box and the TimelineRuler fed from ArchiveUi.rulerMs (cursorMs = ui.rulerMs) are compile-only evidence (assembleDebug); the behaviour behind them (rulerMs, IDLE vs LOADING, refresh policy, pending seek, SILENT hint) is proven by the ArchiveCoordinatorTest JVM scenarios listed under V-M-SD-ARCHIVE (scenarios 20-23); device confirmation H-SD11..H-SD13.</note-2>
       </notes>
       <gate-evidence>
         <evidence-1>2026-10-23 plan 03-10: LiveViewModelTest 23 (virtual time, real LiveSessionSupervisor + DefaultMediaSession over LiveFakes); plan 03-09: ZoomMathTest 6</evidence-1>
         <evidence-2>Device evidence pending: H-L1, H-L4, H-L6, H-L7, H-L8 in .planning/phases/03-live-view/03-HUMAN-UAT.md (plan 03-13); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-31 plans 04-06 / 04-07: LiveViewModelTest 33, ArchiveCoordinatorTest 28, TimelineMathTest 14, CalendarGridTest 6; TimelineRuler / ArchivePanel / DayPickerDialog compile-only; device H-SD1..H-SD10 pending (04-HUMAN-UAT.md)</evidence-3>
         <evidence-4>2026-10-31 plan 04-09 (04-DEVICE-VERIFICATION.md): archive panel present, live regression OK (Home and return: BLOCK_STOP reason=background, BLOCK_RESUME resumed=true, Live again in ~0.6 s, picture not black); H-SD6 no-card state passed; other H-SD items not exercised (no SD card)</evidence-4>
+        <evidence-5>2026-10-31 plans 04-11 / 04-12 (gap closure): ArchiveCoordinatorTest 57 (28 before 04-11, +6 ruler and +5 IDLE at 04-11, +18 refresh at 04-12), LiveViewModelTest 33 (IDLE start test replaces the LOADING one); full suite 944 tests, 0 failures, 1 skipped; device H-SD11..H-SD13 pending (plan 04-13)</evidence-5>
       </gate-evidence>
       <wave-follow-up>JVM only (no emulator): LiveViewModel over the real supervisor with fake links; ZoomMath pure.</wave-follow-up>
       <phase-follow-up>Device follow-up H-L1 (TextureView picture on MIUI), H-L4 (HD/SD), H-L6 (background stop / resume), H-L7 (fullscreen, rotation, gestures, keep-screen-on), H-L8 (snapshot in Pictures/YiCamAlt). No PTZ, no camera selector (v2).</phase-follow-up>
@@ -1209,11 +1212,12 @@
         <scenario-11 kind="device" status="passed" evidence-type="trace">H-L4: 4881 honoured (width changes, no reconnect): TUTK camera first, TNP camera only after Phase 2 H1</scenario-11>
         <scenario-12 kind="success" evidence-type="unit">GSD Phase 4 (plans 04-05 / 04-06): stall window 10 s LIVE / 35 s ARCHIVE / off PAUSED from max(last frame growth, last mode switch); Streaming resets the mode to LIVE then liveEpoch += 1; replies of every watched link forwarded; HD/SD only in LIVE; SupervisorArchivePort delegation (framesIn, linkHealthy, no live link = send false) (LiveSessionSupervisorTest 47); MediaSession gate and lastFrame (DefaultMediaSessionTest 12)</scenario-12>
         <scenario-13 kind="device" status="pending" evidence-type="trace">H-SD10: reconnect during archive playback resumes at the same moment through liveEpoch, retry schedule as live [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-13>
+        <scenario-14 kind="success" evidence-type="unit">GSD Phase 4 plan 04-10 (W-2c, virtual time): `ARCHIVE stall-closed links do not reset the attempt counter`, `LIVE stall after a healthy stream still resets the attempt counter`, `ARCHIVE stall after a long archive playback still resets the attempt counter`, `archiveStallCount counts only ARCHIVE stalls` (LiveSessionSupervisorTest 51)</scenario-14>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveSession][supervisor][BLOCK_OPEN_LINK]</marker-1>
         <marker-2>[LiveSession][supervisor][BLOCK_SCHEDULE]</marker-2>
-        <marker-3>[LiveSession][supervisor][BLOCK_STALL]</marker-3>
+        <marker-3>[LiveSession][supervisor][BLOCK_STALL] idleMs=&lt;n&gt; mode=&lt;LIVE|ARCHIVE&gt; keepsAttempt=&lt;b&gt; (plan 04-10: keepsAttempt=true = an ARCHIVE stall shortly after Streaming that does not reset the attempt counter)</marker-3>
         <marker-4>[LiveSession][supervisor][BLOCK_CLASSIFY]</marker-4>
         <marker-5>[LiveSession][supervisor][BLOCK_DRAIN]</marker-5>
         <marker-6>[LiveSession][supervisor][BLOCK_NETWORK]</marker-6>
@@ -1230,6 +1234,7 @@
         <evidence-1>2026-10-23 plans 03-05 / 03-06 / 03-08 / 03-10: LiveSessionSupervisorTest 38 (green 3 runs in a row in plan 03-06), QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7; RedactionScanner clean on every captured log</evidence-1>
         <evidence-2>Device evidence pending: H-L4, H-L5, H-L6 in .planning/phases/03-live-view/03-HUMAN-UAT.md (plan 03-13); STATUS stays in-progress until then</evidence-2>
         <evidence-3>2026-10-31 plans 04-05 / 04-06: LiveSessionSupervisorTest 47 (live.* --rerun green 3 times in a row), DefaultMediaSessionTest 12; Phase 3 tests unchanged and green</evidence-3>
+        <evidence-4>2026-10-31 plan 04-10 (gap closure W-2): LiveSessionSupervisorTest 51 (+4); full suite 944 tests, 0 failures, 1 skipped at plan 04-13; device H-SD10 / H-SD14 pending (plan 04-13)</evidence-4>
       </gate-evidence>
       <phase-follow-up>Device follow-up H-L4 (HD/SD), H-L5 (reconnect after Wi-Fi / mobile switch and camera power cycle), H-L6 (background stop / resume).</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
@@ -1274,6 +1279,16 @@
         <scenario-15 kind="device" status="pending" evidence-type="trace">H-SD8: fullscreen, pinch zoom and snapshot in the archive (D-01) [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-15>
         <scenario-16 kind="device" status="pending" evidence-type="trace">H-SD9: TUTK camera: archive works or is hidden with «Архив SD на этой камере недоступен» (D-06) + redaction sweep of the pulled log [04-09, 2026-10-31: TUTK half not exercised, camera unreachable (connect timeout), D-06 not applied; redaction sweep half done: RealLogScanTest over the pulled 4645-line log, tests=1 skipped=0 failures=0]</scenario-16>
         <scenario-17 kind="device" status="pending" evidence-type="trace">H-SD10: reconnect during archive playback: Wi-Fi off / on while a recording plays -> playback resumes at the same moment (± a few seconds) without user action, retry schedule as live (2 / 5 / 10 / 20 s, 5 attempts), no «Записи закончились» and no jump to another segment (D-04)</scenario-17>
+        <scenario-18 kind="success" evidence-type="unit">Plan 04-10 W-2a past-end ENDED (PlaybackControllerTest): `playback past the last known end pauses with ENDED after 30 s`, `ENDED past the end comes before the supervisor's 35 s stall`, `no ENDED past the end while key frames keep arriving`</scenario-18>
+        <scenario-19 kind="failure" evidence-type="unit">Plan 04-10 W-2b silent re-seek cap (PlaybackControllerTest): `silent camera after a seek - two ARCHIVE-stall reconnects then Paused SILENT`, `mid-segment silence repeated at the same position pauses SILENT`, `network drops never count as silent`, `a stall at a different position starts a new count`, `resume after SILENT re-seeks with a fresh budget`</scenario-19>
+        <scenario-20 kind="success" evidence-type="unit">Plan 04-11 live ruler, device defect 1 (ArchiveCoordinatorTest): `in Live the ruler follows the wall clock`, `after goLive the ruler tracks the wall clock, not the last archive position`, `goLive from a past day selects today`, `in Live with a past day selected the ruler has no live position`, `in archive rulerMs equals the playback position`, `live day rolls over at midnight`</scenario-20>
+        <scenario-21 kind="success" evidence-type="unit">Plan 04-11 IDLE / spinner only while fetching on a healthy link, device defect 2 (ArchiveCoordinatorTest): `before the first Live the panel is IDLE without a spinner and nothing is sent`, `spinner while the first load is in flight on a healthy link`, `link drop during the first load hides the spinner`, `failed link before any load shows nothing and loads after the link returns`, `a fetch that really failed shows LIST_FAILED even with the link down, and the next liveEpoch reloads`, `refused index request leaves no spinner`; LiveViewModelTest `archive state starts IDLE after open on a TNP camera`</scenario-21>
+        <scenario-22 kind="success" evidence-type="unit">Plan 04-12 refresh policy, device defect 3 / W-1 (ArchiveCoordinatorTest): `liveEpoch bump refreshes the index`, `periodic refresh every 60 s while today's timeline is shown`, `periodic refresh also runs for today's empty day`, `no periodic refresh while the link is unhealthy`, `no periodic refresh for a past day`, `no periodic refresh after onBackground until the next liveEpoch`, `failed periodic refresh keeps the old list and waits for the next slot`, `refreshes never overlap`</scenario-22>
+        <scenario-23 kind="success" evidence-type="unit">Plan 04-12 refresh-first seek + SILENT hint, W-1 / W-2 (ArchiveCoordinatorTest): `seek past the last known end refreshes first and resolves against the new list`, `first seek from Live refreshes first when the index is older than 5 s`, `seek with a fresh index does not refresh`, `seek inside the known list while playing does not refresh`, `seek on a past day never refreshes`, `pending seek keeps the ruler on the target and falls back to the old list after 3 s`, `a second seek while pending replaces the target`, `goLive cancels a pending seek`, `onBackground cancels a pending seek`, `silent re-seek cap shows the no-recording hint`</scenario-23>
+        <scenario-24 kind="device" status="pending" evidence-type="trace">H-SD11: ruler follows live time after «Живой»: after archive playback, «Живой» brings the ruler label back to the current time within ~1 s and it keeps advancing (two screenshots ~5 s apart differ by ~5 s); it does not stay at the last archive time (device defect 1, plan 04-11)</scenario-24>
+        <scenario-25 kind="device" status="pending" evidence-type="trace">H-SD12: no spinner while the link is failed / retrying / waiting («Повтор (n/5)», AuthFailed, Waiting): the area under the day button is empty, «Не удалось получить список» only if a list request really failed; list reloads when the link returns (BLOCK_ARCHIVE_REFRESH or BLOCK_ARCHIVE_LOAD) (device defect 2, plan 04-11)</scenario-25>
+        <scenario-26 kind="device" status="pending" evidence-type="trace">H-SD13: recent footage on today seekable without opening the day dialog (W-1): after more than 5 min on the camera screen, a drag to 2-3 min before now starts playback at the chosen moment; BLOCK_ARCHIVE_REFRESH reason=periodic at ~60 s intervals and / or reason=seek before BLOCK_SEEK (device defect 3, plan 04-12)</scenario-26>
+        <scenario-27 kind="device" status="pending" evidence-type="trace">H-SD14: end of the last recording: «Записи закончились» within ~30 s, no reconnect loop (no «Подключение…», no BLOCK_STALL mode=ARCHIVE); total silence after a seek stops after at most 2 reconnects with «Нет записи в это время» and live video (BLOCK_PLAYBACK_STATE reason=silent-reseek-cap) (W-2, device defect 4, plan 04-10)</scenario-27>
       </scenarios>
       <device-log-markers>
         <marker-1>[Archive][status][BLOCK_SD_STATUS]</marker-1>
@@ -1285,6 +1300,8 @@
         <marker-7>[P2P][tnp][BLOCK_SEND_IOCTRL]</marker-7>
         <marker-8>[P2P][tnp][BLOCK_IOCTRL_REPLY]</marker-8>
         <marker-9>[P2P][tutk][BLOCK_STREAM_MODE]</marker-9>
+        <marker-10>[LiveView][archive][BLOCK_ARCHIVE_REFRESH] reason=&lt;first|retry|epoch|periodic|days|seek&gt; full=&lt;b&gt;; reason=seek-resolve refreshed=&lt;b&gt; (plan 04-12)</marker-10>
+        <marker-11>[Archive][playback][BLOCK_SILENT_RESEEK] stalled=&lt;b&gt; count=&lt;n&gt; (plan 04-10; cap reached -&gt; BLOCK_PLAYBACK_STATE reason=silent-reseek-cap)</marker-11>
       </device-log-markers>
       <required-trace-assertions>
         <assertion-1>Archive logs are value-free: counts, codes, sizes, enum names and second deltas only; no wire times, DIDs or passwords (RedactionScanner in PlaybackControllerTest / SdProbeTest; RealLogScanTest on the pulled device log in H-SD9)</assertion-1>
@@ -1293,11 +1310,13 @@
         <note-1>Device probe 04-04 (04-PROBE.md): the TNP camera has no SD card (tfstat 5, verified; 816 / 817 and 9031 / 9032 exchanges work end-to-end, index empty); the TUTK camera was unreachable (connect timeout), so TUTK archive feasibility is unverified. H-SD1..H-SD5, H-SD7, H-SD8, H-SD10 (SD-01..SD-04) need a camera with a microSD card that has recordings; H-SD6 (no-card state) can be checked on the TNP camera as it is.</note-1>
         <note-2>Port additions beyond the original plan: ArchiveLinkPort.framesIn() (plan 04-05; start timeout counts only while units of any generation arrive) and ArchiveLinkPort.linkHealthy() (health signal: playback timers run only while it is true; SupervisorArchivePort = live link and network available and state Live, ProbeArchivePort = isLive).</note-2>
         <note-3>TimelineRuler, ArchivePanel and DayPickerDialog composables have no JVM or Compose UI test (no emulator): compile evidence via assembleDebug only.</note-3>
+        <note-4>Test counts per file at plan 04-13 (JUnit XML): PlaybackControllerTest 36 (28 + 3 past-end + 5 SILENT, plan 04-10), ArchiveCoordinatorTest 57 (28 before 04-11, 39 after 04-11, 57 after 04-12), TimelineMathTest 14, CalendarGridTest 6, SdProbeTest 10; other archive.* files unchanged since 04-07. Earlier per-file numbers in scenarios 5 and 6 are the plan 04-07 snapshot.</note-4>
       </notes>
       <gate-evidence>
         <evidence-1>2026-10-30 / 31 plans 04-01..04-07: SdArchiveCodecTest 21, SdTimeTest 10, SdTimelineTest 18, SdStatusTest 7, PlaybackCommandsTest 10, SdIndexRepositoryTest 17, PlaybackControllerTest 28, ArchiveCoordinatorTest 28, TimelineMathTest 14, CalendarGridTest 6, SdProbeTest 10; full suite 903 tests, 0 failures, 1 skipped at plan 04-07</evidence-1>
         <evidence-2>Device evidence pending: H-SD1..H-SD10 in .planning/phases/04-sd-archive/04-HUMAN-UAT.md (plan 04-09); STATUS stays in-progress until then; never passed from JVM evidence</evidence-2>
         <evidence-3>2026-10-31 plan 04-09 (.planning/phases/04-sd-archive/04-DEVICE-VERIFICATION.md): H-SD6 no-card state passed on the TNP camera; redaction sweep clean; H-SD1..H-SD5, H-SD7, H-SD8, H-SD10 not exercised (no SD card with recordings), H-SD9 not exercised (TUTK unreachable). STATUS stays in-progress</evidence-3>
+        <evidence-4>2026-10-31 plans 04-10..04-12 (gap closure for device defects 1-4, W-1, W-2): PlaybackControllerTest 36, ArchiveCoordinatorTest 57, LiveSessionSupervisorTest 51, LiveViewModelTest 33; full suite 944 tests, 0 failures, 0 errors, 1 skipped (RealLogScanTest) with :app:testDebugUnitTest :app:assembleDebug (plan 04-13 run); device re-check H-SD11..H-SD14 pending (plan 04-13). STATUS stays in-progress</evidence-4>
       </gate-evidence>
       <phase-follow-up>Device follow-up H-SD1..H-SD10 (plan 04-09); needs a microSD card with at least one hour of recordings before the run; TUTK may be dropped from ArchiveSupport on device evidence (D-06).</phase-follow-up>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
@@ -1686,6 +1705,7 @@
       <required-evidence>
         <evidence-1>JVM gate: full unit suite + assembleDebug green (plan 04-08 run recorded in 04-08-SUMMARY.md)</evidence-1>
         <evidence-2>Device gate: H-SD1..H-SD10 in .planning/phases/04-sd-archive/04-HUMAN-UAT.md (plan 04-09 run 2026-10-31: H-SD6 passed, the other nine not exercised; see 04-DEVICE-VERIFICATION.md). SD-01..SD-04 need a camera with a microSD card that has recordings; H-SD6 is checkable on the TNP camera (no card, 04-PROBE.md)</evidence-2>
+        <evidence-3>Gap closure 04-10..04-12 (device defects 1-4, W-1, W-2): JVM green (full suite 944 tests, 0 failures, 1 skipped); device re-check H-SD11..H-SD14 (plan 04-13)</evidence-3>
       </required-evidence>
       <notes>
         <note-1>Nothing in this gate is device-verified yet beyond the 04-04 probe (TNP: 816 / 817 and 9031 / 9032 exchanges, no SD card; TUTK unreachable).</note-1>
