@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-12-PLAN.md
-last_updated: "2026-10-31T14:04:04.783Z"
+stopped_at: Completed 04-13-PLAN.md (device re-check recorded; phase human_needed)
+last_updated: "2026-10-31T15:22:28.282Z"
 last_activity: 2026-10-31
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 54
-  completed_plans: 52
+  completed_plans: 53
   percent: 0
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 
 ## Current Position
 
-Phase: 4 (Архив SD-карты) — EXECUTING
-Plan: 12 of 13
-Status: Gap closure in progress — 04-10 (W-2), 04-11 (defects 1, 2), 04-12 (defect 3 / W-1) done; 04-13 pending; phase stays human_needed
+Phase: 4 (Архив SD-карты) — VERIFYING (human_needed)
+Plan: 13 of 13
+Status: Gap closure plans 04-10..04-13 done; device re-check: H-SD10, H-SD11, H-SD13 passed, H-SD12, H-SD14 partial; phase stays human_needed
 Last activity: 2026-10-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -91,6 +91,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P10 | 40min | 3 tasks | 7 files |
 | Phase 04 P11 | 6min | 3 tasks | 5 files |
 | Phase 04 P12 | 25min | 2 tasks | 2 files |
+| Phase 04 P13 | ~1h | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -173,6 +174,7 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-11: ruler position is a new field ArchiveUi.rulerMs; cursorMs keeps its archive-only meaning
 - [Phase 04]: 04-11: ArchivePanel.IDLE is display-only; internal LOADING kept so the next liveEpoch reloads a missing list
 - [Phase 04]: 04-12: one 60 s refreshMs rule for dialog refresh and periodic poll; today's NO_RECORDINGS polled too; pre-seek refresh only when index older than 5 s, 3 s wait then old list
+- [Phase 04]: 04-13: H-SD12 and H-SD14 partial (AuthFailed variant / natural end not reached on device); phase 4 stays human_needed
 
 ### Pending Todos
 
@@ -186,6 +188,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-31T14:04:04.777Z
-Stopped at: Completed 04-12-PLAN.md
+Last session: 2026-10-31T15:22:28.276Z
+Stopped at: Completed 04-13-PLAN.md (device re-check recorded; phase human_needed)
 Resume file: None
