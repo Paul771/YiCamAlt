@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.time.LocalDate
 import java.time.ZoneId
@@ -52,7 +53,8 @@ import java.util.Locale
 //     ArchiveUi.initial(today, dayStartMs, dayEndMs) - IDLE state before the coordinator exists.
 //   ArchiveTexts - Russian archive texts (D-07) and dayLabel(day, today).
 //   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground;
-//     internal refresh policy (BLOCK_ARCHIVE_REFRESH: launchLoad reasons, shouldPoll).
+//     internal refresh policy (BLOCK_ARCHIVE_REFRESH: launchLoad reasons, shouldPoll, needsRefreshBeforeSeek,
+//     firePendingSeek / cancelPendingSeek; SEEK_REFRESH_MIN_AGE_MS, SEEK_REFRESH_WAIT_MS).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
@@ -62,6 +64,11 @@ import java.util.Locale
 //     liveEpoch increase clears it). The poll counts from the last success or attempt, so a failed refresh waits
 //     for the next slot and keeps the old list; a refresh never starts while another load runs. Discretion: today's
 //     NO_RECORDINGS panel is polled too, so a fresh card's first recording appears without user action.
+//     GSD plan 04-12 (W-1 seek) + Paused(SILENT) hint: a seek on today from Live, or at / after the last known end,
+//     with an index older than SEEK_REFRESH_MIN_AGE_MS on a healthy link refreshes first (pendingSeekMs, joined on
+//     the load at most SEEK_REFRESH_WAIT_MS) and then resolves against the new (or, on timeout, the old) list; the
+//     ruler stays on the target meanwhile; a second seek replaces the target; goLive / togglePause / onBackground /
+//     close cancel it. Paused(SILENT) from plan 04-10 shows «Нет записи в это время» with «Продолжить».
 //   PREVIOUS: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
 //     clock floored to 1 s in Live for today; «Живой» selects today; the Live day rolls over at local midnight.
 //     cursorMs semantics unchanged. (device defect 2): ArchivePanel.IDLE; the spinner (LOADING) is shown only while
@@ -149,6 +156,8 @@ class ArchiveCoordinator(
 ) {
     private companion object {
         const val TICK_MS = 500L
+        const val SEEK_REFRESH_MIN_AGE_MS = 5_000L // an index younger than this is used as is
+        const val SEEK_REFRESH_WAIT_MS = 3_000L // max wait for the pre-seek refresh (normal fetch ~0.3 s on device)
     }
 
     private val lock = Any()
@@ -169,6 +178,8 @@ class ArchiveCoordinator(
     private var refreshAttemptAt: Long? = null // last index-only refresh start (success or not)
     private var backgrounded = false // set by onBackground, cleared by the next liveEpoch increase
     private var lastEpoch = 0
+    private var pendingSeekMs: Long? = null // refresh-first seek target waiting for the refresh
+    private var pendingJob: Job? = null
 
     // Playback tracking for the TUTK hide rule and the cursor day.
     private var prev: PlaybackState = PlaybackState.Live
@@ -227,9 +238,11 @@ class ArchiveCoordinator(
             if (closed) return
             closed = true
             fetching = false
-            val j = jobs + listOfNotNull(loadJob)
+            pendingSeekMs = null
+            val j = jobs + listOfNotNull(loadJob, pendingJob)
             jobs = emptyList()
             loadJob = null
+            pendingJob = null
             j
         }
         toCancel.forEach { it.cancel() }
@@ -301,12 +314,33 @@ class ArchiveCoordinator(
     //   PURPOSE: Play the archive from a timeline instant; entering the archive forces sound off (D-05).
     //   INPUTS: { targetMs: Long - epoch ms }
     //   OUTPUTS: none
-    //   SIDE_EFFECTS: forceMute() when coming from live; PlaybackController.seek
-    //   LINKS: PlaybackController.seek
+    //   SIDE_EFFECTS: forceMute() when coming from live; may refresh the index first (from Live, or on today at / after
+    //     the last known end, index older than 5 s, healthy link), then resolve; waits at most 3 s; the ruler shows the
+    //     target meanwhile; a seek while one is pending replaces its target; PlaybackController.seek
+    //   LINKS: PlaybackController.seek, BLOCK_ARCHIVE_REFRESH, SdTimeline.resolveSeek
     // END_CONTRACT: seek
     fun seek(targetMs: Long) {
-        if (!synchronized(lock) { active() }) return
-        if (controller.state.value == PlaybackState.Live) forceMute()
+        val fromLive: Boolean
+        val pending: Boolean
+        synchronized(lock) {
+            if (!active()) return
+            fromLive = controller.state.value == PlaybackState.Live
+            if (pendingSeekMs != null) {
+                pendingSeekMs = targetMs // replace the target, same wait
+            } else if (needsRefreshBeforeSeek(targetMs, fromLive)) {
+                pendingSeekMs = targetMs
+                if (loadJob?.isActive != true) launchLoad(full = false, reason = "seek")
+                val job = loadJob
+                pendingJob = scope.launch {
+                    val refreshed = withTimeoutOrNull(SEEK_REFRESH_WAIT_MS) { job?.join() } != null
+                    firePendingSeek(refreshed)
+                }
+            }
+            pending = pendingSeekMs != null
+            if (pending) publish()
+        }
+        if (fromLive) forceMute() // D-05 at once, also for a pending seek
+        if (pending) return
         controller.seek(targetMs)
         onPlayback(controller.state.value)
     }
@@ -319,7 +353,7 @@ class ArchiveCoordinator(
     //   LINKS: PlaybackController.pause, PlaybackController.resume
     // END_CONTRACT: togglePause
     fun togglePause() {
-        if (!synchronized(lock) { active() }) return
+        if (!synchronized(lock) { active().also { if (it) cancelPendingSeek() } }) return
         when (controller.state.value) {
             is PlaybackState.Starting, is PlaybackState.Playing -> controller.pause()
             is PlaybackState.Paused, is PlaybackState.Failed -> controller.resume()
@@ -336,7 +370,7 @@ class ArchiveCoordinator(
     //   LINKS: PlaybackController.goLive
     // END_CONTRACT: goLive
     fun goLive() {
-        if (!synchronized(lock) { active() }) return
+        if (!synchronized(lock) { active().also { if (it) cancelPendingSeek() } }) return
         forceMute()
         controller.goLive()
         onPlayback(controller.state.value)
@@ -353,6 +387,7 @@ class ArchiveCoordinator(
         synchronized(lock) {
             if (!started || closed) return
             backgrounded = true // no index polling until the next liveEpoch increase
+            cancelPendingSeek()
         }
         controller.onSessionStopped()
         onPlayback(controller.state.value)
@@ -363,6 +398,38 @@ class ArchiveCoordinator(
     private fun active() = started && !closed && !hidden
 
     private fun today(): LocalDate = SdTime.localDate(wallClock(), zone)
+
+    // Under lock: a seek on today from Live, or at / after the last known end, needs a fresh list first.
+    private fun needsRefreshBeforeSeek(targetMs: Long, fromLive: Boolean): Boolean {
+        val at = loadedAt ?: return false
+        if (!port.linkHealthy()) return false
+        if (panel != ArchivePanel.TIMELINE && panel != ArchivePanel.NO_RECORDINGS) return false
+        if (SdTime.localDate(targetMs, zone) != today()) return false
+        if (clock() - at < SEEK_REFRESH_MIN_AGE_MS) return false
+        val lastEnd = all.lastOrNull()?.endMs ?: return true
+        return fromLive || targetMs >= lastEnd
+    }
+
+    // Resolves the pending seek against the current list (refreshed or not).
+    private fun firePendingSeek(refreshed: Boolean) {
+        val t = synchronized(lock) {
+            val target = pendingSeekMs
+            pendingSeekMs = null
+            pendingJob = null
+            if (target == null || !active()) return
+            Timber.i("[LiveView][archive][BLOCK_ARCHIVE_REFRESH] reason=seek-resolve refreshed=%b", refreshed)
+            target
+        }
+        controller.seek(t)
+        onPlayback(controller.state.value)
+    }
+
+    // Under lock.
+    private fun cancelPendingSeek() {
+        pendingSeekMs = null
+        pendingJob?.cancel()
+        pendingJob = null
+    }
 
     private fun onEpoch(epoch: Int) {
         synchronized(lock) {
@@ -544,7 +611,8 @@ class ArchiveCoordinator(
     // Under lock.
     private fun liveRulerMs(): Long? = if (selectedDay == today()) wallClock() / 1000 * 1000 else null
 
-    private fun rulerOf(s: PlaybackState): Long? = if (s == PlaybackState.Live) liveRulerMs() else cursorOf(s)
+    // A pending refresh-first seek keeps the ruler on the chosen moment.
+    private fun rulerOf(s: PlaybackState): Long? = pendingSeekMs ?: (if (s == PlaybackState.Live) liveRulerMs() else cursorOf(s))
 
     // Under lock (or from the constructor).
     private fun publish() {
@@ -575,6 +643,7 @@ class ArchiveCoordinator(
         }
         val hint = when {
             s is PlaybackState.Paused && s.reason == PauseReason.ENDED -> ArchiveTexts.ENDED
+            s is PlaybackState.Paused && s.reason == PauseReason.SILENT -> ArchiveTexts.NO_RECORDING_AT
             s is PlaybackState.Failed && s.reason == FailReason.NO_RECORDING -> ArchiveTexts.NO_RECORDING_AT
             s is PlaybackState.Failed -> ArchiveTexts.START_FAILED
             else -> null
