@@ -1,11 +1,12 @@
 // FILE: ArchiveCoordinator.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One screen state for the SD archive under the live view: card status, recorded days, the selected day's
 //     timeline and playback (SD-01..SD-05; D-01, D-02, D-04..D-07). Live video keeps running under every state.
 //   SCOPE: ArchivePanel / ArchiveUi / ArchiveTexts; ArchiveCoordinator: load on the first liveEpoch (816 / 817 then
 //     index), retry, days dialog with a stale-index refresh, day selection, seek / pause / continue / live with
-//     forced mute (D-05), background pause, TUTK hide rule (D-06), midnight crossing. Value-free logs.
+//     forced mute (D-05), background pause, TUTK hide rule (D-06), midnight crossing, ruler position (archive
+//     position or live wall time), «Живой» back to today, Live day roll-over at local midnight. Value-free logs.
 //   DEPENDS: M-SD-ARCHIVE (ArchiveLinkPort, ArchiveSupport, SdIndexRepository, PlaybackController, SdTimeline, SdTime),
 //     camera (TransportType), kotlinx.coroutines, Timber
 //   LINKS: M-UI-LIVEVIEW, V-M-UI-LIVEVIEW, M-SD-ARCHIVE
@@ -44,14 +45,17 @@ import java.util.Locale
 
 // START_MODULE_MAP
 //   ArchivePanel - HIDDEN | LOADING | NO_CARD | CARD_ERROR | LIST_FAILED | NO_RECORDINGS | TIMELINE.
-//   ArchiveUi - archive part of the camera screen (panel + message + retry, days, timeline, cursor, playback labels);
+//   ArchiveUi - archive part of the camera screen (panel + message + retry, days, timeline, cursor, rulerMs, playback labels);
 //     ArchiveUi.initial(today, dayStartMs, dayEndMs) - LOADING state before the coordinator exists.
 //   ArchiveTexts - Russian archive texts (D-07) and dayLabel(day, today).
 //   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-06 GREEN. INVARIANTS: nothing is sent before the first liveEpoch > 0; a full
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
+//     clock floored to 1 s in Live for today; «Живой» selects today; the Live day rolls over at local midnight.
+//     cursorMs semantics unchanged.
+//   PREVIOUS: v0.2.0 - GSD plan 04-06 GREEN. INVARIANTS: nothing is sent before the first liveEpoch > 0; a full
 //     load (816 then index) runs on the first liveEpoch and again on a liveEpoch / retry while the last load ended in
 //     LOADING / LIST_FAILED; NoCard / Abnormal never ask for the index; a stale-index refresh (openDays) keeps the
 //     old data on failure. Sound is forced off on entering the archive and on «Живой» (D-05). TUTK hide (D-06): only
@@ -60,11 +64,14 @@ import java.util.Locale
 //     unhealthy observation or a liveEpoch change) AND units of any generation arriving during the window (checker
 //     addendum: no units = connection problem, left to the supervisor). Paused(BACKGROUND) survives a reconnect as
 //     a «Продолжить» marker. The selected day follows the cursor only when the cursor's day changes.
-//   PREVIOUS: v0.1.0 - GSD plan 04-06 RED: signatures only.
+//   EARLIER: v0.1.0 - GSD plan 04-06 RED: signatures only.
 // END_CHANGE_SUMMARY
 
 enum class ArchivePanel { HIDDEN, LOADING, NO_CARD, CARD_ERROR, LIST_FAILED, NO_RECORDINGS, TIMELINE }
 
+// cursorMs - archive position (null in Live). rulerMs - where the ruler centre follows: the archive position
+// (Starting.atMs / Playing / Paused / Failed position) in the archive; in Live, the wall clock floored to whole
+// seconds while the selected day is today; null otherwise (ruler keeps its own centre).
 data class ArchiveUi(
     val panel: ArchivePanel, val message: String?, val showRetry: Boolean,
     val today: LocalDate, val selectedDay: LocalDate, val dayLabel: String, val recordedDays: Set<LocalDate>, val daysDialogOpen: Boolean,
@@ -141,6 +148,7 @@ class ArchiveCoordinator(
     private var all: List<Segment> = emptyList()
     private var recordedDays: Set<LocalDate> = emptySet()
     private var selectedDay: LocalDate = SdTime.localDate(wallClock(), zone)
+    private var lastToday: LocalDate = selectedDay
     private var daysDialogOpen = false
     private var loadedAt: Long? = null
     private var lastEpoch = 0
@@ -419,9 +427,25 @@ class ArchiveCoordinator(
                     is PlaybackState.Failed -> if (s.reason == FailReason.NO_FRAMES && prev !is PlaybackState.Failed) {
                         hideNow = shouldHide()
                     }
+                    PlaybackState.Live -> if (prev != PlaybackState.Live) {
+                        // «Живой» returns the ruler to today.
+                        selectedDay = today()
+                        refreshDayPanel()
+                    }
                     else -> Unit
                 }
                 prev = s
+            }
+            if (s == PlaybackState.Live) {
+                // Live day roll-over at local midnight: the selected today becomes the new today.
+                val t = today()
+                if (t != lastToday) {
+                    if (selectedDay == lastToday) {
+                        selectedDay = t
+                        refreshDayPanel()
+                    }
+                    lastToday = t
+                }
             }
             if (s is PlaybackState.Starting && (!port.linkHealthy() || port.liveEpoch.value != startEpoch)) {
                 liveThroughout = false
@@ -473,6 +497,11 @@ class ArchiveCoordinator(
         is PlaybackState.Failed -> s.positionMs
     }
 
+    // Under lock.
+    private fun liveRulerMs(): Long? = if (selectedDay == today()) wallClock() / 1000 * 1000 else null
+
+    private fun rulerOf(s: PlaybackState): Long? = if (s == PlaybackState.Live) liveRulerMs() else cursorOf(s)
+
     // Under lock (or from the constructor).
     private fun publish() {
         _ui.value = build()
@@ -516,7 +545,7 @@ class ArchiveCoordinator(
             dayEndMs = bounds.last + 1,
             segments = if (panel == ArchivePanel.HIDDEN) emptyList() else SdTimeline.segmentsForDay(all, selectedDay, zone),
             cursorMs = cursorOf(s),
-            rulerMs = null,
+            rulerMs = rulerOf(s),
             inArchive = inArchive,
             playing = s is PlaybackState.Playing,
             pauseLabel = pauseLabel,
