@@ -16,7 +16,7 @@
 - [ ] **Phase 2: Нативный P2P и первый кадр** - Вендорские .so из локального APK, JNI-шимы, чистое Kotlin-ядро протокола, первое видео по LAN и удалённо
 - [x] **Phase 3: Полноценный live-view** - Супервизор сессии, переподключение, звук, HD/SD, снимок, полноэкранный режим, корректная остановка
  (completed 2026-10-30)
-- [ ] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию
+- [ ] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию (all 10 plans done; device verification partial, human_needed: no SD card)
 - [ ] **Phase 5: Лента событий** - Реальный эндпоинт алертов, превью и 6-секундные клипы, фильтры, офлайн-кэш, переход к записи SD
 - [ ] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
 
@@ -133,7 +133,7 @@ Plans:
 - [x] 04-06-PLAN.md — Mode-aware supervisor + SupervisorArchivePort, ArchiveCoordinator, LiveViewModel archive API
 - [x] 04-07-PLAN.md — Archive UI under the video: timeline ruler, day month-grid dialog, pause/«Живой», D-07 texts
 - [x] 04-08-PLAN.md — GRACE docs sync (M-SD-ARCHIVE, V-M-SD-ARCHIVE, graph) + 04-HUMAN-UAT.md
-- [ ] 04-09-PLAN.md — Device verification H-SD1..H-SD9, D-06 decision for TUTK
+- [x] 04-09-PLAN.md — Device verification H-SD1..H-SD9, D-06 decision for TUTK
 **Research**: needs `/gsd:research-phase` (HIGH) — недокументированные IOCTRL-пакеты SD-воспроизведения (9030, ch4/5), формат индекса дней/отрезков
 **UI hint**: yes
 
@@ -171,6 +171,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 1. Секреты и реальный список камер | 0/TBD | Not started | - |
 | 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
-| 4. Архив SD-карты | 9/10 | In Progress|  |
+| 4. Архив SD-карты | 10/10 | Human needed |  |
 | 5. Лента событий | 0/TBD | Not started | - |
 | 6. Релизная сборка и проверка на телефоне | 0/TBD | Not started | - |
