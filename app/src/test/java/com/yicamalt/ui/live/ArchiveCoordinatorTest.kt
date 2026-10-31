@@ -6,7 +6,8 @@
 //     dialog refresh, seek / pause / live with forced mute, ended and start-failed hints, TUTK hide rule (D-06) incl.
 //     network loss, link drop, mid-segment silence and no-units (checker addendum), background marker, unsupported
 //     transport, midnight crossing, log marker; ruler position (rulerMs) in Live / archive, «Живой» day, Live midnight
-//     roll-over (plan 04-11); index refresh on liveEpoch / every 60 s with its guards (plan 04-12).
+//     roll-over (plan 04-11); index refresh on liveEpoch / every 60 s with its guards,
+//     refresh-first seek with a bounded pending seek, Paused(SILENT) hint (plan 04-12).
 //   DEPENDS: M-UI-LIVEVIEW (ArchiveCoordinator), M-SD-ARCHIVE (PlaybackController, SdTime, FakeArchivePort,
 //     SdFixtures), TraceRecorder, RedactionScanner
 //   LINKS: V-M-UI-LIVEVIEW, M-UI-LIVEVIEW
@@ -56,6 +57,7 @@ import java.time.ZoneOffset
 //   step(ms) - advance virtual time and run due tasks.
 //   obs(uc, iso) - recorded key-frame observation.
 //   playingAt(r, iso) - seek and deliver a recorded key frame -> Playing.
+//   pendingSeek() - rig with a refresh-first seek of 08:30Z waiting on an unanswered refresh.
 //   ArchiveCoordinatorTest - one test per behaviour bullet of plan 04-06 Task 2 plus the checker addendum.
 // END_MODULE_MAP
 
@@ -63,6 +65,7 @@ import java.time.ZoneOffset
 //   LAST_CHANGE: v0.3.0 - GSD plan 04-12 (W-1): BLOCK_REFRESH_TESTS (epoch / periodic refresh, unhealthy / past
 //     day / background / failure / overlap guards); `openDays refreshes a stale index` keeps the link unhealthy
 //     during the 61 s wait; `background then auto-resume keeps the marker` counts playback commands only.
+//     BLOCK_SEEK_REFRESH_TESTS (refresh-first seek, 3 s fallback, replace / cancel, SILENT hint), pendingSeek(rig).
 //   PREVIOUS: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1); IDLE / spinner-only-
 //     while-fetching load tests (device defect 2).
 //   EARLIER: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
@@ -523,6 +526,157 @@ class ArchiveCoordinatorTest {
         r.coord.close()
     }
     // END_BLOCK_REFRESH_TESTS
+
+    // START_BLOCK_SEEK_REFRESH_TESTS
+    // Pending refresh-first seek of 08:30Z (past the old list end 07:00Z) whose refresh gets no reply.
+    private fun TestScope.pendingSeek(): Rig {
+        val script = Script(entries = listOf(TODAY_SEG))
+        val r = rig(script = script)
+        step(10_000)
+        script.entries = null
+        r.coord.seek(utc("2026-10-30T08:30:00Z"))
+        runCurrent()
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        return r
+    }
+
+    @Test
+    fun `seek past the last known end refreshes first and resolves against the new list`() = runTest {
+        val script = Script(entries = listOf(TODAY_SEG))
+        val r = rig(script = script)
+        step(10_000)
+        script.entries = listOf(TODAY_SEG, NEW_SEG)
+        r.coord.seek(utc("2026-10-30T08:30:00Z"))
+        runCurrent()
+        assertEquals(2, r.count(9031))
+        assertTrue(
+            r.port.events.lastIndexOf("send:9031") < r.port.events.indexOf("send:9030"),
+            "${r.port.events}",
+        )
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T08:30:00Z"), r.port.expected!!), r.controller.state.value)
+        assertEquals(1, r.mutes)
+        recorder.assertMarkerAppeared("BLOCK_ARCHIVE_REFRESH")
+        r.coord.close()
+    }
+
+    @Test
+    fun `first seek from Live refreshes first when the index is older than 5 s`() = runTest {
+        val r = rig()
+        step(6_000)
+        r.coord.seek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        assertEquals(2, r.count(9031))
+        assertTrue(r.port.events.lastIndexOf("send:9031") < r.port.events.indexOf("send:9030"), "${r.port.events}")
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T06:15:00Z"), r.port.expected!!), r.controller.state.value)
+        r.coord.close()
+    }
+
+    @Test
+    fun `seek with a fresh index does not refresh`() = runTest {
+        val r = rig()
+        r.coord.seek(utc("2026-10-30T06:15:00Z"))
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T06:15:00Z"), r.port.expected!!), r.controller.state.value)
+        runCurrent()
+        assertEquals(1, r.count(9031))
+        r.coord.close()
+    }
+
+    @Test
+    fun `seek inside the known list while playing does not refresh`() = runTest {
+        val r = rig()
+        step(6_000)
+        playingAt(r, "2026-10-30T06:15:00Z")
+        assertEquals(2, r.count(9031))
+        r.coord.seek(utc("2026-10-30T06:30:00Z"))
+        runCurrent()
+        assertEquals(2, r.count(9031))
+        assertEquals(utc("2026-10-30T06:30:00Z"), (r.controller.state.value as PlaybackState.Starting).atMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `seek on a past day never refreshes`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        step(6_000)
+        r.coord.selectDay(LocalDate.of(2026, 10, 29))
+        r.coord.seek(utc("2026-10-29T10:10:00Z"))
+        runCurrent()
+        assertEquals(1, r.count(9031))
+        assertEquals(utc("2026-10-29T10:10:00Z"), (r.controller.state.value as PlaybackState.Starting).atMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `pending seek keeps the ruler on the target and falls back to the old list after 3 s`() = runTest {
+        val r = pendingSeek()
+        assertEquals(utc("2026-10-30T08:30:00Z"), r.ui.rulerMs)
+        assertEquals(1, r.mutes)
+        step(2_900)
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        assertEquals(utc("2026-10-30T08:30:00Z"), r.ui.rulerMs)
+        assertEquals(0, r.count(9030))
+        step(200)
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T06:59:54Z"), r.port.expected!!), r.controller.state.value)
+        r.coord.close()
+    }
+
+    @Test
+    fun `a second seek while pending replaces the target`() = runTest {
+        val r = pendingSeek()
+        r.coord.seek(utc("2026-10-30T06:20:00Z"))
+        runCurrent()
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        assertEquals(utc("2026-10-30T06:20:00Z"), r.ui.rulerMs)
+        step(3_100)
+        assertEquals(PlaybackState.Starting(utc("2026-10-30T06:20:00Z"), r.port.expected!!), r.controller.state.value)
+        assertEquals(1, r.count(9030))
+        r.coord.close()
+    }
+
+    @Test
+    fun `goLive cancels a pending seek`() = runTest {
+        val r = pendingSeek()
+        r.coord.goLive()
+        step(5_000)
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        assertEquals(0, r.count(9030))
+        r.coord.close()
+    }
+
+    @Test
+    fun `onBackground cancels a pending seek`() = runTest {
+        val r = pendingSeek()
+        r.coord.onBackground()
+        step(5_000)
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        assertEquals(0, r.count(9030))
+        r.coord.close()
+    }
+
+    @Test
+    fun `silent re-seek cap shows the no-recording hint`() = runTest {
+        val r = rig()
+        r.coord.seek(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        r.port.unitsFlowing = false
+        repeat(2) {
+            step(35_000)
+            r.port.healthy = false
+            r.port.live = false
+            r.port.archiveStalls += 1
+            step(1_000)
+            r.port.live = true
+            r.port.healthy = null
+            r.port.liveEpoch.value += 1
+            runCurrent()
+        }
+        assertEquals(PlaybackState.Paused(utc("2026-10-30T06:15:00Z"), PauseReason.SILENT), r.controller.state.value)
+        assertEquals(ArchiveTexts.NO_RECORDING_AT, r.ui.hint)
+        assertEquals(ArchiveTexts.CONTINUE, r.ui.pauseLabel)
+        assertTrue(r.ui.inArchive)
+        r.coord.close()
+    }
+    // END_BLOCK_SEEK_REFRESH_TESTS
 
     // START_BLOCK_RULER_TESTS
     @Test
