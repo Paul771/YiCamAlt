@@ -44,9 +44,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // START_MODULE_MAP
-//   ArchivePanel - HIDDEN | LOADING | NO_CARD | CARD_ERROR | LIST_FAILED | NO_RECORDINGS | TIMELINE.
+//   ArchivePanel - HIDDEN | IDLE | LOADING | NO_CARD | CARD_ERROR | LIST_FAILED | NO_RECORDINGS | TIMELINE.
 //   ArchiveUi - archive part of the camera screen (panel + message + retry, days, timeline, cursor, rulerMs, playback labels);
-//     ArchiveUi.initial(today, dayStartMs, dayEndMs) - LOADING state before the coordinator exists.
+//     ArchiveUi.initial(today, dayStartMs, dayEndMs) - IDLE state before the coordinator exists.
 //   ArchiveTexts - Russian archive texts (D-07) and dayLabel(day, today).
 //   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground.
 // END_MODULE_MAP
@@ -54,7 +54,9 @@ import java.util.Locale
 // START_CHANGE_SUMMARY
 //   LAST_CHANGE: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
 //     clock floored to 1 s in Live for today; «Живой» selects today; the Live day rolls over at local midnight.
-//     cursorMs semantics unchanged.
+//     cursorMs semantics unchanged. (device defect 2): ArchivePanel.IDLE; the spinner (LOADING) is shown only while
+//     a status / index fetch is in flight on a healthy link; LIST_FAILED only after a real failure; liveEpoch reload
+//     of LOADING / LIST_FAILED unchanged.
 //   PREVIOUS: v0.2.0 - GSD plan 04-06 GREEN. INVARIANTS: nothing is sent before the first liveEpoch > 0; a full
 //     load (816 then index) runs on the first liveEpoch and again on a liveEpoch / retry while the last load ended in
 //     LOADING / LIST_FAILED; NoCard / Abnormal never ask for the index; a stale-index refresh (openDays) keeps the
@@ -67,6 +69,8 @@ import java.util.Locale
 //   EARLIER: v0.1.0 - GSD plan 04-06 RED: signatures only.
 // END_CHANGE_SUMMARY
 
+// IDLE - nothing known yet and nothing being fetched (no link, failed / retrying / waiting link, or the last load
+// ended NotReady): empty area, no text, no spinner. Display-only: the coordinator keeps LOADING internally.
 enum class ArchivePanel { HIDDEN, IDLE, LOADING, NO_CARD, CARD_ERROR, LIST_FAILED, NO_RECORDINGS, TIMELINE }
 
 // cursorMs - archive position (null in Live). rulerMs - where the ruler centre follows: the archive position
@@ -82,14 +86,14 @@ data class ArchiveUi(
 
     companion object {
         // START_CONTRACT: initial
-        //   PURPOSE: LOADING archive state for a day before any coordinator data.
+        //   PURPOSE: IDLE archive state for a day before any coordinator data (nothing fetched yet, no spinner).
         //   INPUTS: { today: LocalDate; dayStartMs / dayEndMs: Long - bounds of today in the display zone }
-        //   OUTPUTS: { ArchiveUi - panel LOADING, message «Загрузка записей…», no playback }
+        //   OUTPUTS: { ArchiveUi - panel IDLE, message null, no retry, no playback }
         //   SIDE_EFFECTS: none
         //   LINKS: M-UI-LIVEVIEW
         // END_CONTRACT: initial
         fun initial(today: LocalDate, dayStartMs: Long, dayEndMs: Long) = ArchiveUi(
-            panel = ArchivePanel.LOADING, message = ArchiveTexts.LOADING, showRetry = false,
+            panel = ArchivePanel.IDLE, message = null, showRetry = false,
             today = today, selectedDay = today, dayLabel = ArchiveTexts.dayLabel(today, today), recordedDays = emptySet(),
             daysDialogOpen = false, dayStartMs = dayStartMs, dayEndMs = dayEndMs, segments = emptyList(),
             cursorMs = null, rulerMs = null, inArchive = false, playing = false, pauseLabel = null, hint = null, showLiveButton = false,
@@ -144,6 +148,7 @@ class ArchiveCoordinator(
     private var loadJob: Job? = null
 
     private var panel = ArchivePanel.LOADING
+    private var fetching = false // a status / index load is in flight
     private var hidden = false
     private var all: List<Segment> = emptyList()
     private var recordedDays: Set<LocalDate> = emptySet()
@@ -209,6 +214,7 @@ class ArchiveCoordinator(
         val toCancel = synchronized(lock) {
             if (closed) return
             closed = true
+            fetching = false
             val j = jobs + listOfNotNull(loadJob)
             jobs = emptyList()
             loadJob = null
@@ -360,6 +366,7 @@ class ArchiveCoordinator(
             panel = ArchivePanel.LOADING
             publish()
         }
+        fetching = true
         loadJob = scope.launch { load(full) }
     }
 
@@ -371,6 +378,7 @@ class ArchiveCoordinator(
             else -> repository.fetchIndex(wallClock())
         }
         synchronized(lock) {
+            fetching = false
             if (closed || hidden) return
             when {
                 status == SdStatus.NoCard -> panel = ArchivePanel.NO_CARD
@@ -512,7 +520,9 @@ class ArchiveCoordinator(
         val today = today()
         val bounds = SdTime.dayBounds(selectedDay, zone)
         val inArchive = s != PlaybackState.Live
-        val message = when (panel) {
+        // The spinner only while a fetch is in flight on a healthy link; otherwise an empty IDLE area.
+        val shown = if (panel == ArchivePanel.LOADING && !(fetching && port.linkHealthy())) ArchivePanel.IDLE else panel
+        val message = when (shown) {
             ArchivePanel.HIDDEN -> ArchiveTexts.UNSUPPORTED
             ArchivePanel.IDLE -> null
             ArchivePanel.LOADING -> ArchiveTexts.LOADING
@@ -534,9 +544,9 @@ class ArchiveCoordinator(
             else -> null
         }
         return ArchiveUi(
-            panel = panel,
+            panel = shown,
             message = message,
-            showRetry = panel == ArchivePanel.LIST_FAILED,
+            showRetry = shown == ArchivePanel.LIST_FAILED,
             today = today,
             selectedDay = selectedDay,
             dayLabel = ArchiveTexts.dayLabel(selectedDay, today),
@@ -544,7 +554,7 @@ class ArchiveCoordinator(
             daysDialogOpen = daysDialogOpen,
             dayStartMs = bounds.first,
             dayEndMs = bounds.last + 1,
-            segments = if (panel == ArchivePanel.HIDDEN) emptyList() else SdTimeline.segmentsForDay(all, selectedDay, zone),
+            segments = if (shown == ArchivePanel.HIDDEN) emptyList() else SdTimeline.segmentsForDay(all, selectedDay, zone),
             cursorMs = cursorOf(s),
             rulerMs = rulerOf(s),
             inArchive = inArchive,
