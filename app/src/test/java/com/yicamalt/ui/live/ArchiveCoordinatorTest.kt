@@ -1,12 +1,12 @@
 // FILE: ArchiveCoordinatorTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive screen state (SD-01..SD-05; D-01, D-02, D-04..D-07) in virtual time.
 //   SCOPE: IDLE before the first Live, spinner only while a fetch is in flight on a healthy link, D-07 status / list states with retry, day selection and labels, days
 //     dialog refresh, seek / pause / live with forced mute, ended and start-failed hints, TUTK hide rule (D-06) incl.
 //     network loss, link drop, mid-segment silence and no-units (checker addendum), background marker, unsupported
 //     transport, midnight crossing, log marker; ruler position (rulerMs) in Live / archive, «Живой» day, Live midnight
-//     roll-over (plan 04-11).
+//     roll-over (plan 04-11); index refresh on liveEpoch / every 60 s with its guards (plan 04-12).
 //   DEPENDS: M-UI-LIVEVIEW (ArchiveCoordinator), M-SD-ARCHIVE (PlaybackController, SdTime, FakeArchivePort,
 //     SdFixtures), TraceRecorder, RedactionScanner
 //   LINKS: V-M-UI-LIVEVIEW, M-UI-LIVEVIEW
@@ -47,9 +47,10 @@ import java.time.ZoneOffset
 
 // START_MODULE_MAP
 //   zone / wallNow / today - Europe/Moscow, 2026-10-30T09:00Z (12:00 local), 2026-10-30.
-//   TODAY_SEG / MIDNIGHT_SEG / OLD_SEG - index entries (ISO UTC start, seconds).
+//   TODAY_SEG / MIDNIGHT_SEG / OLD_SEG / YESTERDAY_SEG / NEW_SEG - index entries (ISO UTC start, seconds).
 //   Script - scripted 817 tfstat (null = no reply) and index entries (null = no reply).
-//   Rig - port + controller + coordinator + mute counter; rig(...) builds and starts it on backgroundScope;
+//   Rig - port + controller + coordinator + mute counter, count(type), playbackSent() (all but 816 / 9031 / 792);
+//     rig(...) builds and starts it on backgroundScope;
 //     wallStart / movingWall: constant wall clock or wallStart + virtual time (shared by controller and coordinator).
 //   wallSec(start) - moving wall time floored to whole seconds.
 //   step(ms) - advance virtual time and run due tasks.
@@ -59,9 +60,12 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1); IDLE / spinner-only-
+//   LAST_CHANGE: v0.3.0 - GSD plan 04-12 (W-1): BLOCK_REFRESH_TESTS (epoch / periodic refresh, unhealthy / past
+//     day / background / failure / overlap guards); `openDays refreshes a stale index` keeps the link unhealthy
+//     during the 61 s wait; `background then auto-resume keeps the marker` counts playback commands only.
+//   PREVIOUS: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1); IDLE / spinner-only-
 //     while-fetching load tests (device defect 2).
-//   PREVIOUS: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
+//   EARLIER: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
 // END_CHANGE_SUMMARY
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -77,6 +81,7 @@ class ArchiveCoordinatorTest {
     private val MIDNIGHT_SEG = "2026-10-29T20:30:00Z" to 3_600      // 23:30-00:30 local
     private val OLD_SEG = "2026-10-28T10:00:00Z" to 3_600
     private val YESTERDAY_SEG = "2026-10-29T10:00:00Z" to 3_600
+    private val NEW_SEG = "2026-10-30T07:00:00Z" to 6_600           // 10:00-11:50 local, merges with TODAY_SEG
 
     @BeforeEach fun setUp() { recorder.plant() }
 
@@ -93,6 +98,8 @@ class ArchiveCoordinatorTest {
         var mutes = 0
         val ui: ArchiveUi get() = coord.ui.value
         fun count(type: Int) = port.sent.count { it.type == type }
+        // Everything except status / index requests (816, 9031, 792).
+        fun playbackSent() = port.sent.count { it.type != 816 && it.type != 9031 && it.type != 792 }
     }
 
     private fun wire(iso: String) = SdTime.toWire(utc(iso), ZoneOffset.UTC)
@@ -378,7 +385,9 @@ class ArchiveCoordinatorTest {
         assertEquals(1, r.count(9031))
         r.coord.closeDays()
         assertFalse(r.ui.daysDialogOpen)
+        r.port.healthy = false // no periodic poll: the dialog refresh alone is counted
         step(61_000)
+        r.port.healthy = null
         r.coord.openDays()
         runCurrent()
         assertTrue(r.ui.daysDialogOpen)
@@ -405,6 +414,115 @@ class ArchiveCoordinatorTest {
         r.coord.close()
     }
     // END_BLOCK_DAY_TESTS
+
+    // START_BLOCK_REFRESH_TESTS
+    @Test
+    fun `liveEpoch bump refreshes the index`() = runTest {
+        val r = rig()
+        assertEquals(1, r.count(9031))
+        r.port.liveEpoch.value = 2
+        runCurrent()
+        assertEquals(2, r.count(9031))
+        assertEquals(1, r.count(816))
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        recorder.assertMarkerAppeared("BLOCK_ARCHIVE_REFRESH")
+        r.coord.close()
+    }
+
+    @Test
+    fun `periodic refresh every 60 s while today's timeline is shown`() = runTest {
+        val script = Script(entries = listOf(TODAY_SEG))
+        val r = rig(script = script)
+        step(59_000)
+        assertEquals(1, r.count(9031))
+        script.entries = listOf(TODAY_SEG, NEW_SEG)
+        step(1_500)
+        assertEquals(2, r.count(9031))
+        assertEquals(utc("2026-10-30T08:50:00Z"), r.ui.segments.last().endMs)
+        step(60_000)
+        assertEquals(3, r.count(9031))
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        r.coord.close()
+    }
+
+    @Test
+    fun `periodic refresh also runs for today's empty day`() = runTest {
+        val script = Script(entries = listOf(OLD_SEG))
+        val r = rig(script = script)
+        assertEquals(ArchivePanel.NO_RECORDINGS, r.ui.panel)
+        script.entries = listOf(OLD_SEG, TODAY_SEG)
+        step(60_500)
+        assertEquals(2, r.count(9031))
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        r.coord.close()
+    }
+
+    @Test
+    fun `no periodic refresh while the link is unhealthy`() = runTest {
+        val r = rig()
+        r.port.healthy = false
+        step(130_000)
+        assertEquals(1, r.count(9031))
+        r.port.healthy = null
+        step(500)
+        assertEquals(2, r.count(9031))
+        r.coord.close()
+    }
+
+    @Test
+    fun `no periodic refresh for a past day`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        r.coord.selectDay(LocalDate.of(2026, 10, 29))
+        step(130_000)
+        assertEquals(1, r.count(9031))
+        r.coord.close()
+    }
+
+    @Test
+    fun `no periodic refresh after onBackground until the next liveEpoch`() = runTest {
+        val r = rig()
+        r.coord.onBackground()
+        step(130_000)
+        assertEquals(1, r.count(9031))
+        r.port.liveEpoch.value = 2
+        runCurrent()
+        assertEquals(2, r.count(9031))
+        r.coord.close()
+    }
+
+    @Test
+    fun `failed periodic refresh keeps the old list and waits for the next slot`() = runTest {
+        val script = Script(entries = listOf(TODAY_SEG))
+        val r = rig(script = script)
+        val before = r.ui.segments
+        script.entries = null
+        step(60_500)
+        assertEquals(2, r.count(9031))
+        step(10_000)
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        assertEquals(before, r.ui.segments)
+        step(40_000)
+        assertEquals(2, r.count(9031))
+        step(20_500)
+        assertEquals(3, r.count(9031))
+        r.coord.close()
+    }
+
+    @Test
+    fun `refreshes never overlap`() = runTest {
+        val script = Script(entries = listOf(TODAY_SEG))
+        val r = rig(script = script)
+        script.entries = null
+        step(60_500)
+        assertEquals(2, r.count(9031))
+        r.port.liveEpoch.value = 2
+        runCurrent()
+        assertEquals(2, r.count(9031))
+        step(500)
+        assertEquals(2, r.count(9031))
+        r.coord.close()
+    }
+    // END_BLOCK_REFRESH_TESTS
 
     // START_BLOCK_RULER_TESTS
     @Test
@@ -691,10 +809,10 @@ class ArchiveCoordinatorTest {
         playingAt(r, "2026-10-30T06:15:00Z")
         val t = r.ui.cursorMs!!
         r.coord.onBackground()
-        val sent = r.port.sent.size
+        val sent = r.playbackSent() // the reconnect index refresh (plan 04-12) is not a playback command
         r.port.liveEpoch.value = 2
         step(1_000)
-        assertEquals(sent, r.port.sent.size)
+        assertEquals(sent, r.playbackSent())
         assertTrue(r.ui.inArchive)
         assertEquals("Продолжить", r.ui.pauseLabel)
         assertEquals(t, r.ui.cursorMs)
@@ -702,7 +820,7 @@ class ArchiveCoordinatorTest {
         assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
         r.coord.togglePause()
         assertEquals(t, (r.controller.state.value as PlaybackState.Starting).atMs)
-        assertTrue(r.port.sent.size > sent)
+        assertTrue(r.playbackSent() > sent)
         r.coord.close()
     }
 
