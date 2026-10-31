@@ -312,6 +312,54 @@ class PlaybackControllerTest {
         assertEquals(1, port.sent.size)
         controller.close()
     }
+
+    @Test
+    fun `playback past the last known end pauses with ENDED after 30 s`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        // The camera kept recording past the stale index end: key frame after S2.end.
+        playingAt(controller, port, "2026-10-30T12:00:20Z", seekIso = "2026-10-30T11:59:00Z")
+        step(8_000)
+        assertEquals(PlaybackState.Playing(utc("2026-10-30T12:00:20Z"), 3), controller.state.value)
+        step(22_000)
+        assertEquals(PlaybackState.Paused(utc("2026-10-30T12:00:20Z"), PauseReason.ENDED), controller.state.value)
+        assertEquals(PlaybackCommands.pause(TransportType.TNP, true), port.sent.takeLast(2))
+        assertEquals(StreamMode.PAUSED, port.modes.last())
+        assertEquals(1, port.sent.count { it.type == 9030 })
+        controller.close()
+    }
+
+    @Test
+    fun `ENDED past the end comes before the supervisor's 35 s stall`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        playingAt(controller, port, "2026-10-30T12:00:20Z", seekIso = "2026-10-30T11:59:00Z")
+        val keyAt = currentTime
+        step(29_000)
+        assertTrue(controller.state.value is PlaybackState.Playing)
+        step(1_500)
+        val elapsed = currentTime - keyAt
+        assertEquals(30_500L, elapsed)
+        assertTrue(elapsed < 35_000L)
+        assertEquals(PlaybackState.Paused(utc("2026-10-30T12:00:20Z"), PauseReason.ENDED), controller.state.value)
+        controller.close()
+    }
+
+    @Test
+    fun `no ENDED past the end while key frames keep arriving`() = runTest {
+        val port = newPort()
+        val controller = newController(port)
+        playingAt(controller, port, "2026-10-30T12:00:20Z", seekIso = "2026-10-30T11:59:00Z")
+        val base = utc("2026-10-30T12:00:20Z")
+        for (i in 1..12) {
+            step(5_000)
+            port.frame = FrameObservation(3, (base + i * 5_000L) / 1000, true, 1L + i)
+        }
+        step(500)
+        assertEquals(PlaybackState.Playing(base + 60_000L, 3), controller.state.value)
+        assertEquals(1, port.sent.size)
+        controller.close()
+    }
     // END_BLOCK_SEGMENT_TESTS
 
     // START_BLOCK_LINK_TESTS
