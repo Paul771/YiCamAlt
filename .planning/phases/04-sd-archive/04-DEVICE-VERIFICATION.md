@@ -72,3 +72,26 @@ Not exercised: no SD card (Wi-Fi off / on during archive playback).
 ## Observations
 
 - Six `BLOCK_DECODER_RESET reason=queue-overflow` at stream start in today's session: the known decoder startup hold (codec creation), live video then played normally.
+
+
+## Session 2026-10-31, part 2: cameras with SD cards (orchestrator, adb + screenshots)
+
+Both cameras now have a card. Values are not recorded here.
+
+| Check | Result | Evidence |
+|---|---|---|
+| TUTK camera, SD status and index | PASS | `BLOCK_SD_STATUS transport=TUTK tfstat=0 status=Ok`, `BLOCK_FETCH_INDEX transport=TUTK result=Ok(count=57) pages=3 rejected=0 ms=282` (792/793 paging works, pages of 972, 972, 912 bytes) |
+| H-SD2 timeline (TUTK) | PASS (look only) | Segment drawn at the recorded time, red cursor, hour ticks; scroll/pinch feel not judged beyond one drag |
+| H-SD3 play from a moment (TUTK) | PASS on timing, content compare inconclusive | One drag of the ruler, `BLOCK_SEEK result=Archive snapped=false healthy=true`, `Live -> Starting (uc=3) -> Playing` in 1.0 s on first key frame; label «Запись» advanced 12:26:00 -> 12:26:29 in ~29 s. The recording sits at the wall-clock time the camera was recording, so no 3 h offset: `WIRE_IS_UTC = true` is consistent. The scene is static, so the picture could not be compared with the official app |
+| H-SD5 pause / resume / live (TUTK) | PASS on logic | Pause sent 767 + 12718, position froze (12:26:55); «Продолжить» -> `Paused(USER) -> Starting (uc=4) -> Playing` in 1.0 s and the position continued; «Живой» sent 12718 + 8190, `Playing -> Live`, `gate-released` 0.7 s later, live picture and HD button back, no «Подключение…» |
+| TNP camera with a fresh card (tfstat=4) | SD-05 empty day PASS | `BLOCK_SD_STATUS transport=TNP tfstat=4 status=Ok`, `BLOCK_FETCH_INDEX Ok(count=0)`; panel «За этот день записей нет», live video unaffected. No recordings yet, so TNP playback is still untested |
+| H-SD4 boundary, H-SD7 background marker, H-SD8 fullscreen/zoom/snapshot, H-SD10 reconnect | NOT EXERCISED | Not driven yet |
+| H-SD9 TUTK live regression | PASS | TUTK live worked after the 04-02 link changes (video, LAN badge) |
+| Post-boot password rejection | OBSERVATION | After a power-on or reboot both cameras answered `WRONG_PASSWORD (-20009)` for a few minutes: TUTK about 9 min after the user switched it on, TNP about 2.5 min after the reboot, then accepted the same credentials with no code change. The supervisor retries a wrong password once, then asks the user to tap «Повторить» (D-03) |
+
+### Defects found (to close with `--gaps` plans)
+
+1. **Ruler stays on the old archive position after «Живой».** The video is live (`Playing -> Live`), but the ruler cursor and label stay at the last archive time (12:27:05) while the real time is later, and it does not follow live again. Expected: the cursor follows the current time in live, as before the first seek.
+2. **«Загрузка записей…» spinner while the link is down or failed.** With a failed or retrying link (AuthFailed, retry badge) the archive panel shows the loading spinner indefinitely next to the red error.
+3. **Stale recording list (verifier W-1).** The index is fetched once on connect; it is refreshed only when the day dialog is opened after 60 s. Today's timeline stops at the time it was loaded and later seeks are clamped to `last end - 6 s`.
+4. **Reconnect loop after silence outside a known segment (verifier W-2).** See 04-VERIFICATION.md.
