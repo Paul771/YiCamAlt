@@ -1,5 +1,5 @@
 // FILE: LiveViewScreen.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Compose live view of one camera (M-UI-LIVEVIEW renderer): TextureView video with badge and controls drawn
 //     over the picture, fullscreen, pinch / pan / double-tap zoom, snapshot and lifecycle binding.
@@ -8,8 +8,10 @@
 //     button or landscape with hidden system bars, controls auto-hide in fullscreen, back leaves fullscreen first
 //     (D-08); zoom up to 4x with clamped pan and fit / fill double tap (D-09); keepScreenOn while rendering;
 //     snapshot via TextureView.getBitmap(videoW, videoH) with the API 26-28 storage permission (LIVE-08);
-//     orientation and system bars restored on leave (D-10). Never shows or logs the device id or camera name.
-//   DEPENDS: M-UI-LIVEVIEW (LiveViewModel, ZoomMath), M-MEDIA-SNAPSHOT (via the view model)
+//     orientation and system bars restored on leave (D-10); SD archive panel under the video (D-01) with the day
+//     dialog, fullscreen overlay pause / «Живой» and a «Запись HH:mm:ss» label in the archive. Never shows or logs
+//     the device id or camera name.
+//   DEPENDS: M-UI-LIVEVIEW (LiveViewModel, ZoomMath, ArchivePanel, DayPickerDialog), M-MEDIA-SNAPSHOT (via the view model)
 //   LINKS: M-UI-LIVEVIEW, V-M-UI-LIVEVIEW, M-UI-SHELL
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -51,7 +53,9 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -65,6 +69,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -92,14 +97,21 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import timber.log.Timber
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 // START_MODULE_MAP
 //   LiveViewScreen - live view of one camera: TextureView video, badge, sound / HD-SD / snapshot / fullscreen controls,
-//     retry / connect, zoom gestures, lifecycle binding.
+//     retry / connect, zoom gestures, lifecycle binding, archive panel / day dialog / fullscreen archive controls.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-11: created. TextureView instead of SurfaceView (overlays over the picture,
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-07: archive panel under the video (D-01), day dialog, overlay pause / «Живой»
+//     in fullscreen (portrait keeps them in the panel only). TextureView slot, zoom, snapshot, fullscreen unchanged
+//     and in the same composition position (panel added after the video Box). D-05 accepted state: after a
+//     background auto-resume the archive is Paused(BACKGROUND), live plays under «Продолжить» / «Живой».
+//   PREVIOUS: v0.1.0 - GSD plan 03-11: created. TextureView instead of SurfaceView (overlays over the picture,
 //     graphicsLayer zoom, getBitmap snapshot; no z-order override needed).Portrait look: white Surface with black text (user
 //     decision), black video box. Snapshot size = decoded ui.videoWidth x ui.videoHeight (TextureView size only as a
 //     fallback); graphicsLayer zoom does not affect getBitmap, so the frame is full and unzoomed.
@@ -110,6 +122,8 @@ private val BadgeWarn = Color(0xFFF9A825)
 private val BadgeError = Color(0xFFC62828)
 private val BadgeNeutral = Color(0xFF616161)
 private val OverlayBg = Color(0x88000000)
+private val RecordingLabel: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+private const val NOW_TICK_MS = 30_000L
 
 private fun Context.findActivity(): Activity? {
     var c: Context? = this
@@ -147,6 +161,16 @@ fun LiveViewScreen(
     val view = LocalView.current
     val activity = remember(context) { context.findActivity() }
     val ui by viewModel.ui.collectAsState()
+    val archive by viewModel.archive.collectAsState()
+    // UI-only display zone (the view model uses LiveEnvironment.zone()); wall clock for today's ruler centre.
+    val zone = remember { ZoneId.systemDefault() }
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMs = System.currentTimeMillis()
+            delay(NOW_TICK_MS)
+        }
+    }
 
     // START_BLOCK_BIND_LIVE
     LaunchedEffect(deviceId) { viewModel.open(deviceId, title) }
@@ -390,6 +414,16 @@ fun LiveViewScreen(
                             modifier = Modifier.background(OverlayBg).padding(4.dp),
                         )
                     }
+                    val recAt = archive.cursorMs
+                    if (archive.inArchive && recAt != null) {
+                        Text(
+                            "Запись " + RecordingLabel.format(Instant.ofEpochMilli(recAt).atZone(zone)),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.background(OverlayBg, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
                 }
                 if (ui.showRetry) {
                     Button(onClick = { viewModel.retry() }, modifier = Modifier.align(Alignment.Center)) { Text("Повторить") }
@@ -422,6 +456,17 @@ fun LiveViewScreen(
                                 ),
                             ) { Text(ui.qualityLabel ?: "") }
                         }
+                        // Archive playback controls in fullscreen (D-01); portrait has them in ArchivePanel.
+                        if (fullscreen && archive.inArchive) {
+                            IconButton(onClick = { viewModel.archiveTogglePause() }) {
+                                Icon(
+                                    if (archive.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = archive.pauseLabel,
+                                    tint = Color.White,
+                                )
+                            }
+                            TextButton(onClick = viewModel::archiveGoLive) { Text(ArchiveTexts.LIVE, color = fg) }
+                        }
                         IconButton(onClick = onSnapshot) {
                             Icon(Icons.Filled.PhotoCamera, contentDescription = "Снимок", tint = Color.White)
                         }
@@ -437,10 +482,29 @@ fun LiveViewScreen(
                 // END_BLOCK_OVERLAYS
             }
             if (!fullscreen) {
+                ArchivePanel(
+                    archive, zone, nowMs,
+                    onOpenDays = viewModel::archiveOpenDays,
+                    onSeek = viewModel::archiveSeek,
+                    onTogglePause = viewModel::archiveTogglePause,
+                    onLive = viewModel::archiveGoLive,
+                    onRetry = viewModel::archiveRetry,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                )
                 ui.message?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp))
                 }
             }
+        }
+        if (archive.daysDialogOpen) {
+            DayPickerDialog(
+                archive,
+                onSelect = {
+                    viewModel.archiveSelectDay(it)
+                    viewModel.archiveCloseDays()
+                },
+                onDismiss = viewModel::archiveCloseDays,
+            )
         }
     }
 }
