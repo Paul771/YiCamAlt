@@ -887,5 +887,77 @@ class LiveSessionSupervisorTest {
         assertFalse(port.linkHealthy())
         assertNull(port.nextUseCount())
     }
+
+    @Test
+    fun `ARCHIVE stall-closed links do not reset the attempt counter`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        val delays = listOf(2_000L, 5_000L, 10_000L, 20_000L)
+        for (i in 0..3) {
+            e.stream()
+            e.sup.setStreamMode(StreamMode.ARCHIVE)
+            // healthyResetMs (30 s) passes before the 35 s ARCHIVE stall fires.
+            e.advance(35_000)
+            assertEquals(listOf("stall"), e.link.closeReasons)
+            assertEquals(SupervisorState.Waiting(i + 2, delays[i], ErrorClass.NETWORK, null), e.state)
+            e.advance(delays[i])
+        }
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.advance(35_000)
+        assertEquals(SupervisorState.Exhausted(null), e.state)
+        assertEquals(5, e.factory.opens)
+    }
+
+    @Test
+    fun `LIVE stall after a healthy stream still resets the attempt counter`() = runTest(dispatcher) {
+        val e = env()
+        e.factory.script += failed(LinkErrorKind.TIMEOUT)
+        e.startNow()
+        assertEquals(SupervisorState.Waiting(2, 2_000, ErrorClass.NETWORK, err(LinkErrorKind.TIMEOUT)), e.state)
+        e.advance(2_000)
+        e.stream()
+        repeat(31) {
+            e.session.frames += 25
+            e.advance(1_000)
+        }
+        e.advance(10_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(SupervisorState.Waiting(2, 2_000, ErrorClass.NETWORK, null), e.state)
+    }
+
+    @Test
+    fun `ARCHIVE stall after a long archive playback still resets the attempt counter`() = runTest(dispatcher) {
+        val e = env()
+        e.startNow()
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        repeat(60) {
+            e.session.frames += 25
+            e.advance(1_000)
+        }
+        e.advance(35_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(SupervisorState.Waiting(2, 2_000, ErrorClass.NETWORK, null), e.state)
+    }
+
+    @Test
+    fun `archiveStallCount counts only ARCHIVE stalls`() = runTest(dispatcher) {
+        val e = env()
+        assertEquals(0, e.sup.archiveStallCount())
+        e.startNow()
+        e.stream()
+        e.advance(10_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(0, e.sup.archiveStallCount())
+        e.advance(2_000)
+        assertEquals(2, e.factory.opens)
+        e.stream()
+        e.sup.setStreamMode(StreamMode.ARCHIVE)
+        e.advance(35_000)
+        assertEquals(listOf("stall"), e.link.closeReasons)
+        assertEquals(1, e.sup.archiveStallCount())
+        assertEquals(1, e.sup.archivePort(TransportType.TNP, true).archiveStallCount())
+    }
     // END_BLOCK_STREAM_MODE_TESTS
 }

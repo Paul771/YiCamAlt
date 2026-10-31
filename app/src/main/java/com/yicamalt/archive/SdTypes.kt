@@ -75,6 +75,7 @@ interface ArchiveLinkPort {
     fun lastFrame(): FrameObservation?
     fun framesIn(): Long                // video units of ANY generation received by the current session (MediaSession.framesIn)
     fun setStreamMode(mode: StreamMode)
+    fun archiveStallCount(): Int = 0
 }
 
 object ArchiveSupport {

@@ -48,4 +48,5 @@ class SupervisorArchivePort internal constructor(
     override fun lastFrame(): FrameObservation? = supervisor.sessionOrNull()?.lastFrame()
     override fun framesIn(): Long = supervisor.sessionOrNull()?.framesIn() ?: 0L
     override fun setStreamMode(mode: StreamMode) = supervisor.setStreamMode(mode)
+    override fun archiveStallCount(): Int = supervisor.archiveStallCount()
 }

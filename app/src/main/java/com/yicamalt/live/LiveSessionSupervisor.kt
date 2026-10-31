@@ -263,6 +263,8 @@ class LiveSessionSupervisor(
 
     internal fun liveLinkOrNull(): CameraLink? = liveLink
 
+    internal fun archiveStallCount(): Int = 0
+
     internal fun sessionOrNull(): MediaSession? = synchronized(lock) { currentSession }
 
     internal fun liveResolution(): Int = (quality.state.manual ?: quality.state.observed ?: Quality.HD).resolution
