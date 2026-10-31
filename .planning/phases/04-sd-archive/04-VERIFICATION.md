@@ -205,3 +205,5 @@ There is no code gap that blocks the phase goal: every requirement has a substan
 
 _Verified: 2026-10-31T09:30:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+> **Closed 2026-10-31 with a caveat (user decision):** after gap closure 04-10..04-13 the four device defects are fixed and re-checked on Mi 9 (TUTK camera with 59 segments, TNP camera «Спальня» with 7). SD-01..SD-05 are marked complete. Left unverified on a device: day-dialog dots by eye (H-SD1), crossing a segment boundary (H-SD4), zoom gestures in the archive (H-SD8), the AuthFailed variant (H-SD12), the natural end of the last recording and the SILENT cap (H-SD14); also TNP over relay and Wi-Fi -> 4G (phone has no mobile data). Unit tests cover each of them. See 04-HUMAN-UAT.md, section Gaps.
