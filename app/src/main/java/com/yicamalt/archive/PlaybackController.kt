@@ -1,5 +1,5 @@
 // FILE: PlaybackController.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Archive playback state machine over ArchiveLinkPort: seek, pause, resume, back to live, segment
 //            boundaries, end of recording, reconnect and background (SD-03, SD-04; decisions D-04, D-05).
@@ -36,7 +36,10 @@ import java.time.ZoneId
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-05: playback state machine (research Pattern 1 / 5, P5-P8; D-04, D-05).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-10 (W-2a): a position at or after the last known segment end with no next
+//     segment counts as end-near, so 30 s without a key frame there gives Paused(ENDED) before the 35 s ARCHIVE
+//     stall (log reason ended-past-index).
+//   PREVIOUS: v0.1.0 - GSD plan 04-05: playback state machine (research Pattern 1 / 5, P5-P8; D-04, D-05).
 //     INVARIANTS: the gate (port.expectGeneration) is set BEFORE the seek / live commands; all timers run only
 //     while port.linkHealthy() (unhealthy = freeze position, suspend timers, never fail / end / jump; health back
 //     re-bases the timers; the next liveEpoch re-seeks the frozen position). The start timeout accumulates only
@@ -407,17 +410,20 @@ class PlaybackController(
         val idle = now - lastKeyAt
         val seg = segments.firstOrNull { pos >= it.startMs && pos < it.endMs }
         val next = SdTimeline.nextSegmentStart(segments, pos + NEXT_AFTER_MS)
-        val nearEnd = seg != null && seg.endMs - pos <= timing.endNearMs
+        val last = segments.lastOrNull()
+        val pastEnd = seg == null && next == null && last != null && pos >= last.endMs
+        val nearEnd = (seg != null && seg.endMs - pos <= timing.endNearMs) || pastEnd
         if (idle >= timing.boundaryMs && next != null && (seg == null || nearEnd)) {
             startAt(next, if (seg == null) "boundary-gap" else "boundary")
             return
         }
         if (next == null && nearEnd && idle >= timing.endedMs) {
             sendPause()
-            setState(PlaybackState.Paused(pos, PauseReason.ENDED), "ended")
+            setState(PlaybackState.Paused(pos, PauseReason.ENDED), if (pastEnd) "ended-past-index" else "ended")
         }
-        // Any other silence (mid-segment) waits: the supervisor's ARCHIVE stall closes the link, the link turns
-        // unhealthy (freeze) and the next liveEpoch re-seeks.
+        // ENDED covers the end of the last segment and any position at / after the last known end (stale index,
+        // W-2a). Any other silence (mid-segment) waits: the supervisor's ARCHIVE stall closes the link, the link
+        // turns unhealthy (freeze) and the next liveEpoch re-seeks.
     }
 
     private fun tickLive(now: Long) {

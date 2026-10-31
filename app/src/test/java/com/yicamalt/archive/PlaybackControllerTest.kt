@@ -1,10 +1,10 @@
 // FILE: PlaybackControllerTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive playback state machine (SD-03, SD-04; decisions D-04, D-05).
 //   SCOPE: seek / snap / live / no recording / not ready, start timeout (only while units arrive), pause, resume,
 //          go live (gate release on a live key frame or fail-open), segment boundary jump, end of the last segment,
-//          mid-segment silence, reconnect re-seek, link-health freeze, background pause, log markers and redaction.
+//          end past the last known segment end (04-10), mid-segment silence, reconnect re-seek, link-health freeze, background pause, log markers and redaction.
 //   DEPENDS: M-SD-ARCHIVE (PlaybackController, PlaybackCommands, SdTime), FakeArchivePort, SdFixtures, TraceRecorder
 //   LINKS: V-M-SD-ARCHIVE
 //   ROLE: TEST
@@ -40,11 +40,13 @@ import java.time.ZoneOffset
 //   seekCmds(uc, iso) - expected TNP 9030 list.
 //   playingAt(controller, port, iso, seekIso) - seek, deliver a recorded key frame, assert Playing.
 //   epochBump(port) - healthy again + new liveEpoch.
-//   PlaybackControllerTest - one test per behaviour bullet of plan 04-05 Task 3 plus the checker addendum.
+//   PlaybackControllerTest - one test per behaviour bullet of plan 04-05 Task 3 plus the checker addendum and
+//     plan 04-10 Tasks 2-3.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-05: playback state machine contract (RED first).
+//   LAST_CHANGE: v0.2.0 - GSD plan 04-10 (W-2a): ENDED past the last known end, before the 35 s stall.
+//   PREVIOUS: v0.1.0 - GSD plan 04-05: playback state machine contract (RED first).
 // END_CHANGE_SUMMARY
 
 @OptIn(ExperimentalCoroutinesApi::class)
