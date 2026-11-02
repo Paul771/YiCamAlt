@@ -47,6 +47,8 @@ internal class MediaCandidate(
     override fun toString(): String = "MediaCandidate(picExt=$picExt, hasClip=${videoUrl.isNotBlank()})"
 }
 
+internal data class CameraIds(val shared: Boolean, val ids: Map<String, String>)
+
 internal data class ListShape(
     val code: String,
     val count: Int,
@@ -225,6 +227,24 @@ internal object AlertProbeShape {
         )
         // END_BLOCK_ANALYZE_LIST
     }
+
+    fun analyzeList(
+        body: String?,
+        nowMs: Long,
+        cameras: List<CameraIds>,
+        accountIds: Map<String, String>,
+        apiHost: String?,
+    ): ListShape = error("RED stub")
+
+    fun formatUrlFields(shape: ListShape): List<String> = error("RED stub")
+
+    fun formatUid(shape: ListShape): String = error("RED stub")
+
+    fun formatFields(shape: ListShape): String = error("RED stub")
+
+    fun httpsVariant(url: String): String? = error("RED stub")
+
+    fun schemeOf(url: String): String = error("RED stub")
 
     private fun JsonObject.str(key: String): String? =
         (this[key] as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
