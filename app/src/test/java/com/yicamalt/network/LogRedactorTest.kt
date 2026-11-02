@@ -1,5 +1,5 @@
 // FILE: LogRedactorTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Prove LogRedactor masks secret query values and reduces JSON bodies to shape-only form (SEC-01).
 //   SCOPE: maskQuery keys; maskJsonBody envelope, device_info, device list, unknown keys, id-like keys,
@@ -20,12 +20,14 @@ import org.junit.jupiter.api.Test
 
 // START_MODULE_MAP
 //   assertNoSecrets - helper: none of the given literals appears in the output.
-//   maskQuery tests - hmac/userid/uid masked, seq kept, password/account still masked.
+//   maskQuery tests - hmac/userid/uid masked, seq kept, password/account still masked, alert from/to masked.
 //   maskJsonBody tests - envelope, device_info, device list, unknown keys, id keys, arrays, non-json.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - SEC-01: initial LogRedactor coverage.
+//   LAST_CHANGE: v0.1.1 - GSD plan 05-00: from / to epoch seconds masked in the alert list query; limit, fromDB,
+//     expires stay readable; exact keys only (total / photo stay readable).
+//   PREV_CHANGE: v0.1.0 - SEC-01: initial LogRedactor coverage.
 // END_CHANGE_SUMMARY
 
 class LogRedactorTest {
@@ -155,6 +157,38 @@ class LogRedactorTest {
         assertEquals("<non-json len=9>", LogRedactor.maskJsonBody("{\"a\":\"b\"" + "x"))
     }
     // END_BLOCK_MASK_BODY_TESTS
+
+    @Test
+    fun `maskQuery masks from and to epoch seconds`() {
+        val line = "--> GET https://h/v2/alert/list?seq=0&userid=${F.USER_ID}&type=&sub_type=" +
+            "&from=1700000000&to=1700086400&limit=20&fromDB=true&expires=10&hmac=abc"
+        val out = LogRedactor.maskQuery(line)
+        assertEquals(
+            "--> GET https://h/v2/alert/list?seq=0&userid=██&type=&sub_type=&from=██&to=██" +
+                "&limit=20&fromDB=true&expires=10&hmac=██",
+            out,
+        )
+        RedactionScanner().assertClean(out)
+    }
+
+    @Test
+    fun `maskQuery keeps limit fromDB and expires readable`() {
+        assertEquals("?limit=20&fromDB=true&expires=10", LogRedactor.maskQuery("?limit=20&fromDB=true&expires=10"))
+        assertFalse(LogRedactor.isSecretKey("fromDB"))
+        assertFalse(LogRedactor.isSecretKey("expires"))
+        assertFalse(LogRedactor.isSecretKey("limit"))
+    }
+
+    @Test
+    fun `isSecretKey keeps total and photo readable`() {
+        assertTrue(LogRedactor.isSecretKey("from"))
+        assertTrue(LogRedactor.isSecretKey("to"))
+        assertFalse(LogRedactor.isSecretKey("total"))
+        assertFalse(LogRedactor.isSecretKey("photo"))
+        assertFalse(LogRedactor.isSecretKey("toggle"))
+        assertFalse(LogRedactor.isSecretKey("fromDB"))
+        assertEquals("?total=3&photo=1", LogRedactor.maskQuery("?total=3&photo=1"))
+    }
 
     @Test
     fun `isSecretKey classifies names`() {

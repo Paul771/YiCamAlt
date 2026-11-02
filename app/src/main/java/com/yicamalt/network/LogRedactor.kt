@@ -1,5 +1,5 @@
 // FILE: LogRedactor.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Single source of log-value masking for the HTTP layer (SEC-01).
 //   SCOPE: mask secret query parameters in request/response lines; reduce JSON bodies to shape-only form.
@@ -26,10 +26,13 @@ import kotlinx.serialization.json.booleanOrNull
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - Security review (MEDIUM): QUERY_KEYS was a hand list that missed device_id,
+//   LAST_CHANGE: v0.1.2 - GSD plan 05-00: `from` and `to` are EXACT secret keys. The v2/alert/list query carries
+//     10-digit epoch seconds there; the BASIC logger would otherwise write them to the diag log and trip
+//     RedactionScanner's long-digit rule. EXACT only, never fragments: a fragment `to` would mask total / photo.
+//   PREV_CHANGE: v0.1.1 - Security review (MEDIUM): QUERY_KEYS was a hand list that missed device_id,
 //     deviceid, user_id, access_token. maskQuery now classifies every query key with isSecretKey(), and
 //     QUERY_KEYS is derived from SECRET_KEY_EXACT + SECRET_KEY_FRAGMENTS, so the lists cannot drift.
-//   PREV_CHANGE: v0.1.0 - SEC-01: extracted from HttpClientModule ad-hoc regexes. Bodies are masked by
+//   OLDER_CHANGE: v0.1.0 - SEC-01: extracted from HttpClientModule ad-hoc regexes. Bodies are masked by
 //     ALLOWLIST (every string/number masked except `code`), because unknown device-list field names
 //     cannot be protected by a key denylist. Encoded-`data` string envelopes are masked recursively.
 // END_CHANGE_SUMMARY
@@ -45,7 +48,7 @@ internal object LogRedactor {
 
     private val SECRET_KEY_EXACT = setOf(
         "did", "uid", "sn", "userid", "user_id", "device_id", "deviceid", "id",
-        "account", "email", "mac", "ip", "ssid",
+        "account", "email", "mac", "ip", "ssid", "from", "to",
     )
 
     /**

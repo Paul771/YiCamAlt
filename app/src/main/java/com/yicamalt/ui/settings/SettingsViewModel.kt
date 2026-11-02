@@ -1,10 +1,10 @@
 // FILE: SettingsViewModel.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Settings screen view-model: view/edit the runtime API base URL override; debug endpoint probe;
-//     debug P2P check.
+//     debug P2P check; debug alert probe.
 //   SCOPE: read current base URL, persist an override (resolved per request by M-HTTP), run the
-//     debug-only EndpointProbe once per press, run the debug-only native P2P check once per press.
+//     debug-only EndpointProbe once per press, run the debug-only native P2P check once per press, run the debug-only AlertProbe once per press.
 //   DEPENDS: M-CONFIG, M-HTTP, M-DEBUG-PROBE, M-P2P-NATIVE, M-MEDIA-RENDER
 //   LINKS: M-CONFIG, M-HTTP, M-DEBUG-PROBE, M-P2P-NATIVE, M-MEDIA-RENDER
 //   ROLE: UI
@@ -15,6 +15,7 @@ package com.yicamalt.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yicamalt.config.ConfigModule
+import com.yicamalt.debug.AlertProbe
 import com.yicamalt.debug.EndpointProbe
 import com.yicamalt.media.DecoderCatalog
 import com.yicamalt.media.DecoderChoice
@@ -34,17 +35,19 @@ import javax.inject.Inject
 
 // START_MODULE_MAP
 //   SettingsViewModel - exposes current base URL, persists changes, runs the debug endpoint probe and the
-//     debug P2P check (nativeCheck line, nativeCheckRunning).
+//     debug P2P check (nativeCheck line, nativeCheckRunning) and the debug alert probe (runAlertProbe,
+//     alertProbeResults, alertProbeRunning).
 //   formatNativeCheck - builds the single value-free P2P check line.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 02-03: debug P2P check (criterion 1/4). One line: libs, ABI, PPPP API hex,
+//   LAST_CHANGE: v0.5.0 - GSD plan 05-00: debug alert probe (runAlertProbe), once per press, ignored while running.
+//   PREV_CHANGE: v0.4.0 - GSD plan 02-03: debug P2P check (criterion 1/4). One line: libs, ABI, PPPP API hex,
 //     init code, TUTK libs, avc/hevc decoder names with hw/sw. Native calls run on PpppRuntime's own thread.
-//   PREV_CHANGE: v0.3.0 - CAM-02: saveBaseUrl stores a MANUAL server (ConfigModule.setManualBaseUrl); the field
+//   OLDER_CHANGE: v0.3.0 - CAM-02: saveBaseUrl stores a MANUAL server (ConfigModule.setManualBaseUrl); the field
 //     shows only a manual server and stays empty in automatic mode, so pressing Save on an auto-selected
 //     gateway cannot pin it by accident. Empty = automatic server selection.
-//   OLDER_CHANGE: v0.2.0 - Probe replaced by EndpointProbe (debug only); saveBaseUrl relies on per-request
+//   OLDEST_CHANGE: v0.2.0 - Probe replaced by EndpointProbe (debug only); saveBaseUrl relies on per-request
 //     base URL resolution (httpClient.rebuild() is now a logging no-op).
 // END_CHANGE_SUMMARY
 
@@ -55,7 +58,14 @@ class SettingsViewModel @Inject constructor(
     private val endpointProbe: EndpointProbe,
     private val nativeLibs: NativeLibs,
     private val ppppRuntime: PpppRuntime,
+    private val alertProbe: AlertProbe,
 ) : ViewModel() {
+
+    private val _alertProbeResults = MutableStateFlow<List<String>?>(null)
+    val alertProbeResults: StateFlow<List<String>?> = _alertProbeResults.asStateFlow()
+
+    private val _alertProbeRunning = MutableStateFlow(false)
+    val alertProbeRunning: StateFlow<Boolean> = _alertProbeRunning.asStateFlow()
 
     private val _nativeCheck = MutableStateFlow<String?>(null)
     val nativeCheck: StateFlow<String?> = _nativeCheck.asStateFlow()
@@ -95,6 +105,28 @@ class SettingsViewModel @Inject constructor(
                 _probeRunning.value = false
             }
         }
+    }
+
+    // START_CONTRACT: runAlertProbe
+    //   PURPOSE: Debug-only: run the one-shot alert feed probe once and surface its value-free lines.
+    //   INPUTS: none (ignored while a probe is running)
+    //   OUTPUTS: { alertProbeResults StateFlow - AlertProbe.runOnce lines }
+    //   SIDE_EFFECTS: <=3 GET requests via AlertProbe (1 signed list, <=2 media)
+    //   LINKS: M-DEBUG-PROBE
+    // END_CONTRACT: runAlertProbe
+    fun runAlertProbe() {
+        // START_BLOCK_RUN_ALERT_PROBE
+        if (_alertProbeRunning.value) return
+        _alertProbeRunning.value = true
+        _alertProbeResults.value = null
+        viewModelScope.launch {
+            try {
+                _alertProbeResults.value = alertProbe.runOnce()
+            } finally {
+                _alertProbeRunning.value = false
+            }
+        }
+        // END_BLOCK_RUN_ALERT_PROBE
     }
 
     // START_CONTRACT: runNativeCheck
