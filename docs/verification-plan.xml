@@ -400,6 +400,8 @@
     <V-M-DEBUG-PROBE MODULE="M-DEBUG-PROBE" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/debug/AlertProbeShapeTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/debug/AlertProbeShapeFormsTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.debug.*"</check-1>
@@ -414,6 +416,9 @@
         <scenario-6 kind="failure" evidence-type="deterministic">friends-is-never-a-device-source</scenario-6>
         <scenario-7 kind="success" evidence-type="deterministic">16-byte-accepted-empty-envelope (code 20200, len=16, data absent, devicelike=false)</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">v4-array-shape-yields-count-and-field-names (nested ipcParam names only)</scenario-8>
+        <scenario-9 kind="success" evidence-type="deterministic">alert-url-fields-report-form-scheme-host-class-without-values (pic_urls / video_urls / video02_urls; string, array, object)</scenario-9>
+        <scenario-10 kind="success" evidence-type="deterministic">alert-uid-matched-per-identifier-type-booleans-and-lengths-only (dev / p2p / user)</scenario-10>
+        <scenario-11 kind="success" evidence-type="deterministic">http-media-url-gets-https-variant-same-path (alert probe cap 5 requests)</scenario-11>
       </scenarios>
       <gate-evidence>
         <evidence-1>2026-10-11 plan 01-06 wave-2 gate: ProbeMatrixTest 12/12 inside full suite 165 tests, 0 failures</evidence-1>
@@ -422,6 +427,7 @@
       <required-log-markers>
         <marker-1>[Probe][run][BLOCK_PROBE_MATRIX]</marker-1>
         <marker-2>[Probe][run][BLOCK_PROBE_SUMMARY]</marker-2>
+        <marker-3>[EventProbe][run][BLOCK_ALERT_PROBE]</marker-3>
       </required-log-markers>
       <notes>
         <note-1>ProbeMatrix is pure (BLOCK_ANALYZE_PROBE_RESPONSE is a code anchor, not a log marker); EndpointProbe logs only ProbeMatrix.format() lines.</note-1>

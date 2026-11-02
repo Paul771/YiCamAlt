@@ -111,7 +111,7 @@ class SettingsViewModel @Inject constructor(
     //   PURPOSE: Debug-only: run the one-shot alert feed probe once and surface its value-free lines.
     //   INPUTS: none (ignored while a probe is running)
     //   OUTPUTS: { alertProbeResults StateFlow - AlertProbe.runOnce lines }
-    //   SIDE_EFFECTS: <=3 GET requests via AlertProbe (1 signed list, <=2 media)
+    //   SIDE_EFFECTS: <=5 GET requests via AlertProbe (1 signed list, <=4 media incl. https retries)
     //   LINKS: M-DEBUG-PROBE
     // END_CONTRACT: runAlertProbe
     fun runAlertProbe() {
