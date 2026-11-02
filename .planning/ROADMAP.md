@@ -16,7 +16,8 @@
 - [ ] **Phase 2: Нативный P2P и первый кадр** - Вендорские .so из локального APK, JNI-шимы, чистое Kotlin-ядро протокола, первое видео по LAN и удалённо
 - [x] **Phase 3: Полноценный live-view** - Супервизор сессии, переподключение, звук, HD/SD, снимок, полноэкранный режим, корректная остановка
  (completed 2026-10-30)
-- [x] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию (all 10 plans done; device verification partial, human_needed: no SD card) (completed 2026-10-31)
+- [x] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию (all 10 plans done; device verification partial, human_needed: no SD card)
+ (completed 2026-10-31)
 - [ ] **Phase 5: Лента событий** - Реальный эндпоинт алертов, превью и 6-секундные клипы, фильтры, офлайн-кэш, переход к записи SD
 - [ ] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
 
@@ -151,8 +152,18 @@ Plans:
   3. Из события пользователь одним действием открывает запись SD-карты этой камеры в момент события
   4. Без сети ранее загруженные события и превью видны из локального кэша
   5. На переднем плане лента опрашивает сервер не чаще раза в 5 минут; эндпоинты оплаты/подписок и `/v5/alert/push_prop` не вызываются
-**Plans**: TBD
-**Research**: needs `/gsd:research-phase` — реальный эндпоинт алертов (кандидат `/v5/alert/events`, при необходимости захват apk-mitm + mitmproxy), расшифровка превью/клипов (`pic_pwd` / `video_pwd`), глубина хранения
+**Plans:** 8 plans (sequential, waves 1-8)
+
+Plans:
+- [ ] 05-00-PLAN.md — Wave 1: MediaCrypto + AlertWire (TDD), debug-проба `/v2/alert/list` + одно превью + один клип из Настроек, запуск пользователем на Mi 9 (checkpoint)
+- [ ] 05-01-PLAN.md — 05-PROBE.md (D-PROBE-1..8, гейт продолжения) + реальный слой `v2/alert/list`: AlertListApi, AlertMapper, ForbiddenEndpointsTest; старый клиент событий удалён (wave 2)
+- [ ] 05-02-PLAN.md — Room v3 кэш событий, очистка при выходе, AlertSyncService: 5-минутный гейт в app_meta, ≤10 страниц, один запрос, очистка 30 дней, ключи медиа только в памяти (wave 3)
+- [ ] 05-03-PLAN.md — EventMediaRepository: превью (расшифровка, tar, 480 px в filesDir), клипы в локальный MP4, обновление URL ±5 с, LRU и очистка файлов (wave 4)
+- [ ] 05-04-PLAN.md — Вкладка «События»: карточки по дням, чипы камер, календарь дней, pull-to-refresh, «обновлено N мин назад», офлайн-кэш (wave 5)
+- [ ] 05-05-PLAN.md — Диалог клипа (MediaPlayer на TextureView) и «Открыть запись на SD»: LiveViewScreen(initialArchiveMs) → ArchiveCoordinator.openAt (wave 6)
+- [ ] 05-06-PLAN.md — Синхронизация GRACE (development-plan, verification-plan, knowledge-graph), 05-HUMAN-UAT.md (H-EV1..H-EV10), полный прогон (wave 7)
+- [ ] 05-07-PLAN.md — Проверка на телефоне Mi 9: H-EV1..H-EV10, 05-DEVICE-VERIFICATION.md (wave 8, checkpoint)
+**Research**: done — `.planning/phases/05-events-feed/05-RESEARCH.md` (лента = `GET /v2/alert/list`; захват apk-mitm + mitmproxy только запасной путь, если проба вернёт не 20000 или пустой список)
 **UI hint**: yes
 
 ### Phase 6: Релизная сборка и проверка на телефоне
@@ -176,5 +187,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 2. Нативный P2P и первый кадр | 6/13 | In Progress|  |
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
 | 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
-| 5. Лента событий | 0/TBD | Not started | - |
+| 5. Лента событий | 0/8 | Planned | - |
 | 6. Релизная сборка и проверка на телефоне | 0/TBD | Not started | - |
