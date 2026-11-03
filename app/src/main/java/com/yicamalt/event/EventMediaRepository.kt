@@ -37,7 +37,7 @@ import javax.inject.Singleton
 //   PlainMediaFetcher - MediaFetcher over MediaHttp.plainClient() (no auth header, no logger).
 //   MediaRefSource - port over AlertSyncService.mediaFor / refreshMedia.
 //   ClipResult - Ready(file, codec) | Unsupported | Expired | Failed(reason in http, decrypt, format, io, no-clip).
-//   EventMediaRepository - prefetchThumbs(records) (Semaphore(2), no retry), clip(key) (one refresh at most).
+//   EventMediaRepository - prefetchThumbs(records) (2 downloads at once, no retry), clip(key) (one refresh at most).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
@@ -247,7 +247,6 @@ class EventMediaRepository internal constructor(
         var url = ref.videoUrl ?: return@withContext ClipResult.Failed(REASON_NO_CLIP)
         var response = fetchClip(url) ?: return@withContext ClipResult.Failed(REASON_IO)
         if (response.code == HTTP_FORBIDDEN && !refreshed) {
-            refreshed = true
             ref = source.refreshMedia(key)
             logRefresh("403", ref != null)
             if (ref == null) return@withContext ClipResult.Expired
