@@ -1,5 +1,5 @@
 // FILE: FakeEventCache.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Plain-JVM fakes of the alert cache DAOs so non-Robolectric tests can build an EventCacheCleaner.
 //   SCOPE: FakeEventDao (in-memory rows, optional failure), FakeAppMetaDao (in-memory map), FakeEventCache.cleaner.
@@ -15,6 +15,7 @@ import com.yicamalt.database.AppMetaEntity
 import com.yicamalt.database.EventDao
 import com.yicamalt.database.EventEntity
 import com.yicamalt.event.EventCacheCleaner
+import com.yicamalt.event.MediaRefStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -26,7 +27,8 @@ import kotlinx.coroutines.flow.map
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-02: created for the CameraRegistry logout wipe of the alert cache.
+//   LAST_CHANGE: v0.1.1 - GSD plan 05-02: cleaner also takes a MediaRefStore.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-02: created for the CameraRegistry logout wipe of the alert cache.
 // END_CHANGE_SUMMARY
 
 class FakeEventDao : EventDao() {
@@ -89,5 +91,6 @@ class FakeAppMetaDao : AppMetaDao {
 class FakeEventCache {
     val eventDao = FakeEventDao()
     val appMetaDao = FakeAppMetaDao()
-    val cleaner = EventCacheCleaner(eventDao, appMetaDao)
+    val media = MediaRefStore()
+    val cleaner = EventCacheCleaner(eventDao, appMetaDao, media)
 }
