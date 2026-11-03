@@ -1,5 +1,5 @@
 // FILE: CameraRegistryCredentialsTest.kt
-// VERSION: 0.4.0
+// VERSION: 0.4.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify P2P credential resolution in CameraRegistry: vendor transport rule (device_info for every
 //     unverified camera), request bounds, stored values, reuse rules, failure tolerance, logout wipe and the
@@ -24,7 +24,8 @@ package com.yicamalt.camera
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - Phase 2 review MED-4: creds_13 refreshCredentials refreshes once and falls back to the
+//   LAST_CHANGE: v0.4.1 - GSD plan 05-02: constructor takes an EventCacheCleaner (FakeEventCache).
+//   PREV_CHANGE: v0.4.0 - Phase 2 review MED-4: creds_13 refreshCredentials refreshes once and falls back to the
 //     stored value on a failed refresh.
 //   PREV_CHANGE: v0.3.0 - GSD plan 02-01: vendor transport rule. device_info is asked for EVERY unverified camera
 //     (creds_1 now expects two requests); list type/did never decide (creds_2b/2c); rejected / incomplete /
@@ -168,7 +169,7 @@ class CameraRegistryCredentialsTest {
             .addConverterFactory(Json { ignoreUnknownKeys = true; isLenient = true }.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(YiCloudDeviceApi::class.java)
-        registry = CameraRegistry(api, dao, FakeSession(F.TOKEN, F.TOKEN_SECRET, F.USER_ID), store)
+        registry = CameraRegistry(api, dao, FakeSession(F.TOKEN, F.TOKEN_SECRET, F.USER_ID), store, com.yicamalt.test.FakeEventCache().cleaner)
     }
 
     @AfterEach
@@ -464,7 +465,7 @@ class CameraRegistryCredentialsTest {
             .addConverterFactory(Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(YiCloudDeviceApi::class.java)
-        reg = CameraRegistry(api, dao, auth, store)
+        reg = CameraRegistry(api, dao, auth, store, com.yicamalt.test.FakeEventCache().cleaner)
         return auth to reg
     }
 
@@ -513,6 +514,7 @@ class CameraRegistryCredentialsTest {
             dao,
             object : SessionSource { override fun currentSession(): AuthSession? = null },
             store,
+            com.yicamalt.test.FakeEventCache().cleaner,
         )
         val requestsBefore = server.requestCount
         assertTrue(signedOut.purgeIfSignedOut())
@@ -535,7 +537,7 @@ class CameraRegistryCredentialsTest {
     fun `creds_12 full refresh through the production HTTP client logs no secret`() {
         val http = HttpClientModule(TestConfig(server.url("/").toString()), Provider<AuthProvider> { StaticAuth() })
         val api = http.createRetrofit().create(YiCloudDeviceApi::class.java)
-        registry = CameraRegistry(api, dao, FakeSession(F.TOKEN, F.TOKEN_SECRET, F.USER_ID), store)
+        registry = CameraRegistry(api, dao, FakeSession(F.TOKEN, F.TOKEN_SECRET, F.USER_ID), store, com.yicamalt.test.FakeEventCache().cleaner)
         refresh()
         refresh()
         assertEquals(2, script.tnpCount())

@@ -1,7 +1,7 @@
 // FILE: YiDatabaseTest.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Verify Room cache round-trips, event query by device, clearOldData, atomic replaceAll, and redaction of logs.
+//   PURPOSE: Verify Room cache round-trips, event feed window and thumbnail-preserving upsert, clearOlderThan, atomic replaceAll, and redaction of logs.
 //   SCOPE: success scenarios for V-M-LOCAL-DB using InMemoryRoom + Robolectric; trace + redaction assertions.
 //   DEPENDS: M-LOCAL-DB, TestInfrastructure (InMemoryRoom, TraceRecorder, RedactionScanner)
 //   LINKS: V-M-LOCAL-DB
@@ -11,12 +11,16 @@
 package com.yicamalt.database
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 01-12: schema v2 (transport, shared), replaceAll scenarios.
+//   LAST_CHANGE: v0.3.0 - GSD plan 05-02: schema v3 events (event_key, time_ms); feed order, thumb kept on upsert,
+//     clearOlderThan, events table has no URL / key column.
+//   PREV_CHANGE: v0.2.0 - GSD plan 01-12: schema v2 (transport, shared), replaceAll scenarios.
 // END_CHANGE_SUMMARY
 
 import com.yicamalt.test.InMemoryRoom
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -52,9 +56,9 @@ class YiDatabaseTest {
         last_seen = 1000L, cached_at = 2000L,
     )
 
-    private fun event(id: String, device: String, ts: Long, type: String = "motion") = EventEntity(
-        event_id = id, device_id = device, type = type,
-        timestamp = ts, payload_json = "{}", cached_at = ts,
+    private fun event(key: String, device: String, ts: Long, thumb: String? = null) = EventEntity(
+        eventKey = key, deviceId = device, timeMs = ts, type = 1, subType = 0, fileType = "mp4",
+        hasClip = true, playTimeS = 0, thumbPath = thumb, cachedAt = ts,
     )
 
     @Test
@@ -69,35 +73,64 @@ class YiDatabaseTest {
     }
 
     @Test
-    fun `scenario_2 insert event + query by cameraId returns it`() {
-        db.cameraDao().insertCamera(camera("cam-1"))
-        db.eventDao().insertEvent(event("e-1", "cam-1", ts = 5000L))
-        db.eventDao().insertEvent(event("e-2", "cam-1", ts = 9000L))
-        db.eventDao().insertEvent(event("e-3", "cam-2", ts = 7000L))
-        val forCam1 = db.eventDao().getByDevice("cam-1")
-        assertEquals(2, forCam1.size)
-        // ordered DESC by timestamp
-        assertEquals("e-2", forCam1[0].event_id)
-        assertEquals(1, db.eventDao().countByDevice("cam-2"))
+    fun `scenario_2 feed returns the window across cameras`() {
+        db.eventDao().upsertAll(listOf(event("e-1", "cam-1", 5000L), event("e-2", "cam-1", 9000L), event("e-3", "cam-2", 7000L)))
+        val rows = db.eventDao().feed(fromMs = 6000L, toMs = 9000L)
+        assertEquals(listOf("e-2", "e-3"), rows.map { it.eventKey })
+        assertEquals(3, db.eventDao().count())
+        assertEquals(9000L, db.eventDao().newestTime())
+        assertEquals(listOf(9000L, 7000L), db.eventDao().timesSince(6000L))
+        recorder.assertMarkerAppeared("BLOCK_DB_WRITE")
     }
 
     @Test
-    fun `scenario_3 clearOldData removes only old events`() {
-        db.eventDao().insertEvent(event("e-old", "cam-1", ts = 1000L))
-        db.eventDao().insertEvent(event("e-new", "cam-1", ts = 9000L))
+    fun `clearOlderThan removes only old rows`() {
+        db.eventDao().upsertAll(listOf(event("e-old", "cam-1", 1000L, thumb = "t/old.jpg"), event("e-new", "cam-1", 9000L)))
+        assertEquals(listOf("t/old.jpg"), db.eventDao().thumbPathsOlderThan(5000L))
         val removed = db.eventDao().clearOlderThan(cutoff = 5000L)
         assertEquals(1, removed)
-        val remaining = db.eventDao().getByDevice("cam-1")
-        assertEquals(1, remaining.size)
-        assertEquals("e-new", remaining[0].event_id)
+        assertNull(db.eventDao().getByKey("e-old"))
+        assertNotNull(db.eventDao().getByKey("e-new"))
     }
 
     @Test
-    fun `scenario_4 schema is v2 and migration stays destructive`() {
-        // v2 = cameras + transport, shared. fallbackToDestructiveMigration is configured in
+    fun `upsert keeps an existing thumb path`() {
+        db.eventDao().upsertAll(listOf(event("e-1", "cam-1", 5000L)))
+        db.eventDao().setThumb("e-1", "thumbs/e1.jpg")
+        assertEquals(emptyList<String>(), db.eventDao().missingThumbsSince(0L, 10).map { it.eventKey })
+        db.eventDao().upsertAll(listOf(event("e-1", "cam-1", 5000L).copy(type = 2), event("e-2", "cam-1", 6000L)))
+        val row = db.eventDao().getByKey("e-1")!!
+        assertEquals("thumbs/e1.jpg", row.thumbPath)
+        assertEquals(2, row.type)
+        assertEquals(listOf("e-2"), db.eventDao().missingThumbsSince(0L, 10).map { it.eventKey })
+    }
+
+    @Test
+    fun `observeFeed orders newest first within the window`() {
+        db.eventDao().upsertAll(listOf(event("a", "cam-1", 3000L), event("b", "cam-2", 8000L), event("c", "cam-1", 5000L), event("d", "cam-1", 20000L)))
+        val rows = runBlocking { db.eventDao().observeFeed(1000L, 10000L).first() }
+        assertEquals(listOf("b", "c", "a"), rows.map { it.eventKey })
+    }
+
+    @Test
+    fun `events table has no url or key column`() {
+        val columns = mutableListOf<String>()
+        db.openHelper.writableDatabase.query("PRAGMA table_info(events)").use { c ->
+            val nameIdx = c.getColumnIndex("name")
+            while (c.moveToNext()) columns += c.getString(nameIdx)
+        }
+        assertEquals(
+            listOf("cached_at", "device_id", "event_key", "file_type", "has_clip", "play_time_s", "sub_type", "thumb_path", "time_ms", "type"),
+            columns.sorted(),
+        )
+    }
+
+    @Test
+    fun `scenario_4 schema is v3 and migration stays destructive`() {
+        // v3 = events re-keyed for v2/alert/list (v2 = cameras + transport, shared). fallbackToDestructiveMigration is configured in
         // DatabaseModule; the tables are a cache, so a wipe on upgrade is acceptable.
         val version = db.openHelper.writableDatabase.version
-        assertEquals(2, version)
+        assertEquals(3, version)
     }
 
     @Test

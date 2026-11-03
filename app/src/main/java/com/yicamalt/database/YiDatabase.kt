@@ -1,10 +1,10 @@
 // FILE: YiDatabase.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Room database aggregating camera/event/app-meta entities + DAOs for offline-first UI.
-//   SCOPE: schema v2, exportSchema true; exposes 3 DAOs; logs BLOCK_INIT_DB via Callback. Cache only: no secrets (SEC-04).
+//   SCOPE: schema v3, exportSchema true; exposes 3 DAOs; logs BLOCK_INIT_DB via Callback. Cache only: no secrets (SEC-04).
 //   DEPENDS: none
-//   LINKS: M-CAMERA-MGR, M-PUSH, M-CONFIG
+//   LINKS: M-CAMERA-MGR, M-PUSH, M-CONFIG, M-EVENT
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
@@ -18,13 +18,14 @@ import androidx.room.RoomDatabase
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 01-12: v2: cameras + transport, shared; destructive migration is acceptable
+//   LAST_CHANGE: v0.3.0 - GSD plan 05-02: v3: events re-keyed for v2/alert/list; destructive migration (cache only).
+//   PREV_CHANGE: v0.2.0 - GSD plan 01-12: v2: cameras + transport, shared; destructive migration is acceptable
 //     for a cache-only table (DatabaseModule uses fallbackToDestructiveMigration).
 // END_CHANGE_SUMMARY
 
 @Database(
     entities = [CameraEntity::class, EventEntity::class, AppMetaEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class YiDatabase : RoomDatabase() {
