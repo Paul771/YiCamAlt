@@ -1,9 +1,10 @@
 // FILE: AlertSyncServiceTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify AlertSyncService against a recording fake AlertListApi and an in-memory Room: persisted
 //     5-minute gate, signed backward paging with the 10-page cap and gap resume, de-duplication, 30-day purge,
-//     typed errors without retry, memory-only media refs, plus minus 5 s media refresh with throttles, logout race.
+//     typed errors without retry, memory-only media refs, plus minus 5 s media refresh with throttles, logout race,
+//     preview prefetch pass outside the Mutex, preview file purge and the logout file wipe.
 //   SCOPE: V-M-EVENT sync scenarios; synthetic values only; Robolectric (Room).
 //   DEPENDS: M-EVENT (AlertSyncService, EventCacheCleaner), TestInfrastructure (InMemoryRoom, TraceRecorder,
 //     RedactionScanner)
@@ -17,11 +18,15 @@ package com.yicamalt.event
 //   FakeAlertApi - AlertListApi fake: records every call, answers from a queue of handlers (envelope or throw).
 //   MutableSession - SessionSource fake whose session can be removed mid-test.
 //   rec / page / fullPage - synthetic alert JSON builders (fake media host, fake pwd).
-//   AlertSyncServiceTest - gate, paging, errors, purge, media refs, refreshMedia, logout race, log redaction.
+//   RecordingPrefetcher - ThumbPrefetcher fake: records batches, can suspend on a gate or throw.
+//   AlertSyncServiceTest - gate, paging, errors, purge, media refs, refreshMedia, logout race, log redaction,
+//     prefetch pass, file purge and wipe.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-02: created (RED first).
+//   LAST_CHANGE: v0.2.0 - GSD plan 05-03: prefetch / purge / wipe scenarios; service gets a fake prefetcher,
+//     EventMediaFiles over temp folders and an Unconfined application scope.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-02: created (RED first).
 // END_CHANGE_SUMMARY
 
 import com.yicamalt.auth.AuthMethod
@@ -35,6 +40,7 @@ import com.yicamalt.test.InMemoryRoom
 import com.yicamalt.test.RedactionScanner
 import com.yicamalt.test.TraceRecorder
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -52,11 +58,14 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import retrofit2.HttpException
 import retrofit2.Response
+import java.io.File
 import java.io.IOException
 import java.time.ZoneId
 
@@ -95,8 +104,24 @@ internal class MutableSession(var session: AuthSession?) : SessionSource {
     override fun currentSession(): AuthSession? = session
 }
 
+internal class RecordingPrefetcher : ThumbPrefetcher {
+    val batches = mutableListOf<List<AlertRecord>>()
+    var gate: CompletableDeferred<Unit>? = null
+    var failWith: Exception? = null
+    var completed = 0
+
+    override suspend fun prefetch(records: List<AlertRecord>) {
+        batches += records
+        gate?.await()
+        failWith?.let { throw it }
+        completed++
+    }
+}
+
 @RunWith(RobolectricTestRunner::class)
 class AlertSyncServiceTest {
+
+    @get:Rule val tmp = TemporaryFolder()
 
     private val t0 = 1_760_000_000_000L
     private var now = t0
@@ -114,6 +139,10 @@ class AlertSyncServiceTest {
     private val session = MutableSession(AuthSession(token, secret, Long.MAX_VALUE, userId, AuthMethod.PASSWORD))
     private val media = MediaRefStore()
     private lateinit var cleaner: EventCacheCleaner
+    private lateinit var files: EventMediaFiles
+    private lateinit var filesDir: File
+    private lateinit var cacheDir: File
+    private val prefetcher = RecordingPrefetcher()
     private lateinit var service: AlertSyncService
     private val recorder = TraceRecorder()
     private val redaction = RedactionScanner()
@@ -121,7 +150,10 @@ class AlertSyncServiceTest {
     @Before fun setUp() {
         recorder.plant()
         db = InMemoryRoom.build()
-        cleaner = EventCacheCleaner(db.eventDao(), db.appMetaDao(), media)
+        filesDir = tmp.newFolder("files")
+        cacheDir = tmp.newFolder("cache")
+        files = EventMediaFiles(filesDir, cacheDir) { zone }
+        cleaner = EventCacheCleaner(db.eventDao(), db.appMetaDao(), media, files)
         service = newService()
     }
 
@@ -133,6 +165,7 @@ class AlertSyncServiceTest {
     private fun newService() = AlertSyncService(
         api, db.eventDao(), db.appMetaDao(), session, media, cleaner,
         clock = { now }, zone = { zone }, io = Dispatchers.Unconfined,
+        prefetcher = { prefetcher }, files = files, appScope = CoroutineScope(Dispatchers.Unconfined),
     )
 
     // START_BLOCK_FIXTURES
@@ -467,5 +500,135 @@ class AlertSyncServiceTest {
             logs,
             extraLiterals = listOf(token, secret, userId, device, mediaHost, pwd, "s-3", (t0 / 1000).toString().take(8)),
         )
+    }
+
+    private fun keys(batch: List<AlertRecord>) = batch.map { it.key }
+
+    private fun mediaRef() = MediaRef("https://$mediaHost/p/x.jpg?sig=x", pwd, "https://$mediaHost/v/x.mp4?sig=x", pwd, t0 + 3_600_000L)
+
+    @Test
+    fun `successful refresh prefetches new records`() {
+        api.enqueue(page(*series("a", t0 - 60_000L, 3)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(1, prefetcher.batches.size)
+        assertEquals(listOf("a-0", "a-1", "a-2"), keys(prefetcher.batches[0]))
+        assertEquals(1, prefetcher.completed)
+        assertTrue(recorder.bufferText().contains("[Event][sync][BLOCK_PREFETCH_LAUNCH] started=true records=3"))
+    }
+
+    @Test
+    fun `prefetch also fills cached rows without a thumb that still have a media ref`() {
+        db.eventDao().upsertAll(
+            listOf(
+                row("gap", t0 - 7_200_000L),
+                row("noref", t0 - 3_600_000L),
+                row("has", t0 - 1_800_000L).copy(thumbPath = "event_thumbs/20250101/x.jpg"),
+            ),
+        )
+        media.put("gap", mediaRef())
+        media.put("has", mediaRef())
+        api.enqueue(page(rec("n", t0 - 1_000L)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(listOf("n", "gap"), keys(prefetcher.batches.single()))
+    }
+
+    @Test
+    fun `refresh returns before prefetch completes`() {
+        prefetcher.gate = CompletableDeferred()
+        api.enqueue(page(*series("b", t0 - 60_000L, 2)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(1, prefetcher.batches.size)
+        assertEquals(0, prefetcher.completed)
+        prefetcher.gate!!.complete(Unit)
+        assertEquals(1, prefetcher.completed)
+    }
+
+    @Test
+    fun `refreshMedia is not blocked by prefetch`() {
+        prefetcher.gate = CompletableDeferred()
+        val time = t0 - 1_000L
+        api.enqueue(page(rec("r", time)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(0, prefetcher.completed)
+        now += 10_000L
+        api.enqueue(page(rec("r", time, "v2")))
+        val fresh = runBlocking { kotlinx.coroutines.withTimeout(5_000L) { service.refreshMedia("r") } }
+        assertNotNull(fresh)
+        assertTrue(fresh!!.picUrl!!.contains("r-v2"))
+        prefetcher.gate!!.complete(Unit)
+    }
+
+    @Test
+    fun `a running prefetch pass is not started twice`() {
+        prefetcher.gate = CompletableDeferred()
+        api.enqueue(page(rec("x1", t0 - 1_000L)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        now += 5 * 60_000L
+        api.enqueue(page(rec("x2", now - 1_000L)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(1, prefetcher.batches.size)
+        assertTrue(recorder.bufferText().contains("[Event][sync][BLOCK_PREFETCH_LAUNCH] started=false reason=running"))
+        prefetcher.gate!!.complete(Unit)
+        prefetcher.gate = null
+        now += 5 * 60_000L
+        api.enqueue(page(rec("x3", now - 1_000L)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(2, prefetcher.batches.size)
+    }
+
+    @Test
+    fun `prefetch pass is capped at 100 records newest first`() {
+        api.enqueue(page(*series("p", t0 - 1_000L, 100)))
+        api.enqueue(page(*series("p", t0 - 1_000L, 50, offset = 100)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        val batch = prefetcher.batches.single()
+        assertEquals(AlertSyncService.PREFETCH_MAX, batch.size)
+        assertEquals((0 until 100).map { "p-$it" }, keys(batch))
+        assertEquals(batch.sortedByDescending { it.timeMs }, batch)
+    }
+
+    @Test
+    fun `prefetch failure does not change the result`() {
+        prefetcher.failWith = IllegalStateException("SYNTH prefetch failure")
+        api.enqueue(page(rec("f1", t0 - 1_000L)))
+        assertEquals(SyncResult.Fetched(newCount = 1, pages = 1, capped = false), refresh())
+        val logs = recorder.bufferText()
+        assertTrue(logs.contains("[Event][sync][BLOCK_PREFETCH_LAUNCH] error=IllegalStateException"))
+        assertFalse(logs.contains("SYNTH prefetch failure"))
+        prefetcher.failWith = null
+        now += 5 * 60_000L
+        api.enqueue(page(rec("f2", now - 1_000L)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertEquals(2, prefetcher.batches.size)
+    }
+
+    @Test
+    fun `purge removes old thumb files`() {
+        val oldTime = t0 - 31L * 86_400_000L
+        val newTime = t0 - 29L * 86_400_000L
+        val oldRel = files.thumbRelPath("ancient", oldTime)
+        val newRel = files.thumbRelPath("recent", newTime)
+        assertTrue(files.writeAtomic(files.thumbFile(oldRel)!!, byteArrayOf(1, 2, 3)))
+        assertTrue(files.writeAtomic(files.thumbFile(newRel)!!, byteArrayOf(4, 5, 6)))
+        db.eventDao().upsertAll(listOf(row("ancient", oldTime).copy(thumbPath = oldRel), row("recent", newTime).copy(thumbPath = newRel)))
+        api.enqueue(page(rec("n", t0 - 1_000L)))
+        assertTrue(refresh() is SyncResult.Fetched)
+        assertFalse(File(filesDir, oldRel).exists())
+        assertTrue(File(filesDir, newRel).exists())
+        assertNull(db.eventDao().getByKey("ancient"))
+        assertTrue(recorder.bufferText().contains("[Event][sync][BLOCK_PURGE_FILES] files=1"))
+    }
+
+    @Test
+    fun `logout wipe deletes media files`() {
+        val rel = files.thumbRelPath("w", t0)
+        assertTrue(files.writeAtomic(files.thumbFile(rel)!!, byteArrayOf(1)))
+        assertTrue(files.writeAtomic(files.clipFile("w"), byteArrayOf(2)))
+        media.put("w", mediaRef())
+        cleaner.wipeAll()
+        assertFalse(File(filesDir, "event_thumbs").exists())
+        assertFalse(File(cacheDir, "event_clips").exists())
+        assertNull(media.get("w"))
+        assertTrue(recorder.bufferText().contains("[Event][wipe][BLOCK_WIPE_FILES] rows=ok files=ok"))
     }
 }

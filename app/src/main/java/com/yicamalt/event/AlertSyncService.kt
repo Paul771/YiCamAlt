@@ -1,9 +1,11 @@
 // FILE: AlertSyncService.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Account-safe sync of the alert feed into the Room cache (EVT-01, EVT-05, EVT-06).
-//   SCOPE: SyncResult, MediaRefStore, AlertSyncService.refresh / refreshMedia / mediaFor / lastFetchMs.
-//   DEPENDS: M-EVENT (AlertListApi, AlertMapper, AlertWire, AlertSync, EventCacheCleaner), M-LOCAL-DB, M-AUTH, M-HTTP
+//   SCOPE: SyncResult, MediaRefStore, ThumbPrefetcher, AlertSyncService.refresh / refreshMedia / mediaFor /
+//     lastFetchMs; preview prefetch pass after a successful refresh; preview file purge.
+//   DEPENDS: M-EVENT (AlertListApi, AlertMapper, AlertWire, AlertSync, EventCacheCleaner, EventMediaFiles,
+//     ThumbPrefetcher = EventMediaRepository), M-LOCAL-DB, M-AUTH, M-HTTP
 //   LINKS: M-EVENT, V-M-EVENT, EVT-01, EVT-05, EVT-06
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -17,8 +19,12 @@ import com.yicamalt.database.AppMetaEntity
 import com.yicamalt.database.EventDao
 import com.yicamalt.database.EventEntity
 import com.yicamalt.network.YiRequestSigner
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -28,17 +34,23 @@ import timber.log.Timber
 import java.io.IOException
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
 // START_MODULE_MAP
 //   SyncResult - Fetched | TooEarly | InProgress | Offline | Unauthorized | Failed(code) | NoSession.
 //   MediaRefStore - in-memory key -> MediaRef (signed URLs and keys); never persisted.
+//   ThumbPrefetcher - port: one preview prefetch pass (bound to EventMediaRepository; Lazy breaks the cycle).
 //   AlertSyncService - refresh (gated, capped, single flight), refreshMedia (plus minus 5 s), mediaFor, lastFetchMs.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-02: created. Gate on the newer of events_last_fetch_ms / events_last_attempt_ms
+//   LAST_CHANGE: v0.2.0 - GSD plan 05-03: after a Fetched refresh (Mutex already released) one preview prefetch
+//     pass runs in the application scope: new records newest first, then cached rows without a thumb that still
+//     have a media ref, at most PREFETCH_MAX records; a running pass is not started twice; its errors are only
+//     logged. Purge collects thumb_path of rows older than 30 days before deleting them and removes the files.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-02: created. Gate on the newer of events_last_fetch_ms / events_last_attempt_ms
 //     (app_meta, survives restarts); newer part from the newest cached time, then the saved gap; 10 pages per
 //     refresh; 30-day purge; media refs memory only; refreshMedia with a 60 s per-key and 6-per-minute global throttle.
 //   HAZARD: no retry, no timer, no periodic work (D-04). Every write goes through EventCacheCleaner.writeIfCurrent
@@ -72,6 +84,11 @@ class MediaRefStore @Inject constructor() {
     fun size(): Int = refs.size
 }
 
+/** One preview prefetch pass over [records] (newest first). Implemented by EventMediaRepository. */
+fun interface ThumbPrefetcher {
+    suspend fun prefetch(records: List<AlertRecord>)
+}
+
 @Singleton
 class AlertSyncService internal constructor(
     private val api: AlertListApi,
@@ -83,6 +100,9 @@ class AlertSyncService internal constructor(
     private val clock: () -> Long,
     private val zone: () -> ZoneId,
     private val io: CoroutineDispatcher,
+    private val prefetcher: () -> ThumbPrefetcher,
+    private val files: EventMediaFiles,
+    private val appScope: CoroutineScope,
 ) {
     @Inject constructor(
         api: AlertListApi,
@@ -91,7 +111,15 @@ class AlertSyncService internal constructor(
         session: SessionSource,
         media: MediaRefStore,
         cleaner: EventCacheCleaner,
-    ) : this(api, eventDao, appMetaDao, session, media, cleaner, System::currentTimeMillis, ZoneId::systemDefault, Dispatchers.IO)
+        prefetcher: dagger.Lazy<ThumbPrefetcher>,
+        files: EventMediaFiles,
+    ) : this(
+        api, eventDao, appMetaDao, session, media, cleaner, System::currentTimeMillis, ZoneId::systemDefault,
+        Dispatchers.IO, { prefetcher.get() }, files, CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    )
+
+    /** True while a preview prefetch pass runs (one pass at a time). */
+    private val prefetchRunning = AtomicBoolean(false)
 
     /** One network user at a time: refresh uses tryLock (single flight), refreshMedia waits (withLock). */
     private val mutex = Mutex()
@@ -118,20 +146,26 @@ class AlertSyncService internal constructor(
     //   OUTPUTS: { SyncResult - Fetched(newCount, pages, capped) | TooEarly(minutesAgo) | InProgress | NoSession |
     //     Offline | Unauthorized | Failed(code) }
     //   SIDE_EFFECTS: at most MAX_PAGES signed GET v2/alert/list, none when gated / in progress / no session;
-    //     Room upserts, MediaRefStore puts, 30-day purge and events_last_fetch_ms / events_gap_to_sec on success;
-    //     events_last_attempt_ms when the server answered with an error; nothing on Offline. No retry.
-    //   LINKS: RefreshGate, PagePlanner, AlertWire.signedExtra, AlertMapper.page, EventCacheCleaner.writeIfCurrent
+    //     Room upserts, MediaRefStore puts, 30-day purge (rows and preview files) and events_last_fetch_ms /
+    //     events_gap_to_sec on success; events_last_attempt_ms when the server answered with an error; nothing on
+    //     Offline. No retry. On Fetched, after the Mutex is released, launches one preview prefetch pass in the
+    //     application scope (returns without waiting for it).
+    //   LINKS: RefreshGate, PagePlanner, AlertWire.signedExtra, AlertMapper.page, EventCacheCleaner.writeIfCurrent,
+    //     launchPrefetch
     // END_CONTRACT: refresh
     suspend fun refresh(): SyncResult {
         if (!mutex.tryLock()) return logResult(SyncResult.InProgress, 0, 0)
-        try {
-            return withContext(io) { runRefresh() }
+        val fetched = ArrayList<AlertRecord>()
+        val result = try {
+            withContext(io) { runRefresh(fetched) }
         } finally {
             mutex.unlock()
         }
+        if (result is SyncResult.Fetched) launchPrefetch(fetched)
+        return result
     }
 
-    private suspend fun runRefresh(): SyncResult {
+    private suspend fun runRefresh(fetched: MutableList<AlertRecord>): SyncResult {
         // START_BLOCK_REFRESH_GATE
         val now = clock()
         val s = session.currentSession() ?: return logResult(SyncResult.NoSession, 0, 0)
@@ -150,7 +184,7 @@ class AlertSyncService internal constructor(
         val zoneId = zone()
         val countBefore = eventDao.count()
         val savedGap = readLong(EventMetaKeys.GAP_TO_SEC)
-        val newer = runSegment(s, PagePlanner.first(now, zoneId, eventDao.newestTime()), 0, generation)
+        val newer = runSegment(s, PagePlanner.first(now, zoneId, eventDao.newestTime()), 0, generation, fetched)
         if (newer is Segment.Err) return failRefresh(newer, now, generation)
         newer as Segment.Ok
         var pages = newer.pages
@@ -163,7 +197,7 @@ class AlertSyncService internal constructor(
             if (gapRange == null) {
                 gapAfter = null
             } else if (pages < PagePlanner.MAX_PAGES) {
-                val older = runSegment(s, gapRange, pages, generation)
+                val older = runSegment(s, gapRange, pages, generation, fetched)
                 if (older is Segment.Err) return failRefresh(older, now, generation)
                 older as Segment.Ok
                 pages = older.pages
@@ -174,10 +208,14 @@ class AlertSyncService internal constructor(
 
         // START_BLOCK_REFRESH_COMMIT
         val gapToSave = gapAfter
+        val cutoff = now - RETENTION_MS
+        var oldThumbs: List<String> = emptyList()
         val committed = cleaner.writeIfCurrent(generation) {
             if (session.currentSession() == null) return@writeIfCurrent null
             val newCount = eventDao.count() - countBefore
-            val purged = eventDao.clearOlderThan(now - RETENTION_MS)
+            // Paths first: once the rows are gone nothing points at their files any more.
+            oldThumbs = eventDao.thumbPathsOlderThan(cutoff)
+            val purged = eventDao.clearOlderThan(cutoff)
             appMetaDao.put(AppMetaEntity(EventMetaKeys.LAST_FETCH_MS, now.toString()))
             if (gapToSave == null) {
                 appMetaDao.delete(EventMetaKeys.GAP_TO_SEC)
@@ -186,8 +224,68 @@ class AlertSyncService internal constructor(
             }
             newCount to purged
         } ?: return logResult(SyncResult.NoSession, 0, 0)
+        purgeFiles(cutoff, oldThumbs)
         return logResult(SyncResult.Fetched(committed.first, pages, gapToSave != null), committed.first, committed.second)
         // END_BLOCK_REFRESH_COMMIT
+    }
+
+    /** Deletes preview files of purged rows (and expired day folders); a file error never fails the refresh. */
+    private fun purgeFiles(cutoff: Long, oldThumbs: List<String>) {
+        // START_BLOCK_PURGE_FILES
+        val deleted = runCatching { files.purgeThumbsOlderThan(cutoff, oldThumbs) }
+        deleted.exceptionOrNull()?.let {
+            Timber.d("[Event][sync][BLOCK_PURGE_FILES] error=%s", it.javaClass.simpleName)
+        }
+        Timber.d("[Event][sync][BLOCK_PURGE_FILES] files=%d", deleted.getOrDefault(0))
+        // END_BLOCK_PURGE_FILES
+    }
+
+    // START_CONTRACT: launchPrefetch
+    //   PURPOSE: Start one preview prefetch pass outside the sync Mutex (EVT-01, EVT-05).
+    //   INPUTS: { fetched: List<AlertRecord> - records written by this refresh }
+    //   OUTPUTS: { Unit - returns at once }
+    //   SIDE_EFFECTS: launches in the application scope: batch = fetched newest first, then cached rows of the last
+    //     30 days without a thumb that still have a media ref; at most PREFETCH_MAX; skipped while a pass runs.
+    //     Errors are logged by class name only.
+    //   LINKS: ThumbPrefetcher, EventMediaRepository.prefetchThumbs, EventDao.missingThumbsSince
+    // END_CONTRACT: launchPrefetch
+    private fun launchPrefetch(fetched: List<AlertRecord>) {
+        // START_BLOCK_PREFETCH_LAUNCH
+        if (!prefetchRunning.compareAndSet(false, true)) {
+            Timber.d("[Event][sync][BLOCK_PREFETCH_LAUNCH] started=false reason=running")
+            return
+        }
+        val now = clock()
+        appScope.launch {
+            try {
+                val batch = withContext(io) { prefetchBatch(fetched, now) }
+                Timber.d("[Event][sync][BLOCK_PREFETCH_LAUNCH] started=true records=%d", batch.size)
+                if (batch.isNotEmpty()) prefetcher().prefetch(batch)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Timber.d("[Event][sync][BLOCK_PREFETCH_LAUNCH] error=%s", e.javaClass.simpleName)
+            } finally {
+                prefetchRunning.set(false)
+            }
+        }
+        // END_BLOCK_PREFETCH_LAUNCH
+    }
+
+    /** New records (newest first) without a thumb, then older thumb-less rows with a media ref; capped. */
+    private fun prefetchBatch(fetched: List<AlertRecord>, now: Long): List<AlertRecord> {
+        val missing = eventDao.missingThumbsSince(now - RETENTION_MS, PREFETCH_SCAN)
+        val missingKeys = missing.mapTo(HashSet()) { it.eventKey }
+        val fresh = fetched.asSequence()
+            .filter { it.key in missingKeys && media.get(it.key) != null }
+            .distinctBy { it.key }
+            .sortedByDescending { it.timeMs }
+            .toList()
+        val freshKeys = fresh.mapTo(HashSet()) { it.key }
+        val older = missing.asSequence()
+            .filter { it.eventKey !in freshKeys && media.get(it.eventKey) != null }
+            .map { AlertRecord(it.eventKey, it.deviceId, it.timeMs, it.type, it.subType, it.fileType, it.playTimeS, it.hasClip) }
+        return (fresh.asSequence() + older).take(PREFETCH_MAX).toList()
     }
 
     /** Error end of a refresh: an answered error sets the attempt mark (same 5-minute gate); Offline sets nothing. */
@@ -203,12 +301,19 @@ class AlertSyncService internal constructor(
     // START_CONTRACT: runSegment
     //   PURPOSE: Backward paging over one range until Done / Capped (PagePlanner.next decides; bounded by MAX_PAGES).
     //   INPUTS: { s: AuthSession; range: PageRange; pagesBefore: Int - pages already fetched in this refresh;
-    //     generation: Long - wipe generation captured at the start }
+    //     generation: Long - wipe generation captured at the start; fetched - collects the written records }
     //   OUTPUTS: { Segment - Ok(pages so far, final step) or Err(typed result, server answered?) }
-    //   SIDE_EFFECTS: signed requests; each page upserted to Room and its media refs put into the store
+    //   SIDE_EFFECTS: signed requests; each page upserted to Room, its media refs put into the store, its records
+    //     appended to [fetched]
     //   LINKS: fetchPage, PagePlanner.next
     // END_CONTRACT: runSegment
-    private suspend fun runSegment(s: AuthSession, range: PageRange, pagesBefore: Int, generation: Long): Segment {
+    private suspend fun runSegment(
+        s: AuthSession,
+        range: PageRange,
+        pagesBefore: Int,
+        generation: Long,
+        fetched: MutableList<AlertRecord>,
+    ): Segment {
         // START_BLOCK_FETCH_PAGE
         var pages = pagesBefore
         var toSec = range.toSec
@@ -224,6 +329,7 @@ class AlertSyncService internal constructor(
                 if (session.currentSession() == null) return@writeIfCurrent false
                 eventDao.upsertAll(page.records.map { it.toEntity(cachedAt) })
                 media.putAll(page.media)
+                fetched.addAll(page.records)
                 true
             }
             if (written != true) return Segment.Err(SyncResult.NoSession, answered = false)
@@ -361,6 +467,8 @@ class AlertSyncService internal constructor(
 
     companion object {
         const val MEDIA_REFRESH_MAX_PER_MIN = 6
+        const val PREFETCH_MAX = 100
+        private const val PREFETCH_SCAN = 2_000
         private const val MEDIA_THROTTLE_MS = 60_000L
         private const val RETENTION_MS = AlertWire.WINDOW_DAYS * 86_400_000L
         private const val HTTP_UNAUTHORIZED = 401

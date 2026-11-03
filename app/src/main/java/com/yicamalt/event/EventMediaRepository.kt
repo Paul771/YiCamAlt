@@ -37,7 +37,8 @@ import javax.inject.Singleton
 //   PlainMediaFetcher - MediaFetcher over MediaHttp.plainClient() (no auth header, no logger).
 //   MediaRefSource - port over AlertSyncService.mediaFor / refreshMedia.
 //   ClipResult - Ready(file, codec) | Unsupported | Expired | Failed(reason in http, decrypt, format, io, no-clip).
-//   EventMediaRepository - prefetchThumbs(records) (2 downloads at once, no retry), clip(key) (one refresh at most).
+//   EventMediaRepository - ThumbPrefetcher; prefetchThumbs(records) (2 downloads at once, no retry), clip(key)
+//     (one refresh at most).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
@@ -123,7 +124,7 @@ class EventMediaRepository internal constructor(
     private val cleaner: EventCacheCleaner,
     private val clock: () -> Long,
     private val io: CoroutineDispatcher,
-) {
+) : ThumbPrefetcher {
     @Inject constructor(
         eventDao: EventDao,
         sync: AlertSyncService,
@@ -138,6 +139,9 @@ class EventMediaRepository internal constructor(
         },
         files, encoder, PlainMediaFetcher(), cleaner, System::currentTimeMillis, Dispatchers.IO,
     )
+
+    /** ThumbPrefetcher port used by AlertSyncService after a refresh. */
+    override suspend fun prefetch(records: List<AlertRecord>) = prefetchThumbs(records)
 
     // START_CONTRACT: prefetchThumbs
     //   PURPOSE: Turn the previews of [records] into local downscaled files for the offline list (EVT-01, EVT-05).

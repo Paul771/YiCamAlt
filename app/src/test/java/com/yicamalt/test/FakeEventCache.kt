@@ -1,5 +1,5 @@
 // FILE: FakeEventCache.kt
-// VERSION: 0.1.1
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Plain-JVM fakes of the alert cache DAOs so non-Robolectric tests can build an EventCacheCleaner.
 //   SCOPE: FakeEventDao (in-memory rows, optional failure), FakeAppMetaDao (in-memory map), FakeEventCache.cleaner.
@@ -15,6 +15,7 @@ import com.yicamalt.database.AppMetaEntity
 import com.yicamalt.database.EventDao
 import com.yicamalt.database.EventEntity
 import com.yicamalt.event.EventCacheCleaner
+import com.yicamalt.event.EventMediaFiles
 import com.yicamalt.event.MediaRefStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,11 +24,12 @@ import kotlinx.coroutines.flow.map
 // START_MODULE_MAP
 //   FakeEventDao - in-memory EventDao; failWrites makes deleteAll throw (Room failure during a wipe).
 //   FakeAppMetaDao - in-memory AppMetaDao.
-//   FakeEventCache - holder of one dao pair plus the cleaner built over them.
+//   FakeEventCache - holder of one dao pair, media files in temp folders and the cleaner built over them.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - GSD plan 05-02: cleaner also takes a MediaRefStore.
+//   LAST_CHANGE: v0.2.0 - GSD plan 05-03: cleaner also takes EventMediaFiles over fresh temp folders.
+//   PREV_CHANGE: v0.1.1 - GSD plan 05-02: cleaner also takes a MediaRefStore.
 //   PREV_CHANGE: v0.1.0 - GSD plan 05-02: created for the CameraRegistry logout wipe of the alert cache.
 // END_CHANGE_SUMMARY
 
@@ -92,5 +94,9 @@ class FakeEventCache {
     val eventDao = FakeEventDao()
     val appMetaDao = FakeAppMetaDao()
     val media = MediaRefStore()
-    val cleaner = EventCacheCleaner(eventDao, appMetaDao, media)
+    val files = EventMediaFiles(
+        java.nio.file.Files.createTempDirectory("synth-files").toFile(),
+        java.nio.file.Files.createTempDirectory("synth-cache").toFile(),
+    ) { java.time.ZoneId.of("UTC") }
+    val cleaner = EventCacheCleaner(eventDao, appMetaDao, media, files)
 }
