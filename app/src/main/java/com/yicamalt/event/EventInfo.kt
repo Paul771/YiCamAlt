@@ -20,7 +20,7 @@ package com.yicamalt.event
 
 // START_CHANGE_SUMMARY
 //   LAST_CHANGE: v0.2.0 - GSD plan 05-01: re-pointed to GET v2/alert/list per 05-RESEARCH §1 and 05-PROBE.
-//     Replaced the guessed EventInfo / EventPage / ParsedTimeline / EventTimelineParser with AlertRecord,
+//     Replaced the guessed EventInfo / EventPage / ParsedTimeline / timeline parser with AlertRecord,
 //     MediaRef and AlertPage. 05-PROBE: times are ms, uid == CameraInfo.deviceId, play_time is absent
 //     (playTimeS defaults to 0), media URLs are http and are stored rewritten to https.
 //   HAZARD: MediaRef carries signed URLs and decrypt keys. Never persist it (Room) and never log its fields;

@@ -1,5 +1,5 @@
 // FILE: AlertWire.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Wire constants and signed parameter list of GET v2/alert/list (vendor 6.9.8 order).
 //   SCOPE: LIST_PATH, SEQ, PAGE_LIMIT, EXPIRES, WINDOW_DAYS, FROM_FLOOR_SEC, SUCCESS, signedExtra, window,
@@ -22,8 +22,9 @@ import java.time.ZoneId
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-00: from research §1. Named AlertWire, not EventPaths (the old
-//     EventPaths in YiCloudEventApi.kt still exists until plan 05-01 removes it).
+//   LAST_CHANGE: v0.1.1 - GSD plan 05-01: comment-only; the old EventPaths / YiCloudEventApi are deleted.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-00: from research §1. Named AlertWire, not EventPaths (the old
+//     EventPaths existed in parallel until plan 05-01 removed it).
 //   HAZARD: seq is "0" here (not "1"); type= and sub_type= are signed with empty values. Never add
 //     destructive or push-settings alert paths to this object.
 // END_CHANGE_SUMMARY

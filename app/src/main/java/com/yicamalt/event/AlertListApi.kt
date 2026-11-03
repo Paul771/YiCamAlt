@@ -34,7 +34,7 @@ import retrofit2.http.Query
 
 // START_CHANGE_SUMMARY
 //   LAST_CHANGE: v0.1.0 - GSD plan 05-01: re-pointed to GET v2/alert/list per 05-RESEARCH §1 and 05-PROBE
-//     (code 20000, data = array of objects). Replaces YiCloudEventApi (/v5/alert/events guess).
+//     (code 20000, data = array of objects). Replaces the guessed YiCloudEventApi (wrong v5 path).
 //   HAZARD: no default values on alertList: the caller passes the AlertWire values that were signed, so the
 //     signed and the sent query cannot drift. This is the ONLY alert path; destructive / push-settings
 //     alert paths are forbidden and guarded by ForbiddenEndpointsTest.

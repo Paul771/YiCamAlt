@@ -1,5 +1,5 @@
 // FILE: HttpClientModule.kt
-// VERSION: 0.5.0
+// VERSION: 0.5.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Shared HTTP client (OkHttp + Retrofit2) with TLS config, auth interceptor, redacted logging, and 401 refresh+retry.
 //   SCOPE: build OkHttpClient + Retrofit (once, on a placeholder host); resolve the real base URL from
@@ -45,13 +45,16 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.0 - Retrofit is built once on placeholder https://yi-api.invalid/; baseUrlInterceptor
+//   LAST_CHANGE: v0.5.1 - GSD plan 05-01: comment-only; the HAZARD below no longer names the removed guessed
+//     event path (ForbiddenEndpointsTest / phase grep).
+//   PREV_CHANGE: v0.5.0 - Retrofit is built once on placeholder https://yi-api.invalid/; baseUrlInterceptor
 //     rewrites scheme/host/port(+base path) from ConfigModule on EVERY request, so all four singleton APIs
 //     follow base-URL/region changes without restart (CONCERNS: stale Retrofit). appHeadersInterceptor adds
 //     official Yi app headers except on /v4/users/… paths. rebuild() kept as a logging no-op for callers.
 //     Authenticator releases refreshGuard in finally (CONCERNS: guard latched forever if refresh threw).
 //     probeClient(): app headers + redacted logging only; no authenticator, no redirects, no refresh.
-//     HAZARD: an absolute Retrofit path (/v5/alert/events) also gets the base path prefix; real bases are host-only.
+//     HAZARD: an absolute Retrofit path (leading slash) also gets the base path prefix; real bases are host-only;
+//     Phase 5 uses the relative v2/alert/list.
 //   PREV_CHANGE: v0.4.0 - SEC-01: query masking (hmac/userid/uid/token/...) and JSON-walk body masking via
 //     LogRedactor; closes CONCERNS HIGH leaks (hmac logged verbatim; encoded-`data` envelope bypassed the
 //     body regex). Logger level HEADERS -> BASIC: request/status lines only, no header values at all
