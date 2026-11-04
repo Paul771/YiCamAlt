@@ -1,5 +1,5 @@
 // FILE: InMemoryRoom.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Build a Room database backed by an in-memory SupportSQLiteDatabase for tests.
 //   SCOPE: construct + close a RoomDatabase for a given DAO set.
@@ -18,8 +18,14 @@ import androidx.test.core.app.ApplicationProvider
 import com.yicamalt.database.YiDatabase
 
 // START_MODULE_MAP
-//   InMemoryRoom - provides a fresh in-memory YiDatabase per test.
+//   InMemoryRoom - build(): fresh in-memory YiDatabase per test (main-thread queries allowed);
+//     buildStrict(): same but with Room's production main-thread guard (IllegalStateException on the main thread).
 // END_MODULE_MAP
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: v0.2.0 - buildStrict(): the device database rejects queries on the main thread; build() hid the
+//     Phase 5 clip-dialog bug (blocking EventDao.getByKey on Dispatchers.Main) from every JVM test.
+// END_CHANGE_SUMMARY
 
 object InMemoryRoom {
 
@@ -36,6 +42,14 @@ object InMemoryRoom {
         return Room.inMemoryDatabaseBuilder(ctx, YiDatabase::class.java)
             .addCallback(initCallback)
             .allowMainThreadQueries()
+            .build()
+    }
+
+    /** Like the device database: any query on the (Robolectric) main thread throws IllegalStateException. */
+    fun buildStrict(): YiDatabase {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        return Room.inMemoryDatabaseBuilder(ctx, YiDatabase::class.java)
+            .addCallback(initCallback)
             .build()
     }
 }
