@@ -84,3 +84,5 @@ No orphaned requirements: REQUIREMENTS.md maps EVT-01..EVT-06 to Phase 5 and eve
 ## Anti-patterns
 
 Not re-scanned in this docs-only plan. The plan summaries 05-00..05-06 report no stubs in the feed path; the device session showed real data on every screen it touched.
+
+> **Closed 2026-11-04 with a caveat (decision taken by the orchestrator on `/gsd:next`; the user can reopen either point):** EVT-01..EVT-06 are marked complete. The day button keeps the label «Все дни ▾» with no day selected (a deviation from the letter of D-03; a one-line change if the user wants «Сегодня ▾»). H-EV7 (jump for a camera without a card or for a moment without a recording) is covered by JVM tests only. Also open: a thin green stripe at the bottom of the playing clip, event retention beyond two days, events of shared cameras (none on this account), HLS clips (none seen). See 05-HUMAN-UAT.md and deferred-items.md.
