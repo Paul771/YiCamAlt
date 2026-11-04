@@ -1,8 +1,9 @@
 // FILE: LogRedactor.kt
-// VERSION: 0.1.2
+// VERSION: 0.1.3
 // START_MODULE_CONTRACT
 //   PURPOSE: Single source of log-value masking for the HTTP layer (SEC-01).
-//   SCOPE: mask secret query parameters in request/response lines; reduce JSON bodies to shape-only form.
+//   SCOPE: mask secret query parameters in request/response lines; strip exception messages from HTTP FAILED
+//     lines; reduce JSON bodies to shape-only form.
 //   DEPENDS: none
 //   LINKS: M-HTTP, V-M-HTTP, SEC-01
 //   ROLE: RUNTIME
@@ -19,14 +20,19 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
 // START_MODULE_MAP
-//   LogRedactor - object: MASK, QUERY_KEYS, maskQuery, isSecretKey, maskJsonBody.
+//   LogRedactor - object: MASK, QUERY_KEYS, maskQuery, redactHttpLine, isSecretKey, maskJsonBody.
 //   LogRedactor.maskQuery - replaces values of secret query keys (hmac, userid, uid, token, ...) with ██.
+//   LogRedactor.redactHttpLine - logger-line entry: HTTP FAILED -> exception simpleName (+ elapsed ms) only;
+//     every other line -> maskQuery.
 //   LogRedactor.isSecretKey - name-based helper for key/value callers (does NOT protect bodies).
 //   LogRedactor.maskJsonBody - allowlist (shape-only) JSON masker; keeps key names, `code`, booleans, null.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.2 - GSD plan 05-00: `from` and `to` are EXACT secret keys. The v2/alert/list query carries
+//   LAST_CHANGE: v0.1.3 - redactHttpLine: the BASIC logger writes `<-- HTTP FAILED: <exception toString>`; the
+//     message of SocketTimeout/Connect/UnknownHost exceptions carries the server host, its IPv4, the phone's local
+//     IPv4 and ports, which reached the device diag log (RealLogScanTest IPv4 hit). Only simpleName + `after Nms`.
+//   PREV_CHANGE: v0.1.2 - GSD plan 05-00: `from` and `to` are EXACT secret keys. The v2/alert/list query carries
 //     10-digit epoch seconds there; the BASIC logger would otherwise write them to the diag log and trip
 //     RedactionScanner's long-digit rule. EXACT only, never fragments: a fragment `to` would mask total / photo.
 //   PREV_CHANGE: v0.1.1 - Security review (MEDIUM): QUERY_KEYS was a hand list that missed device_id,
@@ -80,7 +86,28 @@ internal object LogRedactor {
         if (isSecretKey(key)) "$key=$MASK" else "$key=${maskQuery(m.groupValues[2])}"
     }
 
-    fun redactHttpLine(line: String): String = error("RED stub")
+    private const val HTTP_FAILED_PREFIX = "<-- HTTP FAILED: "
+    private val EXCEPTION_CLASS = Regex("^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*")
+    private val ELAPSED_MS = Regex("\\bafter (\\d{1,9})ms\\b")
+
+    // START_CONTRACT: redactHttpLine
+    //   PURPOSE: Single entry for every HttpLoggingInterceptor line before it reaches a log sink.
+    //   INPUTS: { line: String - BASIC logger line (`-->`, `<--`, or `<-- HTTP FAILED: <exception>`) }
+    //   OUTPUTS: { String - HTTP FAILED: `<-- HTTP FAILED: <SimpleName>[ after Nms]` (the exception message,
+    //     which carries host, resolved IPv4, local IPv4 and ports, is dropped); other lines: maskQuery(line) }
+    //   SIDE_EFFECTS: none
+    //   LINKS: M-HTTP, V-M-HTTP, SEC-01
+    // END_CONTRACT: redactHttpLine
+    fun redactHttpLine(line: String): String {
+        // START_BLOCK_REDACT_HTTP_FAILED
+        val idx = line.indexOf(HTTP_FAILED_PREFIX)
+        if (idx < 0) return maskQuery(line)
+        val rest = line.substring(idx + HTTP_FAILED_PREFIX.length)
+        val simpleName = EXCEPTION_CLASS.find(rest)?.value?.substringAfterLast('.') ?: "Exception"
+        val elapsed = ELAPSED_MS.find(rest)?.let { " after ${it.groupValues[1]}ms" }.orEmpty()
+        return maskQuery(line.substring(0, idx)) + HTTP_FAILED_PREFIX + simpleName + elapsed
+        // END_BLOCK_REDACT_HTTP_FAILED
+    }
 
     // START_CONTRACT: isSecretKey
     //   PURPOSE: Name-based classification of a key as secret-bearing.

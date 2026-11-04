@@ -1,5 +1,5 @@
 // FILE: HttpClientModule.kt
-// VERSION: 0.5.1
+// VERSION: 0.5.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Shared HTTP client (OkHttp + Retrofit2) with TLS config, auth interceptor, redacted logging, and 401 refresh+retry.
 //   SCOPE: build OkHttpClient + Retrofit (once, on a placeholder host); resolve the real base URL from
@@ -45,7 +45,9 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.1 - GSD plan 05-01: comment-only; the HAZARD below no longer names the removed guessed
+//   LAST_CHANGE: v0.5.2 - redactedLogger routes every line through LogRedactor.redactHttpLine: `<-- HTTP FAILED`
+//     wrote the exception message (server host/IPv4, phone IPv4, ports) into the device diag log.
+//   PREV_CHANGE: v0.5.1 - GSD plan 05-01: comment-only; the HAZARD below no longer names the removed guessed
 //     event path (ForbiddenEndpointsTest / phase grep).
 //   PREV_CHANGE: v0.5.0 - Retrofit is built once on placeholder https://yi-api.invalid/; baseUrlInterceptor
 //     rewrites scheme/host/port(+base path) from ConfigModule on EVERY request, so all four singleton APIs
@@ -148,7 +150,8 @@ class HttpClientModule @Inject constructor(
         // Authorization/Cookie headers are redacted via redactHeader() above.
         // Secret query params (password digest, account, hmac, userid, uid, token, ...) must never
         // reach logs; ██ (U+2588) matches the RedactionScanner allow-list convention.
-        val safe = LogRedactor.maskQuery(msg)
+        // `<-- HTTP FAILED` lines keep only the exception simpleName: its message carries host, IPv4 and ports.
+        val safe = LogRedactor.redactHttpLine(msg)
         val sink = logSink
         if (sink != null) sink.invoke(safe) else timber.log.Timber.d(safe)
         // END_BLOCK_REDACTED_LOG
