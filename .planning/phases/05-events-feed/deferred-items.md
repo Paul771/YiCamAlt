@@ -1,0 +1,3 @@
+# Phase 5 deferred items
+
+- **EventMediaRepositoryTest `wipeAll removes thumbs and clips` failed once** (plan 05-06 full gate, first run; passed on the immediate rerun). The assertion at line 425 found `cacheDir/event_clips` still present after `EventMediaFiles.wipeAll()`. `wipeAll` uses `File.deleteRecursively()` and ignores its `false` result; on Windows a freshly written / moved file can be held briefly (indexer, antivirus), so the delete can fail silently. Out of scope for the docs-only plan 05-06 (no code touched). Suggested follow-up: check the result of `deleteRecursively()` in `wipeAll`, retry once and log `files=failed` so a partial logout wipe is visible; on Android the lock case is unlikely, but the silent `false` is still a gap.
