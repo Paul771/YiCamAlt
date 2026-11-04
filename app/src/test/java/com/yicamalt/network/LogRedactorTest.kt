@@ -1,5 +1,5 @@
 // FILE: LogRedactorTest.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Prove LogRedactor masks secret query values and reduces JSON bodies to shape-only form (SEC-01).
 //   SCOPE: maskQuery keys; maskJsonBody envelope, device_info, device list, unknown keys, id-like keys,
@@ -22,10 +22,13 @@ import org.junit.jupiter.api.Test
 //   assertNoSecrets - helper: none of the given literals appears in the output.
 //   maskQuery tests - hmac/userid/uid masked, seq kept, password/account still masked, alert from/to masked.
 //   maskJsonBody tests - envelope, device_info, device list, unknown keys, id keys, arrays, non-json.
+//   redactHttpLine tests - HTTP FAILED lines keep only the exception simpleName (+ elapsed ms); no host/IP/port.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - GSD plan 05-00: from / to epoch seconds masked in the alert list query; limit, fromDB,
+//   LAST_CHANGE: v0.1.2 - Device diag log leaked server and phone IPv4 via the BASIC logger's
+//     `<-- HTTP FAILED: <exception toString>` line; redactHttpLine pins simpleName-only output.
+//   PREV_CHANGE: v0.1.1 - GSD plan 05-00: from / to epoch seconds masked in the alert list query; limit, fromDB,
 //     expires stay readable; exact keys only (total / photo stay readable).
 //   PREV_CHANGE: v0.1.0 - SEC-01: initial LogRedactor coverage.
 // END_CHANGE_SUMMARY
@@ -198,4 +201,54 @@ class LogRedactorTest {
         assertFalse(LogRedactor.isSecretKey("online"))
         assertFalse(LogRedactor.isSecretKey("code"))
     }
+
+    // START_BLOCK_HTTP_FAILED_TESTS
+    private val timeoutLine = "<-- HTTP FAILED: java.net.SocketTimeoutException: failed to connect to " +
+        "gw-us.xiaoyi.com/203.0.113.5 (port 443) from /192.0.2.7 (port 41234) after 15000ms"
+
+    @Test
+    fun `redactHttpLine keeps only simpleName and elapsed of a connect timeout`() {
+        val out = LogRedactor.redactHttpLine(timeoutLine)
+        assertEquals("<-- HTTP FAILED: SocketTimeoutException after 15000ms", out)
+        assertNoSecrets(out, "203.0.113.5", "192.0.2.7", "xiaoyi", "443", "41234", "java.net")
+        RedactionScanner().assertClean(out)
+    }
+
+    @Test
+    fun `redactHttpLine drops the host of an unknown host failure`() {
+        val line = "<-- HTTP FAILED: java.net.UnknownHostException: Unable to resolve host " +
+            "\"gw-us.xiaoyi.com\": No address associated with hostname"
+        val out = LogRedactor.redactHttpLine(line)
+        assertEquals("<-- HTTP FAILED: UnknownHostException", out)
+        assertNoSecrets(out, "gw-us", "xiaoyi", "resolve")
+        RedactionScanner().assertClean(out)
+    }
+
+    @Test
+    fun `redactHttpLine drops host and port of a connect exception`() {
+        val line = "<-- HTTP FAILED: java.net.ConnectException: Failed to connect to gw-us.xiaoyi.com/203.0.113.5:443"
+        val out = LogRedactor.redactHttpLine(line)
+        assertEquals("<-- HTTP FAILED: ConnectException", out)
+        RedactionScanner().assertClean(out)
+    }
+
+    @Test
+    fun `redactHttpLine handles a message-less exception`() {
+        assertEquals(
+            "<-- HTTP FAILED: SSLHandshakeException",
+            LogRedactor.redactHttpLine("<-- HTTP FAILED: javax.net.ssl.SSLHandshakeException"),
+        )
+    }
+
+    @Test
+    fun `redactHttpLine still masks request and response lines`() {
+        val req = "--> GET https://h/v2/alert/list?userid=${F.USER_ID}&hmac=${F.HMAC}&limit=20"
+        assertEquals("--> GET https://h/v2/alert/list?userid=██&hmac=██&limit=20", LogRedactor.redactHttpLine(req))
+        val resp = "<-- 200 OK https://h/v5/devices/list?seq=1&uid=${F.CLOUD_UID} (120ms, unknown-length body)"
+        assertEquals(
+            "<-- 200 OK https://h/v5/devices/list?seq=1&uid=██ (120ms, unknown-length body)",
+            LogRedactor.redactHttpLine(resp),
+        )
+    }
+    // END_BLOCK_HTTP_FAILED_TESTS
 }

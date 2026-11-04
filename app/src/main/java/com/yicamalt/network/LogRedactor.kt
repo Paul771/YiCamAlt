@@ -80,6 +80,8 @@ internal object LogRedactor {
         if (isSecretKey(key)) "$key=$MASK" else "$key=${maskQuery(m.groupValues[2])}"
     }
 
+    fun redactHttpLine(line: String): String = error("RED stub")
+
     // START_CONTRACT: isSecretKey
     //   PURPOSE: Name-based classification of a key as secret-bearing.
     //   INPUTS: { key: String - JSON or query key name }

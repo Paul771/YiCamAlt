@@ -211,6 +211,21 @@ class HttpClientModuleTest {
         assertTrue(trace.contains("\"DID\":\"██\""), "DID value masked")
         redaction.assertClean(trace, extraLiterals = RedactionFixtures.ALL_SECRETS)
     }
+    @Test
+    fun `scenario_14 connection failure log carries only the exception simpleName`() {
+        val dead = MockWebServer().apply { start() }
+        val deadUrl = dead.url("/v5/devices/list")
+        dead.shutdown()
+        val client = buildClient(FakeAuthProvider())
+        org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+            client.probeClient().newCall(okhttp3.Request.Builder().url(deadUrl).build()).execute().close()
+        }
+        val log = logBuffer.toString()
+        val failed = log.lines().single { it.contains("HTTP FAILED") }
+        assertTrue(Regex("^<-- HTTP FAILED: [A-Za-z0-9_$]+( after \\d+ms)?$").matches(failed), failed)
+        assertTrue(!failed.contains(deadUrl.host) && !failed.contains(":${deadUrl.port}"), failed)
+        redaction.assertClean(log)
+    }
     // END_BLOCK_SEC01_SCENARIOS
 
     // START_BLOCK_BASE_URL_SCENARIOS
