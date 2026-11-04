@@ -224,6 +224,8 @@
       </annotations>
       <tests>app/src/test/java/com/yicamalt/event/MediaCryptoTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/event/EventMediaRepositoryTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/event/PlainMediaFetcherTest.kt</tests>
+      <change-summary phase="05-events-feed" plan="bugfix-A" verification="jvm-passed">2026-11-04: clip status=-1 after a dead pooled CDN connection; MediaHttp.plainClient reconnects (retryOnConnectionFailure true); BLOCK_FETCH_CLIP / BLOCK_FETCH_THUMB carry error=SimpleClassName on CODE_IO.</change-summary>
       <change-summary phase="05-events-feed" plan="05-00/05-03/05-05" verification="jvm-passed">2026-11-04: implemented. MediaCryptoTest 11, EventMediaRepositoryTest 22; player in M-UI-EVENTS ClipDialog (MediaPlayer on TextureView). Device checks H-EV4, H-EV5, H-EV9 pending.</change-summary>
     </M-EVENT-PLAYBACK>
 

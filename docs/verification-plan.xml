@@ -1006,9 +1006,10 @@
         <file>app/src/test/java/com/yicamalt/event/MediaCryptoTest.kt</file>
         <file>app/src/test/java/com/yicamalt/event/EventMediaRepositoryTest.kt</file>
         <file>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/PlainMediaFetcherTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.event.MediaCryptoTest" --tests "com.yicamalt.event.EventMediaRepositoryTest" --tests "com.yicamalt.ui.events.ClipViewModelTest"</check-1>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.event.MediaCryptoTest" --tests "com.yicamalt.event.EventMediaRepositoryTest" --tests "com.yicamalt.event.PlainMediaFetcherTest" --tests "com.yicamalt.ui.events.ClipViewModelTest"</check-1>
         <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
       </module-checks>
       <scenarios>
@@ -1018,11 +1019,12 @@
         <scenario-4 kind="failure" evidence-type="deterministic" status="passed">A media write after a logout wipe writes nothing; thumbFile refuses paths outside event_thumbs; logs carry no URL, host, key, pwd or hashed path (RedactionScanner)</scenario-4>
         <scenario-5 kind="success" evidence-type="deterministic" status="passed">ClipViewModel maps Ready / Unsupported / Expired / Failed and player errors to the dialog texts; a new key cancels the old load (ClipViewModelTest 11)</scenario-5>
         <scenario-6 kind="device" evidence-type="trace" status="pending">H-EV4 clip plays (MediaPlayer on TextureView, «Повторить»), H-EV5 stale link refreshed once, H-EV9 previews from the file cache offline (05-HUMAN-UAT.md)</scenario-6>
+        <scenario-7 kind="regression" evidence-type="integration" status="passed">Real PlainMediaFetcher over MediaHttp.plainClient on a loopback MockWebServer: 2xx body, non-2xx status, size cap, CODE_IO with the exception class name only, and a GET after the server dropped the pooled keep-alive connection returns 200 (Phase 5 bug A: was status=-1 error=SocketException with retryOnConnectionFailure(false)) (PlainMediaFetcherTest 5)</scenario-7>
       </scenarios>
       <required-log-markers>
         <marker-1>[EventMedia][thumb][BLOCK_FETCH_THUMB]</marker-1>
         <marker-2>[EventMedia][thumb][BLOCK_PREFETCH_PASS]</marker-2>
-        <marker-3>[EventMedia][clip][BLOCK_FETCH_CLIP]</marker-3>
+        <marker-3>[EventMedia][clip][BLOCK_FETCH_CLIP] status bytes ext decryptOk magic [error=SimpleClassName when status=-1]</marker-3>
         <marker-4>[EventMedia][clip][BLOCK_CLIP_REFRESH] reason=missing|stale|403 result=ok|none</marker-4>
         <marker-5>[Events][clip][BLOCK_CLIP_PLAYER]</marker-5>
       </required-log-markers>
@@ -1034,6 +1036,7 @@
         <evidence-1>2026-11-03 plan 05-00: MediaCryptoTest; full suite 977 tests, 0 failures</evidence-1>
         <evidence-2>2026-11-03 plan 05-03: EventMediaRepositoryTest 22; full suite 1044 tests, 0 failures</evidence-2>
         <evidence-3>2026-11-04 plan 05-05: ClipViewModelTest 11, ClipDialog compile-only; full suite 1089 tests, 0 failures</evidence-3>
+        <evidence-4>2026-11-04 device bug A (clip status=-1 within ~10 ms about 4 min after the previous clip download: dead pooled CDN connection, OkHttp reconnect disabled): PlainMediaFetcherTest 5 (RED on the old client), EventClipFlowTest missing-ref case (refreshMedia with server http URLs -> https GET -> Ready); full suite 77 suites, 1096 tests, 0 failures, 1 skipped. On the phone two missing-ref clips played after the fix build of the logging (status=200, magic=mp4); the exact stale-connection timing was not re-hit on the device (second tap came after the 5 min pool keep-alive).</evidence-4>
       </gate-evidence>
       <notes>
         <note-1>The player (ClipDialog: MediaPlayer on TextureView, replacing the planned ExoPlayer) and BitmapThumbEncoder are Android-only: compile evidence on the JVM, behaviour in H-EV4 / H-EV9.</note-1>
@@ -1421,6 +1424,7 @@
         <scenario-3 kind="success" evidence-type="deterministic" status="passed">Clip dialog state: camera name, time label, SD button only for a known camera, failure texts, OpenSd with a redacted toString (ClipViewModelTest 11)</scenario-3>
         <scenario-4 kind="success" evidence-type="deterministic" status="passed">SD jump: openAt before load fires after the first full load, after load at once, today seeks without segments, a past day without recordings keeps the panel and sets «Нет записи в это время», no card drops the jump, list failure keeps it until a retry, hidden transport reports hidden; user actions cancel a queued jump (ArchiveCoordinatorTest openAt cases)</scenario-4>
         <scenario-6 kind="regression" evidence-type="deterministic" status="passed">Feed loaded -> tap -> clip end to end: real AlertSyncService refresh + preview prefetch into a strict Room (production main-thread guard, InMemoryRoom.buildStrict), cards from the stored rows for both key shapes (server id, uid_time), ClipViewModel over the real RepositoryClipSource on the main dispatcher -> Ready, camera name, SD button enabled, no BLOCK_CLIP_LOAD error line (EventClipFlowTest 1)</scenario-6>
+        <scenario-7 kind="regression" evidence-type="deterministic" status="passed">Event missing from MediaRefStore (new process) -> refreshMedia with the real AlertMapper and server http URLs -> every media GET https -> Ready, BLOCK_CLIP_REFRESH reason=missing result=ok (EventClipFlowTest 2)</scenario-7>
         <scenario-5 kind="device" evidence-type="trace" status="pending">H-EV1..H-EV7 (tab and feed, chips, day picker and button label, clip, stale clip, SD jump, jump without SD) in 05-HUMAN-UAT.md (plan 05-07)</scenario-5>
       </scenarios>
       <required-log-markers>
@@ -1439,6 +1443,7 @@
         <evidence-1>2026-11-04 plan 05-04: EventsFeedTest 11, EventsViewModelTest 11; full suite 1066 tests, 0 failures</evidence-1>
         <evidence-2>2026-11-04 plan 05-05: ClipViewModelTest 11, ArchiveCoordinatorTest openAt cases; full suite 1089 tests, 0 failures</evidence-2>
         <evidence-3>2026-11-04 device bug fix (clip dialog IllegalStateException step=event: blocking EventDao.getByKey on Dispatchers.Main): EventClipFlowTest 1; full suite 1090 tests, 0 failures</evidence-3>
+        <evidence-4>2026-11-04 device bug B (idle pull-to-refresh circle always drawn over the day row, covering «Сбросить»): EventsScreen BLOCK_PULL_INDICATOR clips the list box and composes PullToRefreshContainer only while pulling or refreshing. Compile-only on the JVM; phone screenshots: idle tab without the circle, indicator inside the list during a pull (gate too-early, no request), gone afterwards.</evidence-4>
       </gate-evidence>
       <notes>
         <note-3>JVM tests that touch Room through a production port on the main dispatcher must use InMemoryRoom.buildStrict(); build() allows main-thread queries and hid the clip-dialog bug.</note-3>
