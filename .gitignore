@@ -40,3 +40,10 @@ _jadx/
 diag_log.txt
 diag_log.txt.1
 .claude/
+# Release signing key and its properties live outside the repo (GSD Phase 6, D-01)
+*.jks
+*.keystore
+*.p12
+*.pfx
+release-signing.properties
+keystore.properties

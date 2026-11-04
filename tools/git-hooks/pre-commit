@@ -11,10 +11,17 @@
 #   vendor-or-capture-path  staged path is an APK/bundle, native lib, dex/smali/jadx output,
 #                           a capture (flow/pcap/har/mitm) or a diag/auth log, or lives under
 #                           _apk, _re, _work, _tools, _jadx, captures or app/src/main/jniLibs.
+#                           Also covers release signing keys (.jks/.keystore/.p12/.pfx) and the
+#                           signing properties files (release-signing / keystore .properties),
+#                           GSD Phase 6 D-01: the key and its passwords live outside the repo.
 #   decompiled-code         an added line in a .java/.kt file carries a decompiler marker.
 #   secret-value            an added line holds a real-looking token / License / InitString /
 #                           password / hmac value or a Bearer credential. Lines containing the
-#                           marker SYNTH (synthetic test fixtures) are allowed.
+#                           marker SYNTH (synthetic test fixtures) are allowed. Signing passwords:
+#                           s4 = storePassword/keyPassword assigned an unquoted literal of 6+ chars
+#                           (a whole-line properties/YAML assignment), s5 = assigned a quoted
+#                           literal of 6+ chars without a $ template. Gradle code reading the value
+#                           (getProperty(...)), placeholders (<generated>) and $ references pass.
 #
 # MODES:
 #   (no args)                 check the index (normal pre-commit use)
@@ -27,7 +34,7 @@
 #
 # EXIT CODE: 0 clean, 1 blocked, 2 usage or git error.
 
-PATH_RE='(^|/)(_apk|_re|_work|_tools|_jadx|captures)/|^app/src/main/jniLibs/|\.(apk|apks|apkm|xapk|aab|so|dex|smali|jadx|flow|flows|mitm|pcap|pcapng|har)$|(^|/)(auth_log|diag_log)\.txt(\.1)?$'
+PATH_RE='(^|/)(_apk|_re|_work|_tools|_jadx|captures)/|^app/src/main/jniLibs/|\.(apk|apks|apkm|xapk|aab|so|dex|smali|jadx|flow|flows|mitm|pcap|pcapng|har|jks|keystore|p12|pfx)$|(^|/)(auth_log|diag_log)\.txt(\.1)?$|(^|/)(release-signing|keystore)\.properties$'
 
 mode=index
 range=
@@ -79,6 +86,8 @@ BEGIN {
     s1 = "\"(token|token_secret|access_token|refresh_token|license|initstring|password|hmac)\"[[:space:]]*:[[:space:]]*\"[a-z0-9+/=:_-]{20,}\""
     s2 = "[?&]hmac=[a-z0-9%+/=]{20,}"
     s3 = "bearer [a-z0-9._-]{20,}"
+    s4 = "^\\+[[:space:]]*(storepassword|keypassword)[[:space:]]*[=:][[:space:]]*[^[:space:]\"(<$]{6,}[[:space:]]*$"
+    s5 = "(storepassword|keypassword)[[:space:]]*=[[:space:]]*\"[^\"$]{6,}\""
     hdr = 0; f = ""; dec = 0; ln = 0
 }
 /^diff --git / { hdr = 1; next }
@@ -99,7 +108,7 @@ hdr { next }
         print "decompiled-code code=HYGIENE_DECOMPILED_CODE file=" f " line=" ln
     if (index(line, "SYNTH") == 0) {
         low = tolower(line)
-        if (low ~ s1 || low ~ s2 || low ~ s3)
+        if (low ~ s1 || low ~ s2 || low ~ s3 || low ~ s4 || low ~ s5)
             print "secret-value code=HYGIENE_SECRET_VALUE file=" f " line=" ln
     }
     ln++
