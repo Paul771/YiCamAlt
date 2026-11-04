@@ -535,7 +535,7 @@
         <scenario-7 kind="success" evidence-type="deterministic" status="passed">Media refs in memory only (no URL / key column in Room: YiDatabaseTest `events table has no url or key column`); refreshMedia ±5 s, once per 60 s per key, 6 per rolling minute, unknown key = no request</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic" status="passed">Logout wipe through CameraRegistry.wipeLocked; a failing event wipe does not block the credential and camera wipe (CameraRegistryModuleTest scenario_14b)</scenario-8>
         <scenario-9 kind="success" evidence-type="trace" status="passed">Every captured sync / mapper log line is RedactionScanner-clean (AlertSyncServiceTest `logs pass RedactionScanner`)</scenario-9>
-        <scenario-10 kind="device" evidence-type="trace" status="pending">H-EV1 feed matches Yi Home, H-EV8 gate (no request within 5 minutes, also after force-stop; one refresh after, pages &lt;= 10), H-EV9 offline cache, H-EV10 log sweep and forbidden-path grep (05-HUMAN-UAT.md, plan 05-07)</scenario-10>
+        <scenario-10 kind="device" evidence-type="trace" status="passed">H-EV1 feed matches Yi Home, H-EV8 gate (no request within 5 minutes, also after force-stop; one refresh after, pages &lt;= 10), H-EV9 offline cache, H-EV10 log sweep and forbidden-path grep (05-HUMAN-UAT.md, plan 05-07)</scenario-10>
       </scenarios>
       <required-log-markers>
         <marker-1>[Event][sync][BLOCK_REFRESH_GATE]</marker-1>
@@ -1021,7 +1021,7 @@
         <scenario-3 kind="success" evidence-type="integration" status="passed">clip(key): cached file without network, missing / stale ref -> one refresh, first 403 -> one refresh + retry, 403 after refresh -> Failed(http), ts -> Unsupported, no clip -> Failed(no-clip), null refresh -> Expired (EventMediaRepositoryTest)</scenario-3>
         <scenario-4 kind="failure" evidence-type="deterministic" status="passed">A media write after a logout wipe writes nothing; thumbFile refuses paths outside event_thumbs; logs carry no URL, host, key, pwd or hashed path (RedactionScanner)</scenario-4>
         <scenario-5 kind="success" evidence-type="deterministic" status="passed">ClipViewModel maps Ready / Unsupported / Expired / Failed and player errors to the dialog texts; a new key cancels the old load (ClipViewModelTest 11)</scenario-5>
-        <scenario-6 kind="device" evidence-type="trace" status="pending">H-EV4 clip plays (MediaPlayer on TextureView, «Повторить»), H-EV5 stale link refreshed once, H-EV9 previews from the file cache offline (05-HUMAN-UAT.md)</scenario-6>
+        <scenario-6 kind="device" evidence-type="trace" status="passed">H-EV4 clip plays (MediaPlayer on TextureView, «Повторить»), H-EV5 stale link refreshed once, H-EV9 previews from the file cache offline (05-HUMAN-UAT.md)</scenario-6>
         <scenario-7 kind="regression" evidence-type="integration" status="passed">Real PlainMediaFetcher over MediaHttp.plainClient on a loopback MockWebServer: 2xx body, non-2xx status, size cap, CODE_IO with the exception class name only, and a GET after the server dropped the pooled keep-alive connection returns 200 (Phase 5 bug A: was status=-1 error=SocketException with retryOnConnectionFailure(false)) (PlainMediaFetcherTest 5)</scenario-7>
       </scenarios>
       <required-log-markers>
@@ -1428,7 +1428,7 @@
         <scenario-4 kind="success" evidence-type="deterministic" status="passed">SD jump: openAt before load fires after the first full load, after load at once, today seeks without segments, a past day without recordings keeps the panel and sets «Нет записи в это время», no card drops the jump, list failure keeps it until a retry, hidden transport reports hidden; user actions cancel a queued jump (ArchiveCoordinatorTest openAt cases)</scenario-4>
         <scenario-6 kind="regression" evidence-type="deterministic" status="passed">Feed loaded -> tap -> clip end to end: real AlertSyncService refresh + preview prefetch into a strict Room (production main-thread guard, InMemoryRoom.buildStrict), cards from the stored rows for both key shapes (server id, uid_time), ClipViewModel over the real RepositoryClipSource on the main dispatcher -> Ready, camera name, SD button enabled, no BLOCK_CLIP_LOAD error line (EventClipFlowTest 1)</scenario-6>
         <scenario-7 kind="regression" evidence-type="deterministic" status="passed">Event missing from MediaRefStore (new process) -> refreshMedia with the real AlertMapper and server http URLs -> every media GET https -> Ready, BLOCK_CLIP_REFRESH reason=missing result=ok (EventClipFlowTest 2)</scenario-7>
-        <scenario-5 kind="device" evidence-type="trace" status="pending">H-EV1..H-EV7 (tab and feed, chips, day picker and button label, clip, stale clip, SD jump, jump without SD) in 05-HUMAN-UAT.md (plan 05-07)</scenario-5>
+        <scenario-5 kind="device" evidence-type="trace" status="partial">H-EV1..H-EV7 (tab and feed, chips, day picker and button label, clip, stale clip, SD jump, jump without SD) in 05-HUMAN-UAT.md (plan 05-07)</scenario-5>
       </scenarios>
       <required-log-markers>
         <marker-1>[Events][vm][BLOCK_REFRESH] trigger=enter|pull result=&lt;class&gt;</marker-1>
@@ -1777,19 +1777,19 @@
       </commands>
       <required-evidence>
         <evidence-1>JVM gate: full unit suite + assembleDebug green with --rerun (plan 05-06: 75 suites, 1089 tests, 0 failures, 1 skipped); ForbiddenEndpointsTest included</evidence-1>
-        <evidence-2>Device gate: H-EV1..H-EV10 in .planning/phases/05-events-feed/05-HUMAN-UAT.md (plan 05-07), all pending</evidence-2>
+        <evidence-2>Device gate: H-EV1..H-EV10 in .planning/phases/05-events-feed/05-HUMAN-UAT.md and 05-DEVICE-VERIFICATION.md (plan 05-07, Mi 9, 2026-11-04): 9 passed, H-EV7 not exercised (no event of a camera without SD), 0 failed; H-EV3 label «Все дни ▾» awaits the user's decision; H-EV4 and H-EV10 passed after fixes made in that session</evidence-2>
       </required-evidence>
       <device-checks>
-        <H-EV1 requirement="EVT-01" status="pending">Tab «События» is third; events of all cameras with preview, camera name, time, grouped by day; count / newest time compared with Yi Home by eye</H-EV1>
-        <H-EV2 requirement="EVT-02" status="pending">Camera chips filter the feed; «Все» restores it</H-EV2>
-        <H-EV3 requirement="EVT-02" status="pending">Day picker marks days with events; picking a day filters, «Сбросить» returns; button label «Все дни ▾» / «Сегодня ▾» / «Вчера ▾» / «d MMMM ▾» confirmed by eye (deviation from the letter of D-03)</H-EV3>
-        <H-EV4 requirement="EVT-03" status="pending">Tap a card: the dialog plays the 6-second clip; «Повторить» replays; failure texts if any</H-EV4>
-        <H-EV5 requirement="EVT-03" status="pending">Clip of an older event (stale link) plays after one refresh (BLOCK_CLIP_REFRESH reason=stale)</H-EV5>
-        <H-EV6 requirement="EVT-04" status="pending">«Открыть запись на SD» opens the camera with the archive at the event moment (cursor at the event time, picture matches the clip); blocked (no SD card) if no camera has a recording at that moment</H-EV6>
-        <H-EV7 requirement="EVT-04" status="pending">Jump for a camera without SD / without a recording at that moment shows the Phase 4 text, no hang</H-EV7>
-        <H-EV8 requirement="EVT-06" status="pending">Re-entry and pull within 5 minutes make no feed request, subtitle «Обновлено N мин назад»; after 5 minutes one refresh (pages &lt;= 10); force-stop + reopen within 5 minutes still no request</H-EV8>
-        <H-EV9 requirement="EVT-05" status="pending">Airplane mode, force-stop, reopen: cached cards with their previews; subtitle «Нет сети, показан кэш» or «Обновлено N мин назад»</H-EV9>
-        <H-EV10 requirement="EVT-06" status="pending">Pulled diag log passes RealLogScanTest; no forbidden request path and no media URL host in the log</H-EV10>
+        <H-EV1 requirement="EVT-01" status="passed">Tab «События» is third; events of all cameras with preview, camera name, time, grouped by day; count / newest time compared with Yi Home by eye</H-EV1>
+        <H-EV2 requirement="EVT-02" status="passed">Camera chips filter the feed; «Все» restores it</H-EV2>
+        <H-EV3 requirement="EVT-02" status="passed">Day picker marks days with events; picking a day filters, «Сбросить» returns; button label «Все дни ▾» / «Сегодня ▾» / «Вчера ▾» / «d MMMM ▾» confirmed by eye (deviation from the letter of D-03)</H-EV3>
+        <H-EV4 requirement="EVT-03" status="passed">Tap a card: the dialog plays the 6-second clip; «Повторить» replays; failure texts if any</H-EV4>
+        <H-EV5 requirement="EVT-03" status="passed">Clip of an older event (stale link) plays after one refresh (BLOCK_CLIP_REFRESH reason=stale)</H-EV5>
+        <H-EV6 requirement="EVT-04" status="passed">«Открыть запись на SD» opens the camera with the archive at the event moment (cursor at the event time, picture matches the clip); blocked (no SD card) if no camera has a recording at that moment</H-EV6>
+        <H-EV7 requirement="EVT-04" status="not-exercised">Jump for a camera without SD / without a recording at that moment shows the Phase 4 text, no hang</H-EV7>
+        <H-EV8 requirement="EVT-06" status="passed">Re-entry and pull within 5 minutes make no feed request, subtitle «Обновлено N мин назад»; after 5 minutes one refresh (pages &lt;= 10); force-stop + reopen within 5 minutes still no request</H-EV8>
+        <H-EV9 requirement="EVT-05" status="passed">Airplane mode, force-stop, reopen: cached cards with their previews; subtitle «Нет сети, показан кэш» or «Обновлено N мин назад»</H-EV9>
+        <H-EV10 requirement="EVT-06" status="passed">Pulled diag log passes RealLogScanTest; no forbidden request path and no media URL host in the log</H-EV10>
       </device-checks>
       <notes>
         <note-1>Opening a clip may make one v2/alert/list request with a ±5 s window (media URL refresh, at most 6 per minute); it is user-initiated and does not count against the 5-minute feed gate. Only feed refreshes (BLOCK_FETCH_PAGE in a 30-day window) count in H-EV8.</note-1>
