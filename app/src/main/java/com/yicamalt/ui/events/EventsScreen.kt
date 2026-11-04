@@ -1,5 +1,5 @@
 // FILE: EventsScreen.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: «События» tab (EVT-01, EVT-02, EVT-05, EVT-06; D-01..D-04): camera chips, day button with the archive
 //     month-grid picker, freshness subtitle, pull-to-refresh list of event cards grouped by day.
@@ -55,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -74,7 +75,10 @@ import java.io.File
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-04: initial events tab screen.
+//   LAST_CHANGE: v0.1.1 - Phase 5 device bug: the idle pull-to-refresh indicator (grey circle) was always visible over
+//     the day row and covered «Сбросить». material3 1.2 draws the resting container above the list box, which did not
+//     clip; the box now clips to bounds and the container exists only while pulling or refreshing.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-04: initial events tab screen.
 // END_CHANGE_SUMMARY
 
 private const val THUMB_CACHE_SIZE = 60
@@ -155,7 +159,11 @@ fun EventsScreen(
                 )
             }
         }
-        Box(Modifier.fillMaxSize().nestedScroll(ptr.nestedScrollConnection)) {
+        // START_BLOCK_PULL_INDICATOR
+        // material3 1.2 parks the idle PullToRefreshContainer one indicator height above the list with its
+        // surface and shadow still drawn; without a clip it showed as a grey circle over the filter row and the
+        // «Сбросить» button. The list box clips it, and the container is composed only during a pull or a refresh.
+        Box(Modifier.fillMaxSize().clipToBounds().nestedScroll(ptr.nestedScrollConnection)) {
             LazyColumn(Modifier.fillMaxSize()) {
                 val empty = ui.emptyText
                 if (empty != null) {
@@ -181,8 +189,11 @@ fun EventsScreen(
                     }
                 }
             }
-            PullToRefreshContainer(state = ptr, modifier = Modifier.align(Alignment.TopCenter))
+            if (ptr.isRefreshing || ptr.progress > 0f) {
+                PullToRefreshContainer(state = ptr, modifier = Modifier.align(Alignment.TopCenter))
+            }
         }
+        // END_BLOCK_PULL_INDICATOR
     }
 
     if (ui.daysDialogOpen) {
