@@ -38,6 +38,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
@@ -211,7 +212,7 @@ class ClipViewModelTest {
         vm.open("k1")
         advanceUntilIdle()
         vm.openSd()
-        advanceUntilIdle()
+        runCurrent() // the collector lives in backgroundScope: advanceUntilIdle does not wait for it
         val e = events.single() as ClipEvent.OpenSd
         assertEquals(DEV_A, e.deviceId)
         assertEquals(EVENT_MS, e.timeMs)
@@ -222,7 +223,7 @@ class ClipViewModelTest {
         vm.open("k-gone")
         advanceUntilIdle()
         vm.openSd()
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(1, events.size)
     }
 
