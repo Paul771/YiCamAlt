@@ -175,6 +175,53 @@
       </notes>
     </M-REPO-HYGIENE>
 
+    <M-RELEASE-BUILD NAME="ReleaseBuild" TYPE="TOOLING" LAYER="0" ORDER="5" STATUS="planned">
+      <contract>
+        <purpose>Build a signed, unminified ARM release APK from a clean clone plus the user's own Yi Home APK; the signing key and its passwords stay outside the repository (REL-01, D-01, D-02).</purpose>
+        <inputs>
+          <param name="signingProperties" type="Properties file outside the repo (storeFile, storePassword, keyAlias, keyPassword); path from Gradle property yicamaltSigningFile, default %USERPROFILE%/.yicamalt/release-signing.properties" />
+          <param name="vendorApk" type="-PvendorApk / -PvendorApkDir, as M-P2P-NATIVE" />
+          <param name="androidSdk" type="local.properties sdk.dir or ANDROID_HOME" />
+        </inputs>
+        <outputs>
+          <param name="app-release.apk" type="APK Signature Scheme v2/v3, versionName 1.0.0, versionCode 10000 = major*10000 + minor*100 + patch, lib/arm64-v8a + lib/armeabi-v7a only, the 8 vendor libs byte-identical to app/vendor-natives.sha256, no R8" />
+          <param name="checkLines" type="value-free check lines" />
+        </outputs>
+        <errors>
+          <error code="RELEASE_SIGNING_MISSING" />
+          <error code="RELEASE_KEY_EXISTS" />
+          <error code="RELEASE_KEY_PATH_IN_REPO" />
+          <error code="RELEASE_APK_CHECK_FAILED" />
+          <error code="CLEAN_CLONE_BUILD_FAILED" />
+        </errors>
+      </contract>
+      <interface>
+        <export-verifyReleaseSigning PURPOSE="Gradle task: fails release packaging without a complete signing file, value-free message" />
+        <export-newReleaseKey PURPOSE="tools/new-release-key.ps1: one PKCS12 key outside the repo, generated or typed passwords, refuses to overwrite" />
+        <export-checkReleaseApk PURPOSE="tools/check-release-apk.ps1: signature schemes, signer equality with another APK, ABI dirs, vendor lib hashes, version, debuggable flag" />
+        <export-cleanCloneBuild PURPOSE="tools/clean-clone-build.ps1: clone to a temp dir outside the repo, assembleRelease with the local _apk passed by property, check, cleanup" />
+      </interface>
+      <depends>M-P2P-NATIVE, M-REPO-HYGIENE</depends>
+      <target>
+        <source>app/build.gradle.kts</source>
+        <source>tools/new-release-key.ps1</source>
+        <source>tools/check-release-apk.ps1</source>
+        <source>tools/clean-clone-build.ps1</source>
+        <source>docs/RELEASE.md</source>
+        <tests>tools/check-release-apk.ps1 (self-checking)</tests>
+        <tests>tools/clean-clone-build.ps1</tests>
+      </target>
+      <observability>
+        <log-prefix>[ReleaseBuild]</log-prefix>
+        <critical-block>BLOCK_RELEASE_SIGNING, BLOCK_VERIFY_RELEASE_SIGNING, BLOCK_NEW_KEY, BLOCK_CHECK_SIGNATURE, BLOCK_CHECK_NATIVE_LIBS, BLOCK_CHECK_VERSION, BLOCK_CLEAN_CLONE</critical-block>
+      </observability>
+      <verification-ref>V-M-RELEASE-BUILD</verification-ref>
+      <notes>
+        <note-1>R8/minify off by user decision (06-CONTEXT D-02); proguard-rules.pro stays for a later R8 phase.</note-1>
+        <note-2>Release builds plant no Timber tree (YiCamAltApp): no diag_log and no app log lines; device log sweeps use the debug build, release uses a logcat capture (plan 06-04).</note-2>
+      </notes>
+    </M-RELEASE-BUILD>
+
     <!-- Layer 1: Core Domain -->
 
     <M-AUTH NAME="Authentication" TYPE="CORE_LOGIC" LAYER="1" ORDER="1" STATUS="implemented">

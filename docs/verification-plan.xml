@@ -136,6 +136,7 @@
     <row-M-CAMERA-DISCOVERY success="2" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
     <row-M-CAMERA-SETUP success="1" failure="1" deterministic="1" trace="2" integration="1" semantic="0" autonomy="conditional" />
     <row-M-REPO-HYGIENE success="2" failure="4" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
+    <row-M-RELEASE-BUILD success="4" failure="4" deterministic="8" trace="0" integration="1" semantic="0" autonomy="ready" STATUS="planned" />
     <row-M-DEBUG-PROBE success="4" failure="4" deterministic="8" trace="1" integration="0" semantic="0" autonomy="ready" />
     <row-M-P2P-CREDS success="3" failure="3" deterministic="6" trace="0" integration="0" semantic="0" autonomy="ready" />
     <row-M-P2P-NATIVE success="6" failure="3" deterministic="8" trace="1" integration="0" semantic="0" autonomy="conditional" STATUS="in-progress" />
@@ -399,6 +400,42 @@
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-REPO-HYGIENE>
+
+    <V-M-RELEASE-BUILD MODULE="M-RELEASE-BUILD" PRIORITY="high" STATUS="planned">
+      <test-files>
+        <file>tools/check-release-apk.ps1</file>
+        <file>tools/clean-clone-build.ps1</file>
+      </test-files>
+      <module-checks>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/new-release-key.ps1 -DryRun</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleRelease</check-2>
+        <check-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-release-apk.ps1</check-3>
+        <check-4>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleRelease -PyicamaltSigningFile=&lt;missing file&gt; (expect failure RELEASE_SIGNING_MISSING)</check-4>
+        <check-5>powershell -NoProfile -ExecutionPolicy Bypass -File tools/clean-clone-build.ps1</check-5>
+        <check-6>git ls-files | grep -Eic '\.(apk|apkm|xapk|so|dex|jks|keystore|p12|pfx)$' (expect 0)</check-6>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success" evidence-type="deterministic">release APK signed v2/v3 and installs</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic">8 vendor libs match the manifest in both ABIs and no other ABI dir</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic">versionName 1.0.0 / versionCode 10000, not debuggable, no minifyReleaseWithR8 task</scenario-3>
+        <scenario-4 kind="success" evidence-type="integration">clean clone builds with the local _apk by property and tracks no vendor file</scenario-4>
+        <scenario-5 kind="failure" evidence-type="deterministic">missing signing file -> RELEASE_SIGNING_MISSING before packaging, JVM tests unaffected</scenario-5>
+        <scenario-6 kind="failure" evidence-type="deterministic">second key creation -> RELEASE_KEY_EXISTS, existing key untouched</scenario-6>
+        <scenario-7 kind="failure" evidence-type="deterministic">key dir inside the repo -> RELEASE_KEY_PATH_IN_REPO</scenario-7>
+        <scenario-8 kind="failure" evidence-type="deterministic">keystore / password value staged -> pre-commit blocks (V-M-REPO-HYGIENE)</scenario-8>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[ReleaseBuild][checkReleaseApk][BLOCK_CHECK_SIGNATURE]</marker-1>
+        <marker-2>[ReleaseBuild][checkReleaseApk][BLOCK_CHECK_NATIVE_LIBS]</marker-2>
+        <marker-3>[ReleaseBuild][checkReleaseApk][BLOCK_CHECK_VERSION]</marker-3>
+        <marker-4>[ReleaseBuild][cleanCloneBuild][BLOCK_CLEAN_CLONE]</marker-4>
+        <marker-5>[ReleaseBuild][newReleaseKey][BLOCK_NEW_KEY]</marker-5>
+        <marker-6>[ReleaseBuild][gradle][BLOCK_VERIFY_RELEASE_SIGNING]</marker-6>
+      </required-log-markers>
+      <gate-evidence>
+        <evidence-1>pending (plans 06-01..06-03)</evidence-1>
+      </gate-evidence>
+    </V-M-RELEASE-BUILD>
 
     <V-M-DEBUG-PROBE MODULE="M-DEBUG-PROBE" PRIORITY="high" STATUS="passed">
       <test-files>
@@ -1795,6 +1832,27 @@
         <note-1>Opening a clip may make one v2/alert/list request with a ±5 s window (media URL refresh, at most 6 per minute); it is user-initiated and does not count against the 5-minute feed gate. Only feed refreshes (BLOCK_FETCH_PAGE in a 30-day window) count in H-EV8.</note-1>
       </notes>
     </Gate-GSD-Phase-5>
+
+    <Gate-GSD-Phase-6 PHASE="GSD 06-release-build (release build and final device regression)" STATUS="pending">
+      <goal>Signed ARM release APK from a clean clone (REL-01); all v1 scenarios on the user's phone incl. remote and parallel use with the official app (REL-02); final redaction sweep of a real session.</goal>
+      <commands>
+        <command-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun :app:assembleDebug :app:assembleRelease</command-1>
+        <command-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-release-apk.ps1</command-2>
+        <command-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/clean-clone-build.ps1</command-3>
+        <command-4>sh tools/git-hooks/pre-commit --range $(cat .planning/phases/06-release-build/06-PHASE-BASE.txt)..HEAD</command-4>
+        <command-5>sh tools/git-hooks/test-pre-commit.sh</command-5>
+        <command-6>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=&lt;scratchpad&gt;/diag-06.txt (device, debug session H-D1)</command-6>
+      </commands>
+      <required-evidence>
+        <evidence-1>pending: REL-01 release build + check-release-apk</evidence-1>
+        <evidence-2>pending: clean-clone build</evidence-2>
+        <evidence-3>pending: device regression H-R*</evidence-3>
+        <evidence-4>pending: redaction sweeps H-D1 / H-R14</evidence-4>
+      </required-evidence>
+      <notes>
+        <note-1>Device checks are added by plan 06-04 together with 06-HUMAN-UAT.md.</note-1>
+      </notes>
+    </Gate-GSD-Phase-6>
 
     <Gate-Phase-4 PHASE="Phase-4">
       <goal>All features polished, push notifications working, UX complete, ready for release build.</goal>

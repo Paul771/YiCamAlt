@@ -452,6 +452,24 @@
       <change-summary phase="01-secrets-camera-list" commit="09dbb13" verification="passed">GSD phase 01 (plan 01-03): pre-commit guard (HYGIENE_FORBIDDEN_PATH, HYGIENE_DECOMPILED_CODE, HYGIENE_SECRET_VALUE) with --range mode, copy installer keeping LFS hooks, SEC-03 .gitignore block, 8-case self-test green.</change-summary>
     </M-REPO-HYGIENE>
 
+    <M-RELEASE-BUILD NAME="ReleaseBuild" TYPE="TOOLING" STATUS="planned">
+      <purpose>Build a signed, unminified ARM release APK from a clean clone plus the user's own Yi Home APK; the signing key and its passwords stay outside the repository.</purpose>
+      <path>app/build.gradle.kts</path>
+      <path>tools/new-release-key.ps1</path>
+      <path>tools/check-release-apk.ps1</path>
+      <path>tools/clean-clone-build.ps1</path>
+      <path>docs/RELEASE.md</path>
+      <depends>M-P2P-NATIVE, M-REPO-HYGIENE</depends>
+      <verification-ref>V-M-RELEASE-BUILD</verification-ref>
+      <annotations>
+        <fn-verifyReleaseSigning PURPOSE="Gradle task: fail release packaging without a complete signing file (value-free message)" />
+        <fn-newReleaseKey PURPOSE="Create one PKCS12 key outside the repo; refuse to overwrite" />
+        <fn-checkReleaseApk PURPOSE="Check signature schemes, signer, ABI dirs, vendor lib hashes, version and debuggable flag" />
+        <fn-cleanCloneBuild PURPOSE="Clone to a temp dir outside the repo, assembleRelease with the local _apk, check, clean up" />
+      </annotations>
+      <change-summary phase="06-release-build" verification="pending">contract only (plan 06-00)</change-summary>
+    </M-RELEASE-BUILD>
+
     <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" STATUS="implemented">
       <purpose>Debug-only one-shot probe of device-list endpoints across gateways; emits only status/code/length/count/field names.</purpose>
       <path>app/src/main/java/com/yicamalt/debug/EndpointProbe.kt</path>
@@ -915,5 +933,7 @@
     <CrossLink from="M-LIVE-SESSION" to="M-SD-ARCHIVE" relation="implements-port" />
     <CrossLink from="M-UI-LIVEVIEW" to="M-SD-ARCHIVE" relation="uses" />
     <CrossLink from="M-UI-LIVE-PROBE" to="M-SD-ARCHIVE" relation="uses" />
+    <CrossLink from="M-RELEASE-BUILD" to="M-P2P-NATIVE" relation="uses extractVendorNatives / verifyVendorNatives" />
+    <CrossLink from="M-RELEASE-BUILD" to="M-REPO-HYGIENE" relation="relies on the keystore and password rules" />
   </Project>
 </KnowledgeGraph>
