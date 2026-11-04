@@ -1,5 +1,5 @@
 // FILE: HttpClientModuleTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify HTTP client wiring, auth header injection, 401 refresh+retry, and redacted logging.
 //   SCOPE: success + failure scenarios for V-M-HTTP using MockWebServer + a fake AuthProvider.
@@ -12,13 +12,14 @@ package com.yicamalt.network
 
 // START_MODULE_MAP
 //   FakeAuthProvider - scripted AuthProvider counting refresh and getAccessToken calls.
-//   HttpClientModuleTest - scenario_1..scenario_13 (5..7: SEC-01 redaction; 8..11: per-request base URL +
+//   HttpClientModuleTest - scenario_1..scenario_14 (5..7, 14: SEC-01 redaction, 14 = HTTP FAILED line; 8..11: per-request base URL +
 //     app headers; 12: one auth_token per expiry; 13: refresh-free probe client).
 //   MutableTestConfig - ConfigModule with a switchable base URL.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - scenario_1 asserts the placeholder host; scenario_8..13 pin the stale-Retrofit fix,
+//   LAST_CHANGE: v0.3.1 - scenario_14: a dead-port call logs `<-- HTTP FAILED: <SimpleName>` only (no host/port).
+//   PREV_CHANGE: v0.3.0 - scenario_1 asserts the placeholder host; scenario_8..13 pin the stale-Retrofit fix,
 //     official app headers (login untouched), base-path prefix, CONFIG_BAD_BASE_URL, refresh bound, probeClient.
 //   PREV_CHANGE: v0.2.0 - SEC-01: scenario_5 (hmac/userid query masking), scenario_6 (encoded-data login
 //     envelope), scenario_7 (/v4/tnp/device_info) using synthetic RedactionFixtures.
@@ -210,6 +211,21 @@ class HttpClientModuleTest {
         assertTrue(trace.contains("[Network][body][BLOCK_REDACTED_LOG] path=/v4/tnp/device_info"), trace)
         assertTrue(trace.contains("\"DID\":\"██\""), "DID value masked")
         redaction.assertClean(trace, extraLiterals = RedactionFixtures.ALL_SECRETS)
+    }
+    @Test
+    fun `scenario_14 connection failure log carries only the exception simpleName`() {
+        val dead = MockWebServer().apply { start() }
+        val deadUrl = dead.url("/v5/devices/list")
+        dead.shutdown()
+        val client = buildClient(FakeAuthProvider())
+        org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+            client.probeClient().newCall(okhttp3.Request.Builder().url(deadUrl).build()).execute().close()
+        }
+        val log = logBuffer.toString()
+        val failed = log.lines().single { it.contains("HTTP FAILED") }
+        assertTrue(Regex("^<-- HTTP FAILED: [A-Za-z0-9_$]+( after \\d+ms)?$").matches(failed), failed)
+        assertTrue(!failed.contains(deadUrl.host) && !failed.contains(":${deadUrl.port}"), failed)
+        redaction.assertClean(log)
     }
     // END_BLOCK_SEC01_SCENARIOS
 

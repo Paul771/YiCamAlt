@@ -204,6 +204,7 @@
         <scenario-16 kind="success" evidence-type="deterministic">base-url-switch-without-rebuild (alias of scenario-8; one Retrofit instance follows ConfigModule A to B)</scenario-16>
         <scenario-17 kind="success" evidence-type="deterministic">app-headers-not-on-login (alias of scenario-9; /v4/users carries no x-kamihome-*/x-xiaoyi-* header)</scenario-17>
         <scenario-18 kind="success" evidence-type="deterministic">YiRequestSigner vector: HMAC-SHA1 published vector, canonical message with and without extra params, confirmed device-list wire format (YiRequestSignerTest 6 cases)</scenario-18>
+        <scenario-19 kind="failure" evidence-type="deterministic">http-failed-line-value-free: the BASIC logger's `&lt;-- HTTP FAILED: &lt;exception&gt;` line keeps only the exception simpleName and `after Nms`; host, resolved IPv4, local IPv4 and ports from SocketTimeout/Connect/UnknownHost messages never reach the log (LogRedactorTest redactHttpLine*, HttpClientModuleTest scenario_14 dead port; RedactionScanner clean)</scenario-19>
       </scenarios>
       <required-log-markers>
         <marker-1>[Network][init][BLOCK_INIT_HTTP_CLIENT]</marker-1>
@@ -213,9 +214,11 @@
         <anchor-1>BLOCK_RESOLVE_BASE_URL (HttpClientModule baseUrlInterceptor; code anchor, emits no log line, evidenced by scenario-8/10/11)</anchor-1>
         <anchor-2>BLOCK_MASK_JSON_BODY (LogRedactor)</anchor-2>
         <anchor-3>BLOCK_SIGN_REQUEST (YiRequestSigner)</anchor-3>
+        <anchor-4>BLOCK_REDACT_HTTP_FAILED (LogRedactor.redactHttpLine; every redactedLogger line passes through it, evidenced by scenario-19)</anchor-4>
       </code-anchors>
       <gate-evidence>
         <evidence-1>2026-10-11 full :app:testDebugUnitTest (plan 01-06 wave-2 gate): 165 tests, 1 skipped, 0 failures; HttpClientModuleTest 15/15, LogRedactorTest 14/14, YiRequestSignerTest 6/6</evidence-1>
+        <evidence-2>2026-11-04 full :app:testDebugUnitTest --rerun :app:assembleDebug after the HTTP FAILED leak fix: 1102 tests, 1 skipped, 0 failures (scenario-19 RED first: 6 failures on the stub)</evidence-2>
       </gate-evidence>
       <required-trace-assertions>
         <assertion-1>401 triggers exactly one token refresh and one retry</assertion-1>
@@ -400,6 +403,8 @@
     <V-M-DEBUG-PROBE MODULE="M-DEBUG-PROBE" PRIORITY="high" STATUS="passed">
       <test-files>
         <file>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/debug/AlertProbeShapeTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/debug/AlertProbeShapeFormsTest.kt</file>
       </test-files>
       <module-checks>
         <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.debug.*"</check-1>
@@ -414,14 +419,20 @@
         <scenario-6 kind="failure" evidence-type="deterministic">friends-is-never-a-device-source</scenario-6>
         <scenario-7 kind="success" evidence-type="deterministic">16-byte-accepted-empty-envelope (code 20200, len=16, data absent, devicelike=false)</scenario-7>
         <scenario-8 kind="success" evidence-type="deterministic">v4-array-shape-yields-count-and-field-names (nested ipcParam names only)</scenario-8>
+        <scenario-9 kind="success" evidence-type="deterministic">alert-url-fields-report-form-scheme-host-class-without-values (pic_urls / video_urls / video02_urls; string, array, object)</scenario-9>
+        <scenario-10 kind="success" evidence-type="deterministic">alert-uid-matched-per-identifier-type-booleans-and-lengths-only (dev / p2p / user)</scenario-10>
+        <scenario-11 kind="success" evidence-type="deterministic">http-media-url-gets-https-variant-same-path (alert probe cap 5 requests)</scenario-11>
+        <scenario-12 kind="success" evidence-type="trace">alert-probe-lines-are-RedactionScanner-clean (AlertProbeShapeTest 8, AlertProbeShapeFormsTest 7)</scenario-12>
       </scenarios>
       <gate-evidence>
         <evidence-1>2026-10-11 plan 01-06 wave-2 gate: ProbeMatrixTest 12/12 inside full suite 165 tests, 0 failures</evidence-1>
         <evidence-2>Device evidence 2026-10-11 (Mi 9): four runs; US login gives 13 requests, 2 devices on /v5/devices/list, tnp device_info ok; redaction sweep passed on every pulled log; BRANCH=A, DATA_REGION=US; see 01-PROBE-RESULTS.md</evidence-2>
+        <evidence-3>2026-11-03 plan 05-00 (Mi 9): alert probe v2 run by the user, 5 requests, value-free lines in 05-PROBE-RESULTS.txt; decisions D-PROBE-1..8 in 05-PROBE.md (Gate CONTINUE)</evidence-3>
       </gate-evidence>
       <required-log-markers>
         <marker-1>[Probe][run][BLOCK_PROBE_MATRIX]</marker-1>
         <marker-2>[Probe][run][BLOCK_PROBE_SUMMARY]</marker-2>
+        <marker-3>[EventProbe][run][BLOCK_ALERT_PROBE]</marker-3>
       </required-log-markers>
       <notes>
         <note-1>ProbeMatrix is pure (BLOCK_ANALYZE_PROBE_RESPONSE is a code anchor, not a log marker); EndpointProbe logs only ProbeMatrix.format() lines.</note-1>
@@ -498,61 +509,59 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-CAMERA-CMD>
 
-    <V-M-EVENT MODULE="M-EVENT" PRIORITY="high" STATUS="passed">
+    <V-M-EVENT MODULE="M-EVENT" PRIORITY="high" STATUS="in-progress">
       <test-files>
-        <file>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/AlertWireTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/AlertMapperTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/ForbiddenEndpointsTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/AlertSyncTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/AlertSyncServiceTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/database/YiDatabaseTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/camera/CameraRegistryModuleTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/test/FakeEventCache.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.event.EventService*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.event.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.database.YiDatabaseTest" --tests "com.yicamalt.camera.CameraRegistryModuleTest"</check-2>
+        <check-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:compileDebugKotlin</check-3>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">Paginated event list returned with thumbnails from FakeYiApi</scenario-1>
-        <scenario-2 kind="success" evidence-type="integration">Events synced to InMemoryRoom correctly</scenario-2>
-        <scenario-3 kind="success" evidence-type="deterministic">Playback URL resolved for event</scenario-3>
-        <scenario-4 kind="failure" evidence-type="deterministic">No recording events returns empty list (not error)</scenario-4>
-        <scenario-1b kind="success" evidence-type="deterministic">Second page requested; hasMore accounts for the page offset against a grand total</scenario-1b>
-        <scenario-1c kind="success" evidence-type="deterministic">hasMore inferred from a full page when the envelope reports neither flag nor total</scenario-1c>
-        <scenario-1d kind="success" evidence-type="deterministic">Request carries seq/userid/hmac/device_id/window/page/page_size</scenario-1d>
-        <scenario-1e kind="success" evidence-type="deterministic">Alternative envelope keys (id/alarm_type/start_time/cover) and epoch-seconds widening</scenario-1e>
-        <scenario-2b kind="success" evidence-type="deterministic">Local timeline read honours the requested window</scenario-2b>
-        <scenario-2c kind="success" evidence-type="deterministic">Re-fetching a page does not duplicate cache rows</scenario-2c>
-        <scenario-3b kind="success" evidence-type="deterministic">Unresolved playback URL is fetched remotely, persisted, then served from cache</scenario-3b>
-        <scenario-4b kind="success" evidence-type="deterministic">Null data is an empty page, not an error</scenario-4b>
-        <scenario-4c kind="success" evidence-type="deterministic">An empty later page does not evict cached events</scenario-4c>
-        <scenario-4d kind="failure" evidence-type="deterministic">Event without a recording maps to EVENT_NO_RECORDING</scenario-4d>
-        <scenario-5 kind="failure" evidence-type="deterministic">401 maps to EVENT_UNAUTHORIZED</scenario-5>
-        <scenario-5b kind="failure" evidence-type="deterministic">App-level auth code maps to EVENT_UNAUTHORIZED</scenario-5b>
-        <scenario-5c kind="failure" evidence-type="deterministic">5xx maps to EVENT_FETCH_FAILED</scenario-5c>
-        <scenario-5d kind="failure" evidence-type="deterministic">Unknown success code maps to EVENT_FETCH_FAILED</scenario-5d>
-        <scenario-5e kind="failure" evidence-type="deterministic">Missing session maps to EVENT_UNAUTHORIZED before any request</scenario-5e>
-        <scenario-5f kind="failure" evidence-type="deterministic">Unknown event id maps to EVENT_NOT_FOUND</scenario-5f>
-        <scenario-5g kind="success" evidence-type="deterministic">Page numbers below one are coerced to 1</scenario-5g>
-        <scenario-6 kind="success" evidence-type="trace">No event id, device id, or token reaches the log buffer</scenario-6>
-        <scenario-7 kind="success" evidence-type="trace">Fetch emits BLOCK_FETCH_EVENTS then BLOCK_DB_WRITE then BLOCK_SYNC_TO_DB</scenario-7>
+        <scenario-1 kind="success" evidence-type="deterministic" status="passed">Signed v2/alert/list parameters in vendor order after seq / userid, empty values kept; 30-day window floored at the vendor guard, to = start of tomorrow; refresh window ±5 s (AlertWireTest)</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic" status="passed">Mapper: code as string or number, key = id or uid_time, ms times, plural URL fields as single strings (comma split tolerated), http -> https media URLs, absent play_time = 0, malformed items skipped, non-array data = no records (AlertMapperTest 14)</scenario-2>
+        <scenario-3 kind="failure" evidence-type="deterministic" status="passed">Deny list: no main source literal matches the forbidden alert / push / VAS / order paths, the only alert/ literal is v2/alert/list, a planted literal is caught, at least 100 source files read (ForbiddenEndpointsTest 3)</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic" status="passed">RefreshGate 5 minutes; PagePlanner first / next / gap, 10-page cap, full page without usable records stops, a gap older than the window is dropped (AlertSyncTest 13)</scenario-4>
+        <scenario-5 kind="success" evidence-type="integration" status="passed">Refresh: too early = no request, gate survives a new service instance, paging until a short page, boundary duplicate stored once, incremental start from the newest cached time, concurrent calls share one run, 10-page cap saves and resumes the gap, 30-day purge of rows and preview files (AlertSyncServiceTest)</scenario-5>
+        <scenario-6 kind="failure" evidence-type="integration" status="passed">Failed code / Unauthorized set the attempt mark and block 5 minutes; 401 and auth code -> Unauthorized without retry, cache kept; IOException -> Offline, no mark; no session = no request; a logout during a refresh writes nothing afterwards (AlertSyncServiceTest)</scenario-6>
+        <scenario-7 kind="success" evidence-type="deterministic" status="passed">Media refs in memory only (no URL / key column in Room: YiDatabaseTest `events table has no url or key column`); refreshMedia ±5 s, once per 60 s per key, 6 per rolling minute, unknown key = no request</scenario-7>
+        <scenario-8 kind="success" evidence-type="deterministic" status="passed">Logout wipe through CameraRegistry.wipeLocked; a failing event wipe does not block the credential and camera wipe (CameraRegistryModuleTest scenario_14b)</scenario-8>
+        <scenario-9 kind="success" evidence-type="trace" status="passed">Every captured sync / mapper log line is RedactionScanner-clean (AlertSyncServiceTest `logs pass RedactionScanner`)</scenario-9>
+        <scenario-10 kind="device" evidence-type="trace" status="passed">H-EV1 feed matches Yi Home, H-EV8 gate (no request within 5 minutes, also after force-stop; one refresh after, pages &lt;= 10), H-EV9 offline cache, H-EV10 log sweep and forbidden-path grep (05-HUMAN-UAT.md, plan 05-07)</scenario-10>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Event][getEventTimeline][BLOCK_FETCH_EVENTS]</marker-1>
-        <marker-2>[Event][syncToDb][BLOCK_SYNC_TO_DB]</marker-2>
-        <marker-3>[Event][resolveUrl][BLOCK_RESOLVE_PLAYBACK_URL]</marker-3>
+        <marker-1>[Event][sync][BLOCK_REFRESH_GATE]</marker-1>
+        <marker-2>[Event][sync][BLOCK_FETCH_PAGE]</marker-2>
+        <marker-3>[Event][sync][BLOCK_SYNC_RESULT]</marker-3>
+        <marker-4>[Event][media][BLOCK_REFRESH_MEDIA]</marker-4>
+        <marker-5>[Event][map][BLOCK_MAP_ALERTS]</marker-5>
+        <marker-6>[Event][sync][BLOCK_PURGE_FILES]</marker-6>
+        <marker-7>[Event][wipe][BLOCK_WIPE_FILES]</marker-7>
+        <marker-8>[CameraRegistry][wipe][BLOCK_WIPE] events=wiped|failed</marker-8>
       </required-log-markers>
       <required-trace-assertions>
-        <assertion-1>Empty result must not emit BLOCK_SYNC_TO_DB</assertion-1>
-        <assertion-2>Empty result must not emit BLOCK_DB_WRITE (an empty page may not touch the cache)</assertion-2>
-        <assertion-3>Empty later page must not evict previously cached events</assertion-3>
+        <assertion-1>No uid, event key, URL, host, pwd, token or absolute time in any [Event] line</assertion-1>
+        <assertion-2>TooEarly emits BLOCK_REFRESH_GATE and no BLOCK_FETCH_PAGE</assertion-2>
+        <assertion-3>At most 10 BLOCK_FETCH_PAGE lines per refresh</assertion-3>
       </required-trace-assertions>
       <gate-evidence>
-        <evidence-1>2026-09-28 :app:testDebugUnitTest — 91 tests / 0 failures (68 baseline + 23 M-EVENT)</evidence-1>
-        <evidence-2>2026-09-28 :app:assembleDebug — app-debug.apk 17.2 MB</evidence-2>
-        <evidence-3>2026-09-28 scenario_6 caught EventDao leaking event_id into BLOCK_DB_WRITE; DAO log line fixed</evidence-3>
+        <evidence-1>2026-11-03 plan 05-01: old client and its 23 tests deleted; AlertMapperTest 14, ForbiddenEndpointsTest 3; full suite 971 tests, 0 failures</evidence-1>
+        <evidence-2>2026-11-03 plan 05-02: AlertSyncTest 13, AlertSyncServiceTest 24 (33 after 05-03); full suite 1013 tests, 0 failures</evidence-2>
+        <evidence-3>2026-11-04 plan 05-06 GRACE sync: full gate powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun :app:assembleDebug BUILD SUCCESSFUL, gradle exit=0: 75 suites, 1089 tests, 0 failures, 1 skipped (RealLogScanTest without a log file); the first run of the day failed once on EventMediaRepositoryTest `wipeAll removes thumbs and clips` (Windows file deletion timing, passed on rerun; deferred-items.md)</evidence-3>
+        <evidence-4>Device probe 05-PROBE.md (Gate CONTINUE): code 20000, ms times, uid = camera deviceId, decrypt ok over https</evidence-4>
       </gate-evidence>
-      <wave-follow-up>Events displayed in UI with correct date grouping.</wave-follow-up>
-      <phase-follow-up>Pagination (scroll to load more) verified.</phase-follow-up>
-      <deferred>
-        <deferred-1>EventPaths constants are a guess: real Yi Cloud paths are versioned without a /v1 prefix. Re-point after a live capture.</deferred-1>
-        <deferred-2 STATUS="closed">EventSigner duplicates the M-CAMERA-LIST HmacSHA1 scheme; unconfirmed for the event API. Collapse both into M-HTTP after a capture. CLOSED 2026-10-10 (plan 01-04, commit 05dcd39): EventSigner deleted, events sign via M-HTTP YiRequestSigner; EventServiceModuleTest 23/23 green. Wire confirmation for the event API still rides on deferred-1.</deferred-2>
-        <deferred-3>Playback URL wire format is provisional; only the parse path is proven, not the endpoint.</deferred-3>
-      </deferred>
+      <notes>
+        <note-1>STATUS stays in-progress until the device checks H-EV1, H-EV8, H-EV9, H-EV10 pass (plan 05-07); the JVM scenarios are passed.</note-1>
+        <note-2>Server retention (D-PROBE-8) and shared cameras (D-PROBE-4) are open; the feed assumes no more than the server returns.</note-2>
+      </notes>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-EVENT>
 
@@ -995,31 +1004,47 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="conditional" />
     </V-M-TUTK-LINK>
 
-    <V-M-EVENT-PLAYBACK MODULE="M-EVENT-PLAYBACK" PRIORITY="high">
+    <V-M-EVENT-PLAYBACK MODULE="M-EVENT-PLAYBACK" PRIORITY="high" STATUS="in-progress">
       <test-files>
-        <file>app/src/test/java/com/yicamalt/event/EventPlaybackModuleTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/MediaCryptoTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/EventMediaRepositoryTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/event/PlainMediaFetcherTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:testDebugUnitTest --tests "com.yicamalt.event.EventPlayback*"</check-1>
-        <check-2>./gradlew :app:compileDebugKotlin</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.event.MediaCryptoTest" --tests "com.yicamalt.event.EventMediaRepositoryTest" --tests "com.yicamalt.event.PlainMediaFetcherTest" --tests "com.yicamalt.ui.events.ClipViewModelTest"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-2>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="deterministic">Event clip plays from start, duration matches fixture</scenario-1>
-        <scenario-2 kind="success" evidence-type="trace">Seek to position works, playback continues from seek point</scenario-2>
-        <scenario-3 kind="failure" evidence-type="deterministic">Invalid playback URL returns PlaybackUrlFailed</scenario-3>
-        <scenario-4 kind="failure" evidence-type="deterministic">Decode failure returns PlaybackDecodeError</scenario-4>
+        <scenario-1 kind="success" evidence-type="deterministic" status="passed">Decrypt u32 LE length + AES-128-ECB on synthetic vectors; magic JPEG / PNG / MP4 / TAR / TS; codec AVC / HEVC; first image of a tar preview; short or corrupt input rejected (MediaCryptoTest 11)</scenario-1>
+        <scenario-2 kind="success" evidence-type="integration" status="passed">Prefetch: decrypt + encode + atomic write + setThumb, yitar skipped, tar preview, blank pwd = raw body, wrong magic skipped, 2 at once, failures logged once; purge of old day folders; 50 MB clip LRU (EventMediaRepositoryTest)</scenario-2>
+        <scenario-3 kind="success" evidence-type="integration" status="passed">clip(key): cached file without network, missing / stale ref -> one refresh, first 403 -> one refresh + retry, 403 after refresh -> Failed(http), ts -> Unsupported, no clip -> Failed(no-clip), null refresh -> Expired (EventMediaRepositoryTest)</scenario-3>
+        <scenario-4 kind="failure" evidence-type="deterministic" status="passed">A media write after a logout wipe writes nothing; thumbFile refuses paths outside event_thumbs; logs carry no URL, host, key, pwd or hashed path (RedactionScanner)</scenario-4>
+        <scenario-5 kind="success" evidence-type="deterministic" status="passed">ClipViewModel maps Ready / Unsupported / Expired / Failed and player errors to the dialog texts; a new key cancels the old load (ClipViewModelTest 11)</scenario-5>
+        <scenario-6 kind="device" evidence-type="trace" status="passed">H-EV4 clip plays (MediaPlayer on TextureView, «Повторить»), H-EV5 stale link refreshed once, H-EV9 previews from the file cache offline (05-HUMAN-UAT.md)</scenario-6>
+        <scenario-7 kind="regression" evidence-type="integration" status="passed">Real PlainMediaFetcher over MediaHttp.plainClient on a loopback MockWebServer: 2xx body, non-2xx status, size cap, CODE_IO with the exception class name only, and a GET after the server dropped the pooled keep-alive connection returns 200 (Phase 5 bug A: was status=-1 error=SocketException with retryOnConnectionFailure(false)) (PlainMediaFetcherTest 5)</scenario-7>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Playback][start][BLOCK_RESOLVE_URL]</marker-1>
-        <marker-2>[Playback][start][BLOCK_INIT_PLAYER]</marker-2>
-        <marker-3>[Playback][start][BLOCK_PLAY_EVENT]</marker-3>
+        <marker-1>[EventMedia][thumb][BLOCK_FETCH_THUMB]</marker-1>
+        <marker-2>[EventMedia][thumb][BLOCK_PREFETCH_PASS]</marker-2>
+        <marker-3>[EventMedia][clip][BLOCK_FETCH_CLIP] status bytes ext decryptOk magic [error=SimpleClassName when status=-1]</marker-3>
+        <marker-4>[EventMedia][clip][BLOCK_CLIP_REFRESH] reason=missing|stale|403 result=ok|none</marker-4>
+        <marker-5>[Events][clip][BLOCK_CLIP_PLAYER]</marker-5>
       </required-log-markers>
       <required-trace-assertions>
-        <assertion-1>Failure path must not emit BLOCK_PLAY_EVENT</assertion-1>
+        <assertion-1>At most one BLOCK_CLIP_REFRESH per clip() call</assertion-1>
+        <assertion-2>No signed URL, host, pwd or event key in any [EventMedia] line</assertion-2>
       </required-trace-assertions>
-      <wave-follow-up>Playback screen UI displays controls correctly.</wave-follow-up>
-      <phase-follow-up>Playback from push notification deep link works.</phase-follow-up>
-      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
+      <gate-evidence>
+        <evidence-1>2026-11-03 plan 05-00: MediaCryptoTest; full suite 977 tests, 0 failures</evidence-1>
+        <evidence-2>2026-11-03 plan 05-03: EventMediaRepositoryTest 22; full suite 1044 tests, 0 failures</evidence-2>
+        <evidence-3>2026-11-04 plan 05-05: ClipViewModelTest 11, ClipDialog compile-only; full suite 1089 tests, 0 failures</evidence-3>
+        <evidence-4>2026-11-04 device bug A (clip status=-1 within ~10 ms about 4 min after the previous clip download: dead pooled CDN connection, OkHttp reconnect disabled): PlainMediaFetcherTest 5 (RED on the old client), EventClipFlowTest missing-ref case (refreshMedia with server http URLs -> https GET -> Ready); full suite 77 suites, 1096 tests, 0 failures, 1 skipped. On the phone two missing-ref clips played after the fix build of the logging (status=200, magic=mp4); the exact stale-connection timing was not re-hit on the device (second tap came after the 5 min pool keep-alive).</evidence-4>
+      </gate-evidence>
+      <notes>
+        <note-1>The player (ClipDialog: MediaPlayer on TextureView, replacing the planned ExoPlayer) and BitmapThumbEncoder are Android-only: compile evidence on the JVM, behaviour in H-EV4 / H-EV9.</note-1>
+      </notes>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
     </V-M-EVENT-PLAYBACK>
 
     <V-M-PUSH MODULE="M-PUSH" PRIORITY="medium">
@@ -1147,6 +1172,7 @@
         <scenario-15 kind="device" status="partial" evidence-type="trace">H-L8: snapshot visible in the gallery (Pictures/YiCamAlt), full resolution, taken while zoomed</scenario-15>
         <scenario-16 kind="success" evidence-type="unit">GSD Phase 4 (plans 04-06 / 04-07): LiveViewModel.archive + 7 actions, coordinator per open closed with the screen, onStop calls onBackground before the background stop, HD/SD hidden in the archive (LiveViewModelTest 33); ArchiveCoordinator D-07 states (ArchiveCoordinatorTest 28); TimelineMath (14) and CalendarGrid (6)</scenario-16>
         <scenario-17 kind="device" status="pending" evidence-type="trace">H-SD1, H-SD2, H-SD6, H-SD7, H-SD8: day dialog, timeline gestures, empty / error states, background return, fullscreen in the archive (04-HUMAN-UAT.md) [04-09, 2026-10-31: H-SD6 no-card state passed on the TNP camera (day dialog opened, only today tappable); H-SD1 / H-SD2 / H-SD7 / H-SD8 not exercised, no SD card] [04-09, 2026-10-31: not exercised, no SD card in any reachable camera]</scenario-17>
+        <scenario-18 kind="success" evidence-type="unit" status="passed">GSD Phase 5 (plan 05-05): ArchiveCoordinator.openAt one-shot jump (QUEUED / FIRED / HIDDEN / IGNORED) and LiveViewModel.openAt forwarding with the hidden-archive Toast (ArchiveCoordinatorTest 67, LiveViewModelTest 35); device H-EV6 / H-EV7</scenario-18>
       </scenarios>
       <required-log-markers>
         <marker-1>[LiveView][render][BLOCK_RENDER_VIDEO_SURFACE]</marker-1>
@@ -1165,6 +1191,7 @@
         <marker-14>[LiveView][archive-ui][BLOCK_ARCHIVE_PANEL] panel=&lt;enum&gt;</marker-14>
         <marker-15>[LiveView][archive-ui][BLOCK_TIMELINE_GESTURE] released=true zoomed=&lt;b&gt; seek=&lt;b&gt;</marker-15>
         <marker-16>[LiveView][archive][BLOCK_ARCHIVE_REFRESH] reason=&lt;first|retry|epoch|periodic|days|seek|seek-resolve&gt; full=&lt;b&gt; / refreshed=&lt;b&gt;</marker-16>
+        <marker-17>[LiveView][archive][BLOCK_ARCHIVE_OPEN_AT]</marker-17>
       </required-log-markers>
       <required-trace-assertions>
         <assertion-1>Every captured log line and every LiveViewUi.toString() is RedactionScanner-clean (LIVE_SECRETS: device id, DID, passwords, InitString, license)</assertion-1>
@@ -1381,31 +1408,55 @@
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
     </V-M-MEDIA-SNAPSHOT>
 
-    <V-M-UI-EVENTS MODULE="M-UI-EVENTS" PRIORITY="high">
+    <V-M-UI-EVENTS MODULE="M-UI-EVENTS" PRIORITY="high" STATUS="in-progress">
       <test-files>
-        <file>app/src/androidTest/java/com/yicamalt/ui/events/EventsScreenTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/events/EventsFeedTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/events/EventsViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/events/EventClipFlowTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/live/ArchiveCoordinatorTest.kt</file>
       </test-files>
       <module-checks>
-        <check-1>./gradlew :app:compileDebugKotlin</check-1>
-        <check-2>./gradlew :app:connectedDebugAndroidTest --tests "com.yicamalt.ui.events.*"</check-2>
+        <check-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.ui.events.*"</check-1>
+        <check-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.ui.live.ArchiveCoordinatorTest"</check-2>
+        <check-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleDebug</check-3>
       </module-checks>
       <scenarios>
-        <scenario-1 kind="success" evidence-type="integration">Event timeline renders with thumbnails and timestamps</scenario-1>
-        <scenario-2 kind="success" evidence-type="trace">Tap event navigates to playback screen (BLOCK_OPEN_PLAYBACK)</scenario-2>
-        <scenario-3 kind="success" evidence-type="trace">Date filter selects date range and refreshes list</scenario-3>
-        <scenario-4 kind="success" evidence-type="deterministic">Empty state shows when no events available</scenario-4>
+        <scenario-1 kind="success" evidence-type="deterministic" status="passed">Feed grouping newest first under «Сегодня» / «Вчера» / «d MMMM» (DST-safe day bounds), camera filter (empty set = all), day filter, unknown camera «Камера» only under «Все», days with events, freshness / subtitle / empty texts, redacted card toString (EventsFeedTest 11)</scenario-1>
+        <scenario-2 kind="success" evidence-type="deterministic" status="passed">View model: one refresh per tab entry and per pull, window moves on entry, TooEarly -> «Обновлено N мин назад», Offline -> «Нет сети, показан кэш», Unauthorized -> SessionExpired once, NoSession -> «Сессия истекла», chips and day picker state, card tap -> OpenClip; no timer (EventsViewModelTest 11)</scenario-2>
+        <scenario-3 kind="success" evidence-type="deterministic" status="passed">Clip dialog state: camera name, time label, SD button only for a known camera, failure texts, OpenSd with a redacted toString (ClipViewModelTest 11)</scenario-3>
+        <scenario-4 kind="success" evidence-type="deterministic" status="passed">SD jump: openAt before load fires after the first full load, after load at once, today seeks without segments, a past day without recordings keeps the panel and sets «Нет записи в это время», no card drops the jump, list failure keeps it until a retry, hidden transport reports hidden; user actions cancel a queued jump (ArchiveCoordinatorTest openAt cases)</scenario-4>
+        <scenario-6 kind="regression" evidence-type="deterministic" status="passed">Feed loaded -> tap -> clip end to end: real AlertSyncService refresh + preview prefetch into a strict Room (production main-thread guard, InMemoryRoom.buildStrict), cards from the stored rows for both key shapes (server id, uid_time), ClipViewModel over the real RepositoryClipSource on the main dispatcher -> Ready, camera name, SD button enabled, no BLOCK_CLIP_LOAD error line (EventClipFlowTest 1)</scenario-6>
+        <scenario-7 kind="regression" evidence-type="deterministic" status="passed">Event missing from MediaRefStore (new process) -> refreshMedia with the real AlertMapper and server http URLs -> every media GET https -> Ready, BLOCK_CLIP_REFRESH reason=missing result=ok (EventClipFlowTest 2)</scenario-7>
+        <scenario-5 kind="device" evidence-type="trace" status="partial">H-EV1..H-EV7 (tab and feed, chips, day picker and button label, clip, stale clip, SD jump, jump without SD) in 05-HUMAN-UAT.md (plan 05-07)</scenario-5>
       </scenarios>
       <required-log-markers>
-        <marker-1>[Events][load][BLOCK_LOAD_TIMELINE]</marker-1>
-        <marker-2>[Events][render][BLOCK_RENDER_EVENT_LIST]</marker-2>
-        <marker-3>[Events][open][BLOCK_OPEN_PLAYBACK]</marker-3>
+        <marker-1>[Events][vm][BLOCK_REFRESH] trigger=enter|pull result=&lt;class&gt;</marker-1>
+        <marker-2>[Events][vm][BLOCK_FILTER] cameras=&lt;n&gt; day=&lt;b&gt; shown=&lt;n&gt;</marker-2>
+        <marker-3>[Events][vm][BLOCK_OPEN_CLIP]</marker-3>
+        <marker-4>[Events][clip][BLOCK_CLIP_LOAD] state=&lt;name&gt; sd=&lt;b&gt; | error=&lt;simple class&gt; step=event|cameras|clip</marker-4>
+        <marker-5>[Events][clip][BLOCK_CLIP_OPEN_SD]</marker-5>
+        <marker-6>[LiveView][archive][BLOCK_ARCHIVE_OPEN_AT]</marker-6>
       </required-log-markers>
-      <wave-follow-up>Events screen with data from FakeYiApi.</wave-follow-up>
-      <phase-follow-up>Pagination (scroll to load more) verified.</phase-follow-up>
-      <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
+      <required-trace-assertions>
+        <assertion-1>No event key, deviceId or camera name in any [Events] line or EventsUi / EventCard / ClipEvent toString</assertion-1>
+        <assertion-2>Exactly one BLOCK_REFRESH per tab entry or pull gesture</assertion-2>
+      </required-trace-assertions>
+      <gate-evidence>
+        <evidence-1>2026-11-04 plan 05-04: EventsFeedTest 11, EventsViewModelTest 11; full suite 1066 tests, 0 failures</evidence-1>
+        <evidence-2>2026-11-04 plan 05-05: ClipViewModelTest 11, ArchiveCoordinatorTest openAt cases; full suite 1089 tests, 0 failures</evidence-2>
+        <evidence-3>2026-11-04 device bug fix (clip dialog IllegalStateException step=event: blocking EventDao.getByKey on Dispatchers.Main): EventClipFlowTest 1; full suite 1090 tests, 0 failures</evidence-3>
+        <evidence-4>2026-11-04 device bug B (idle pull-to-refresh circle always drawn over the day row, covering «Сбросить»): EventsScreen BLOCK_PULL_INDICATOR clips the list box and composes PullToRefreshContainer only while pulling or refreshing. Compile-only on the JVM; phone screenshots: idle tab without the circle, indicator inside the list during a pull (gate too-early, no request), gone afterwards.</evidence-4>
+      </gate-evidence>
+      <notes>
+        <note-3>JVM tests that touch Room through a production port on the main dispatcher must use InMemoryRoom.buildStrict(); build() allows main-thread queries and hid the clip-dialog bug.</note-3>
+        <note-1>EventsScreen, ClipDialog and the shell wiring are compile-only (no Compose UI test, no emulator); the old instrumented EventsScreenTest plan is dropped.</note-1>
+        <note-2>Day button «Все дни ▾» with no day selected deviates from the letter of D-03 («Сегодня ▾»); the user confirms or asks to change it in H-EV3.</note-2>
+      </notes>
+      <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="partial" />
     </V-M-UI-EVENTS>
 
-    <V-M-UI-EVENTPLAYBACK MODULE="M-UI-EVENTPLAYBACK" PRIORITY="high">
+    <V-M-UI-EVENTPLAYBACK MODULE="M-UI-EVENTPLAYBACK" PRIORITY="high" STATUS="superseded">
       <test-files>
         <file>app/src/androidTest/java/com/yicamalt/ui/eventplayback/EventPlaybackScreenTest.kt</file>
       </test-files>
@@ -1426,6 +1477,9 @@
       </required-log-markers>
       <wave-follow-up>Playback screen with a fixture clip.</wave-follow-up>
       <phase-follow-up>Deep link from push notification navigates directly to playback.</phase-follow-up>
+      <notes>
+        <note-superseded>2026-11-04 (GSD Phase 5): the module was not built; clip playback is verified under V-M-EVENT-PLAYBACK and V-M-UI-EVENTS (ClipDialog).</note-superseded>
+      </notes>
       <autonomy-score commands="emulator" scenarios="success-only" markers="observable" followup="present" rating="ready" />
     </V-M-UI-EVENTPLAYBACK>
 
@@ -1712,6 +1766,35 @@
         <note-2>2026-10-31 plan 04-09: only the no-card state (H-SD6) and the redaction sweep are device-verified; SD-01..SD-04 stay unverified until a camera with a microSD card that has recordings is available. Gate stays in-progress (phase human_needed).</note-2>
       </notes>
     </Gate-GSD-Phase-4>
+
+    <Gate-GSD-Phase-5 PHASE="GSD 05-events-feed (GRACE Phase-3 steps 4-6)" STATUS="in-progress">
+      <goal>Motion alert feed of all cameras in the Events tab: previews, filters by camera and day, clip playback, jump to the SD archive at the event moment, offline cache, at most one refresh per 5 minutes and no forbidden endpoint (EVT-01..EVT-06).</goal>
+      <commands>
+        <command-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun :app:assembleDebug</command-1>
+        <command-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.event.*" --tests "com.yicamalt.ui.events.*"</command-2>
+        <command-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=E:/Dev/YiCamAlt/build/device-logs/diag_log.txt --rerun-tasks (device, H-EV10)</command-3>
+        <command-4>grep -E "alert/events|push_prop|get_push|del_list|orderpay|/vas/|monitor/alarm|ai/alert" build/device-logs/diag_log.txt (expect 0 lines, H-EV10)</command-4>
+      </commands>
+      <required-evidence>
+        <evidence-1>JVM gate: full unit suite + assembleDebug green with --rerun (plan 05-06: 75 suites, 1089 tests, 0 failures, 1 skipped); ForbiddenEndpointsTest included</evidence-1>
+        <evidence-2>Device gate: H-EV1..H-EV10 in .planning/phases/05-events-feed/05-HUMAN-UAT.md and 05-DEVICE-VERIFICATION.md (plan 05-07, Mi 9, 2026-11-04): 9 passed, H-EV7 not exercised (no event of a camera without SD), 0 failed; H-EV3 label «Все дни ▾» awaits the user's decision; H-EV4 and H-EV10 passed after fixes made in that session</evidence-2>
+      </required-evidence>
+      <device-checks>
+        <H-EV1 requirement="EVT-01" status="passed">Tab «События» is third; events of all cameras with preview, camera name, time, grouped by day; count / newest time compared with Yi Home by eye</H-EV1>
+        <H-EV2 requirement="EVT-02" status="passed">Camera chips filter the feed; «Все» restores it</H-EV2>
+        <H-EV3 requirement="EVT-02" status="passed">Day picker marks days with events; picking a day filters, «Сбросить» returns; button label «Все дни ▾» / «Сегодня ▾» / «Вчера ▾» / «d MMMM ▾» confirmed by eye (deviation from the letter of D-03)</H-EV3>
+        <H-EV4 requirement="EVT-03" status="passed">Tap a card: the dialog plays the 6-second clip; «Повторить» replays; failure texts if any</H-EV4>
+        <H-EV5 requirement="EVT-03" status="passed">Clip of an older event (stale link) plays after one refresh (BLOCK_CLIP_REFRESH reason=stale)</H-EV5>
+        <H-EV6 requirement="EVT-04" status="passed">«Открыть запись на SD» opens the camera with the archive at the event moment (cursor at the event time, picture matches the clip); blocked (no SD card) if no camera has a recording at that moment</H-EV6>
+        <H-EV7 requirement="EVT-04" status="not-exercised">Jump for a camera without SD / without a recording at that moment shows the Phase 4 text, no hang</H-EV7>
+        <H-EV8 requirement="EVT-06" status="passed">Re-entry and pull within 5 minutes make no feed request, subtitle «Обновлено N мин назад»; after 5 minutes one refresh (pages &lt;= 10); force-stop + reopen within 5 minutes still no request</H-EV8>
+        <H-EV9 requirement="EVT-05" status="passed">Airplane mode, force-stop, reopen: cached cards with their previews; subtitle «Нет сети, показан кэш» or «Обновлено N мин назад»</H-EV9>
+        <H-EV10 requirement="EVT-06" status="passed">Pulled diag log passes RealLogScanTest; no forbidden request path and no media URL host in the log</H-EV10>
+      </device-checks>
+      <notes>
+        <note-1>Opening a clip may make one v2/alert/list request with a ±5 s window (media URL refresh, at most 6 per minute); it is user-initiated and does not count against the 5-minute feed gate. Only feed refreshes (BLOCK_FETCH_PAGE in a 30-day window) count in H-EV8.</note-1>
+      </notes>
+    </Gate-GSD-Phase-5>
 
     <Gate-Phase-4 PHASE="Phase-4">
       <goal>All features polished, push notifications working, UX complete, ready for release build.</goal>

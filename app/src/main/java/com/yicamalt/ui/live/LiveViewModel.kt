@@ -1,5 +1,5 @@
 // FILE: LiveViewModel.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Screen state of the live view over LiveSessionSupervisor (M-UI-LIVEVIEW view model).
 //   SCOPE: badge mapping (D-04), auto-connect on open, sound (D-05, D-07), HD/SD (D-06, D-07), snapshot, debug line,
@@ -78,15 +78,19 @@ import javax.inject.Inject
 //   LiveViewTexts - Russian badge and snapshot texts.
 //   LiveViewModel - open / closeScreen / onStop / onStart / connect / retry / toggleMute / toggleQuality /
 //     toggleDebug / attachSurface / detachSurface / saveSnapshot; archive StateFlow + archiveSeek /
-//     archiveTogglePause / archiveGoLive / archiveRetry / archiveOpenDays / archiveCloseDays / archiveSelectDay.
+//     archiveTogglePause / archiveGoLive / archiveRetry / archiveOpenDays / archiveCloseDays / archiveSelectDay;
+//     openAt (event -> SD jump, EVT-04).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-06: archive state + actions (D-01..D-07). One ArchiveCoordinator per open,
+//   LAST_CHANGE: v0.4.0 - GSD plan 05-05: openAt(targetMs) forwards the event -> SD jump to ArchiveCoordinator.openAt
+//     (action open-at); a hidden archive answers with Toast «Архив SD на этой камере недоступен»; no-op without a
+//     coordinator. The event time is never logged.
+//   PREVIOUS: v0.3.0 - GSD plan 04-06: archive state + actions (D-01..D-07). One ArchiveCoordinator per open,
 //     over sup.archivePort(transport, p2pEncrypt), in the per-open scope; forceMute = mute + release audio (D-05);
 //     onStop pauses archive playback as Paused(BACKGROUND) before the background stop; closeScreen closes the
 //     coordinator; the quality button is hidden while in the archive.
-//   PREVIOUS: v0.2.0 - GSD plan 03-10 GREEN. One supervisor + one video output + one per-open scope per open();
+//   EARLIER: v0.2.0 - GSD plan 03-10 GREEN. One supervisor + one video output + one per-open scope per open();
 //     re-open of the same camera while a supervisor exists only updates the title (rotation / recomposition keeps the
 //     session), another camera closes the screen first. INVARIANTS: muted on every open and after onStop (D-05); the
 //     session factory reads the current muted value, so a reconnect after unmute keeps sound on; the VM-owned
@@ -474,6 +478,18 @@ class LiveViewModel @Inject constructor(
     fun archiveOpenDays() = archiveAction("open-days") { it.openDays() }
     fun archiveCloseDays() = archiveAction("close-days") { it.closeDays() }
     fun archiveSelectDay(day: LocalDate) = archiveAction("select-day") { it.selectDay(day) }
+
+    // START_CONTRACT: openAt
+    //   PURPOSE: Event -> SD jump (EVT-04): open the archive at an absolute moment once the index is known.
+    //   INPUTS: { targetMs: Long - event time, epoch ms; never logged }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: ArchiveCoordinator.openAt; LiveEvent.Toast(«Архив SD на этой камере недоступен») when the archive
+    //     is hidden; no-op without an open screen; BLOCK_ARCHIVE_ACTION log
+    //   LINKS: ArchiveCoordinator.openAt, BLOCK_ARCHIVE_OPEN_AT
+    // END_CONTRACT: openAt
+    fun openAt(targetMs: Long) = archiveAction("open-at") { c ->
+        if (c.openAt(targetMs) == OpenAtResult.HIDDEN) _events.tryEmit(LiveEvent.Toast(ArchiveTexts.UNSUPPORTED))
+    }
 
     private inline fun archiveAction(name: String, block: (ArchiveCoordinator) -> Unit) {
         // START_BLOCK_ARCHIVE_ACTION

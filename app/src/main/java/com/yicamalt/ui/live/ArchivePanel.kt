@@ -1,5 +1,5 @@
 // FILE: ArchivePanel.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Archive part of the camera screen under the video (SD-01..SD-05; D-01, D-02, D-03, D-07): day button,
 //     pause / continue and «Живой» buttons, the timeline ruler or the D-07 state text, and the day dialog.
@@ -57,11 +57,14 @@ import java.time.ZoneId
 // START_MODULE_MAP
 //   ArchivePanel - composable: day button, pause / continue, «Живой», ruler (follows rulerMs), empty IDLE area or
 //     D-07 state text, hint
-//   DayPickerDialog - composable: month grid dialog, recorded days dotted and tappable, others disabled
+//   DayPickerDialog - composable: month grid dialog, recorded days dotted and tappable, others disabled; overloads
+//     (ui: ArchiveUi) for the archive and (today, selected?, markedDays) for the events tab
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: ruler follows ui.rulerMs (live wall time / archive position); IDLE empty
+//   LAST_CHANGE: v0.3.0 - GSD plan 05-04: day picker overload reused by the events tab (D-03); the ArchiveUi version
+//     delegates with (today, selectedDay, recordedDays), no visual or behaviour change for the archive.
+//   PREV_CHANGE: v0.2.0 - GSD plan 04-11: ruler follows ui.rulerMs (live wall time / archive position); IDLE empty
 //     state, spinner only for LOADING.
 //   PREVIOUS: v0.1.0 - GSD plan 04-07: custom month grid instead of Material3 DatePicker (BOM 2024.02.00 /
 //     material3 1.2 has SelectableDates but no per-day badge; D-02 needs a dot on recorded days).
@@ -163,11 +166,30 @@ fun ArchivePanel(
 //   LINKS: M-UI-LIVEVIEW, CalendarGrid, LiveViewModel.archiveSelectDay / archiveCloseDays
 // END_CONTRACT: DayPickerDialog
 @Composable
-fun DayPickerDialog(ui: ArchiveUi, onSelect: (LocalDate) -> Unit, onDismiss: () -> Unit) {
-    val months = remember(ui.recordedDays, ui.today) { CalendarGrid.monthsWithRecordings(ui.recordedDays, ui.today) }
-    var month by remember(ui.selectedDay) { mutableStateOf(YearMonth.from(ui.selectedDay)) }
-    val cells = remember(month, ui.today, ui.recordedDays, ui.selectedDay) {
-        CalendarGrid.month(month, ui.today, ui.recordedDays, ui.selectedDay)
+fun DayPickerDialog(ui: ArchiveUi, onSelect: (LocalDate) -> Unit, onDismiss: () -> Unit) =
+    DayPickerDialog(ui.today, ui.selectedDay, ui.recordedDays, onSelect, onDismiss)
+
+// START_CONTRACT: DayPickerDialog.days
+//   PURPOSE: Same month-grid picker over plain values, reused by the events tab (05-04, D-03).
+//   INPUTS: { today: LocalDate; selected: LocalDate? - highlighted day, null = none (opens on today's month);
+//     markedDays: Set<LocalDate> - dotted, tappable days; onSelect: (LocalDate) -> Unit - today or a marked day;
+//     onDismiss: () -> Unit }
+//   OUTPUTS: { Unit - composable dialog }
+//   SIDE_EFFECTS: callbacks only
+//   LINKS: M-UI-LIVEVIEW, M-UI-EVENTS, CalendarGrid
+// END_CONTRACT: DayPickerDialog.days
+@Composable
+fun DayPickerDialog(
+    today: LocalDate,
+    selected: LocalDate?,
+    markedDays: Set<LocalDate>,
+    onSelect: (LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val months = remember(markedDays, today) { CalendarGrid.monthsWithRecordings(markedDays, today) }
+    var month by remember(selected) { mutableStateOf(YearMonth.from(selected ?: today)) }
+    val cells = remember(month, today, markedDays, selected) {
+        CalendarGrid.month(month, today, markedDays, selected)
     }
     AlertDialog(
         onDismissRequest = onDismiss,

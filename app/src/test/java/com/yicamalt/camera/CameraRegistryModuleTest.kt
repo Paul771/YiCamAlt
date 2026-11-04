@@ -1,5 +1,5 @@
 // FILE: CameraRegistryModuleTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Verify M-CAMERA-LIST against MockWebServer: probe-driven source, parse, atomic cache, distinct outcomes.
 //   SCOPE: success + failure scenarios for V-M-CAMERA-LIST; trace marker assertions; synthetic fixtures only.
@@ -13,12 +13,15 @@ package com.yicamalt.camera
 // START_MODULE_MAP
 //   FakeCameraDao - in-memory CameraDao (no Room); can be told to throw on reads.
 //   FakeSession / NoSession - SessionSource fakes.
-//   CameraRegistryModuleTest - scenario_1..scenario_13b (13/13b: device_info bound per refresh, swapped types).
+//   events - FakeEventCache (event rows + app_meta) behind the registry's EventCacheCleaner.
+//   CameraRegistryModuleTest - scenario_1..scenario_14b (13/13b: device_info bound per refresh, swapped types).
 //   listRequests / deviceInfoRequests / allRequests - per-kind request counters kept by the dispatcher.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - plan 02-01: device_info is now asked for every unverified camera, so request counts are
+//   LAST_CHANGE: v0.4.0 - GSD plan 05-02: registry gets an EventCacheCleaner over FakeEventCache; scenario_14
+//     logout wipes cached events and event meta keys; scenario_14b a Room failure there still wipes the rest.
+//   PREV_CHANGE: v0.3.0 - plan 02-01: device_info is now asked for every unverified camera, so request counts are
 //     split (listRequests / deviceInfoRequests / allRequests) instead of server.requestCount; device_info answered
 //     per uid (CLOUD_UID -> TNP_INFO, TUTK_UID -> TNP_INFO_NOT_TNP, else TNP_INFO_REJECTED); scenario_10 restated
 //     under the vendor rule; scenario_13 pins 2 device_info requests on the first refresh and 0 on the second.
@@ -93,6 +96,7 @@ class CameraRegistryModuleTest {
     private val redaction = RedactionScanner()
     private val dao = FakeCameraDao()
     private val store = InMemoryP2pCredentialStore()
+    private val events = com.yicamalt.test.FakeEventCache()
     private lateinit var api: YiCloudDeviceApi
     private lateinit var registry: CameraRegistry
 
@@ -136,7 +140,7 @@ class CameraRegistryModuleTest {
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(YiCloudDeviceApi::class.java)
-        registry = CameraRegistry(api, dao, FakeSession(), store)
+        registry = CameraRegistry(api, dao, FakeSession(), store, events.cleaner)
     }
 
     @AfterEach
@@ -198,7 +202,7 @@ class CameraRegistryModuleTest {
 
     @Test
     fun `scenario_1d no session maps to Unauthorized without a request`() {
-        registry = CameraRegistry(api, dao, NoSession(), store)
+        registry = CameraRegistry(api, dao, NoSession(), store, events.cleaner)
         val err = assertThrows(CameraError.Unauthorized::class.java) {
             runBlocking { registry.getCameraList() }
         }
@@ -303,7 +307,7 @@ class CameraRegistryModuleTest {
             .addConverterFactory(Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(YiCloudDeviceApi::class.java)
-        registry = CameraRegistry(downApi, dao, FakeSession(), store)
+        registry = CameraRegistry(downApi, dao, FakeSession(), store, events.cleaner)
         assertThrows(CameraError.FetchFailed::class.java) {
             runBlocking { registry.getCameraList() }
         }
@@ -436,5 +440,42 @@ class CameraRegistryModuleTest {
         val cameras = runBlocking { registry.getCameraList() }
         assertEquals(TransportType.TNP, cameras.single { it.deviceId == RedactionFixtures.CLOUD_UID }.transport)
         assertEquals(TransportType.TUTK, cameras.single { it.deviceId == RedactionFixtures.TUTK_UID }.transport)
+    }
+
+    private fun seedEvents() {
+        events.eventDao.insertAllRaw(
+            listOf(
+                com.yicamalt.database.EventEntity("ev-1", "cam-1", 1_000L, 1, 0, "mp4", true, 0, null, 1L),
+                com.yicamalt.database.EventEntity("ev-2", "cam-1", 2_000L, 1, 0, "jpg", false, 0, "thumbs/x.jpg", 1L),
+            ),
+        )
+        com.yicamalt.event.EventMetaKeys.ALL.forEach {
+            events.appMetaDao.put(com.yicamalt.database.AppMetaEntity(it, "123"))
+        }
+        events.appMetaDao.put(com.yicamalt.database.AppMetaEntity("other_key", "7"))
+    }
+
+    @Test
+    fun `scenario_14 logout wipes cached events`() {
+        seedPreviousState()
+        seedEvents()
+        registry.clearSignedOutData()
+        assertEquals(0, events.eventDao.count())
+        com.yicamalt.event.EventMetaKeys.ALL.forEach { assertNull(events.appMetaDao.get(it), it) }
+        assertEquals("7", events.appMetaDao.get("other_key"), "unrelated app_meta keys stay")
+        assertEquals(0, dao.count())
+        assertNull(store.get("old-cam"))
+        assertTrue(recorder.bufferText().contains("[CameraRegistry][wipe][BLOCK_WIPE] events=wiped"))
+    }
+
+    @Test
+    fun `scenario_14b a failing event wipe does not block the credential and camera wipe`() {
+        seedPreviousState()
+        seedEvents()
+        events.eventDao.failWrites = true
+        registry.clearSignedOutData()
+        assertEquals(0, dao.count())
+        assertNull(store.get("old-cam"))
+        assertTrue(recorder.bufferText().contains("[CameraRegistry][wipe][BLOCK_WIPE] events=failed"))
     }
 }

@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinatorTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive screen state (SD-01..SD-05; D-01, D-02, D-04..D-07) in virtual time.
 //   SCOPE: IDLE before the first Live, spinner only while a fetch is in flight on a healthy link, D-07 status / list states with retry, day selection and labels, days
@@ -7,7 +7,8 @@
 //     network loss, link drop, mid-segment silence and no-units (checker addendum), background marker, unsupported
 //     transport, midnight crossing, log marker; ruler position (rulerMs) in Live / archive, «Живой» day, Live midnight
 //     roll-over (plan 04-11); index refresh on liveEpoch / every 60 s with its guards,
-//     refresh-first seek with a bounded pending seek, Paused(SILENT) hint (plan 04-12).
+//     refresh-first seek with a bounded pending seek, Paused(SILENT) hint (plan 04-12); one-shot event -> SD jump
+//     openAt (plan 05-05, EVT-04).
 //   DEPENDS: M-UI-LIVEVIEW (ArchiveCoordinator), M-SD-ARCHIVE (PlaybackController, SdTime, FakeArchivePort,
 //     SdFixtures), TraceRecorder, RedactionScanner
 //   LINKS: V-M-UI-LIVEVIEW, M-UI-LIVEVIEW
@@ -58,15 +59,19 @@ import java.time.ZoneOffset
 //   obs(uc, iso) - recorded key-frame observation.
 //   playingAt(r, iso) - seek and deliver a recorded key frame -> Playing.
 //   pendingSeek() - rig with a refresh-first seek of 08:30Z waiting on an unanswered refresh.
+//   EVENT_YESTERDAY / EVENT_TODAY - event times inside YESTERDAY_SEG / TODAY_SEG (BLOCK_OPEN_AT_TESTS).
 //   ArchiveCoordinatorTest - one test per behaviour bullet of plan 04-06 Task 2 plus the checker addendum.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-12 (W-1): BLOCK_REFRESH_TESTS (epoch / periodic refresh, unhealthy / past
+//   LAST_CHANGE: v0.4.0 - GSD plan 05-05: BLOCK_OPEN_AT_TESTS - openAt queued until the first full load, at once
+//     after it, today via seek's refresh-first path, past day without recordings (hint), no card (dropped), list
+//     failed (kept until a successful retry), hidden, user cancel (seek / selectDay / goLive), at most once, preroll 0.
+//   PREVIOUS: v0.3.0 - GSD plan 04-12 (W-1): BLOCK_REFRESH_TESTS (epoch / periodic refresh, unhealthy / past
 //     day / background / failure / overlap guards); `openDays refreshes a stale index` keeps the link unhealthy
 //     during the 61 s wait; `background then auto-resume keeps the marker` counts playback commands only.
 //     BLOCK_SEEK_REFRESH_TESTS (refresh-first seek, 3 s fallback, replace / cancel, SILENT hint), pendingSeek(rig).
-//   PREVIOUS: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1); IDLE / spinner-only-
+//   EARLIER: v0.2.0 - GSD plan 04-11: moving-wall rig, BLOCK_RULER_TESTS (device defect 1); IDLE / spinner-only-
 //     while-fetching load tests (device defect 2).
 //   EARLIER: v0.1.0 - GSD plan 04-06: archive coordinator contract (RED first).
 // END_CHANGE_SUMMARY
@@ -677,6 +682,162 @@ class ArchiveCoordinatorTest {
         r.coord.close()
     }
     // END_BLOCK_SEEK_REFRESH_TESTS
+
+    // START_BLOCK_OPEN_AT_TESTS
+    private val EVENT_YESTERDAY = "2026-10-29T10:10:00Z" // inside YESTERDAY_SEG
+    private val EVENT_TODAY = "2026-10-30T06:15:00Z" // inside TODAY_SEG
+
+    @Test
+    fun `openAt before load fires selectDay and seek after the first full load`() = runTest {
+        val r = rig(script = Script(tfstat = null, entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        val t = utc(EVENT_YESTERDAY)
+        assertEquals(OpenAtResult.QUEUED, r.coord.openAt(t))
+        runCurrent()
+        assertEquals(0, r.count(9030))
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        step(10_000)
+        assertEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay)
+        assertEquals(t, (r.controller.state.value as PlaybackState.Starting).atMs)
+        assertEquals(t, r.ui.cursorMs)
+        assertEquals(t, r.ui.rulerMs)
+        assertEquals(1, r.count(9030))
+        assertEquals(1, r.mutes)
+        recorder.assertMarkerAppeared("BLOCK_ARCHIVE_OPEN_AT")
+        r.coord.close()
+    }
+
+    @Test
+    fun `openAt after load fires at once`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        val t = utc(EVENT_YESTERDAY)
+        assertEquals(OpenAtResult.FIRED, r.coord.openAt(t))
+        assertEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay)
+        assertEquals(PlaybackState.Starting(t, r.port.expected!!), r.controller.state.value)
+        r.coord.close()
+    }
+
+    @Test
+    fun `openAt on today seeks even when today has no segments yet`() = runTest {
+        val script = Script(entries = listOf(OLD_SEG))
+        val r = rig(script = script)
+        assertEquals(ArchivePanel.NO_RECORDINGS, r.ui.panel)
+        step(6_000)
+        script.entries = listOf(OLD_SEG, TODAY_SEG)
+        val t = utc(EVENT_TODAY)
+        assertEquals(OpenAtResult.FIRED, r.coord.openAt(t))
+        runCurrent()
+        assertEquals(2, r.count(9031)) // seek's own refresh-first path
+        assertEquals(today, r.ui.selectedDay)
+        assertEquals(PlaybackState.Starting(t, r.port.expected!!), r.controller.state.value)
+        r.coord.close()
+    }
+
+    @Test
+    fun `openAt on a past day without recordings keeps the panel and sets hint Нет записи в это время`() = runTest {
+        val r = rig()
+        assertEquals(OpenAtResult.FIRED, r.coord.openAt(utc("2026-10-27T10:00:00Z")))
+        runCurrent()
+        assertEquals(today, r.ui.selectedDay)
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+        assertEquals(ArchiveTexts.NO_RECORDING_AT, r.ui.hint)
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        assertEquals(0, r.count(9030))
+        r.coord.seek(utc(EVENT_TODAY)) // a user action clears the hint
+        assertNull(r.ui.hint)
+        r.coord.close()
+    }
+
+    @Test
+    fun `openAt with no card leaves NO_CARD and drops the jump`() = runTest {
+        val r = rig(script = Script(tfstat = 5, entries = listOf(TODAY_SEG)))
+        assertEquals(OpenAtResult.FIRED, r.coord.openAt(utc(EVENT_TODAY)))
+        runCurrent()
+        assertEquals(ArchivePanel.NO_CARD, r.ui.panel)
+        assertEquals(ArchiveTexts.NO_CARD, r.ui.message)
+        assertEquals(0, r.count(9030))
+        assertEquals(OpenAtResult.IGNORED, r.coord.openAt(utc(EVENT_TODAY)))
+        r.coord.close()
+    }
+
+    @Test
+    fun `openAt with list failed keeps the jump and fires after a successful retry`() = runTest {
+        val script = Script(entries = null)
+        val r = rig(script = script)
+        step(10_000)
+        assertEquals(ArchivePanel.LIST_FAILED, r.ui.panel)
+        val t = utc(EVENT_TODAY)
+        assertEquals(OpenAtResult.QUEUED, r.coord.openAt(t))
+        runCurrent()
+        assertEquals(ArchivePanel.LIST_FAILED, r.ui.panel)
+        assertEquals(0, r.count(9030))
+        script.entries = listOf(TODAY_SEG)
+        r.coord.retry()
+        runCurrent()
+        assertEquals(PlaybackState.Starting(t, r.port.expected!!), r.controller.state.value)
+        r.coord.close()
+    }
+
+    @Test
+    fun `openAt on hidden transport drops the jump and reports hidden`() = runTest {
+        val r = rig(transport = TransportType.LANGTAO)
+        assertEquals(OpenAtResult.HIDDEN, r.coord.openAt(utc(EVENT_TODAY)))
+        step(2_000)
+        assertEquals(ArchivePanel.HIDDEN, r.ui.panel)
+        assertTrue(r.port.sent.isEmpty())
+        recorder.assertMarkerAppeared("BLOCK_ARCHIVE_OPEN_AT")
+        r.coord.close()
+    }
+
+    @Test
+    fun `user seek select day or go live before the load cancels the jump`() = runTest {
+        val t = utc(EVENT_YESTERDAY)
+        val entries = listOf(TODAY_SEG, YESTERDAY_SEG)
+        val actions: List<(ArchiveCoordinator) -> Unit> = listOf(
+            { it.seek(utc(EVENT_TODAY)) },
+            { it.selectDay(today) },
+            { it.goLive() },
+        )
+        actions.forEachIndexed { i, action ->
+            val r = rig(script = Script(tfstat = null, entries = entries))
+            assertEquals(OpenAtResult.QUEUED, r.coord.openAt(t))
+            action(r.coord)
+            step(10_000)
+            assertEquals(ArchivePanel.TIMELINE, r.ui.panel, "action $i")
+            assertNotEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay, "action $i")
+            assertNotEquals(t, r.ui.cursorMs, "action $i")
+            assertEquals(OpenAtResult.IGNORED, r.coord.openAt(t), "action $i")
+            r.coord.close()
+        }
+    }
+
+    @Test
+    fun `the jump fires only once`() = runTest {
+        val r = rig()
+        val t = utc(EVENT_TODAY)
+        assertEquals(OpenAtResult.FIRED, r.coord.openAt(t))
+        assertEquals(1, r.count(9030))
+        r.coord.goLive()
+        r.port.liveEpoch.value = 2
+        runCurrent()
+        step(61_000)
+        assertTrue(r.count(9031) >= 2)
+        assertEquals(1, r.count(9030))
+        assertEquals(PlaybackState.Live, r.controller.state.value)
+        assertEquals(OpenAtResult.IGNORED, r.coord.openAt(t))
+        assertEquals(1, r.count(9030))
+        r.coord.close()
+    }
+
+    @Test
+    fun `EVENT_SD_PREROLL_MS is 0 and the seek target equals the event time`() = runTest {
+        assertEquals(0L, EVENT_SD_PREROLL_MS)
+        val r = rig()
+        val t = utc(EVENT_TODAY)
+        r.coord.openAt(t)
+        assertEquals(t, (r.controller.state.value as PlaybackState.Starting).atMs)
+        r.coord.close()
+    }
+    // END_BLOCK_OPEN_AT_TESTS
 
     // START_BLOCK_RULER_TESTS
     @Test

@@ -1,5 +1,5 @@
 // FILE: CameraRegistry.kt
-// VERSION: 0.7.0
+// VERSION: 0.9.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Fetch the user's Yi cameras from the probe-proven device-list source, keep an atomic Room cache of
 //     the secret-free fields, and report distinct outcomes (no cameras / rejected / unreachable / unauthorized).
@@ -12,7 +12,7 @@
 //     BLOCK_RESOLVE_STREAM_URL.
 //   DEPENDS: M-HTTP (YiCloudDeviceApi, YiRequestSigner), M-LOCAL-DB (CameraDao), M-AUTH (SessionSource),
 //     M-P2P-CREDS (P2pCredentialStore, TransportResolver), M-CONFIG (region is the one kept by login),
-//     M-STREAM-CORE (implements P2pCredentialsSource)
+//     M-STREAM-CORE (implements P2pCredentialsSource), M-EVENT (EventCacheCleaner, logout wipe of the alert cache)
 //   LINKS: M-CAMERA-LIST, M-UI-SHELL, V-M-CAMERA-LIST
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -25,6 +25,7 @@ import com.yicamalt.database.CameraDao
 import com.yicamalt.database.CameraEntity
 import com.yicamalt.network.YiRequestSigner
 import com.yicamalt.auth.LogoutCleanup
+import com.yicamalt.event.EventCacheCleaner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -45,12 +46,14 @@ import javax.inject.Singleton
 //   CameraRegistry.getCredentials - stored P2pCredentials of one camera.
 //   CameraRegistry.credentialsFor - P2pCredentialsSource port (live screen); same value as getCredentials.
 //   CameraRegistry.refreshCredentials - P2pCredentialsSource port: one getCameraList refresh, then credentialsFor.
-//   CameraRegistry.clearSignedOutData - LogoutCleanup: synchronous wipe of Room cache + P2P store (logout).
+//   CameraRegistry.clearSignedOutData - LogoutCleanup: synchronous wipe of Room cache + P2P store + alert cache (logout).
 //   CameraRegistry.purgeIfSignedOut - start-up wipe when there is no session.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.8.0 - Phase 2 review MED-4: refreshCredentials (one list refresh, errors swallowed and logged
+//   LAST_CHANGE: v0.9.0 - GSD plan 05-02: EventCacheCleaner injected; every wipe (logout, start-up purge, no cameras)
+//     also wipes the alert cache, inside writeLock, under runCatching so a Room failure cannot block the credential wipe.
+//   PREV_CHANGE: v0.8.0 - Phase 2 review MED-4: refreshCredentials (one list refresh, errors swallowed and logged
 //     by class name only, stored value returned) for the single WRONG_PASSWORD retry of the live screen.
 //   PREV_CHANGE: v0.7.0 - GSD plan 02-01: vendor transport rule; /v4/tnp/device_info for every camera not yet
 //     verified (was: only list type 2); reuse only verified records; type-vs-id disagreement flag removed; implements
@@ -99,6 +102,7 @@ class CameraRegistry @Inject constructor(
     private val cameraDao: CameraDao,
     private val session: SessionSource,
     private val credentialStore: P2pCredentialStore,
+    private val eventCacheCleaner: EventCacheCleaner,
 ) : CameraListPort, LogoutCleanup, com.yicamalt.stream.P2pCredentialsSource {
 
     private val refreshMutex = Mutex()
@@ -453,6 +457,11 @@ class CameraRegistry @Inject constructor(
     private fun wipeLocked() {
         wipeGeneration++
         credentialStore.clear()
+        // START_BLOCK_WIPE
+        // Events after the secrets and before the camera rows; a Room failure here must not skip the rest.
+        val events = runCatching { eventCacheCleaner.wipeAll() }.fold({ "wiped" }, { "failed" })
+        Timber.d("[CameraRegistry][wipe][BLOCK_WIPE] events=%s", events)
+        // END_BLOCK_WIPE
         cameraDao.deleteAll()
     }
 

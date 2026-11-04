@@ -1,7 +1,8 @@
 // FILE: SettingsScreen.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Compose settings screen: edit the runtime API base URL override; debug-only endpoint probe button.
+//   PURPOSE: Compose settings screen: edit the runtime API base URL override; debug-only endpoint probe, P2P check and
+//     alert probe buttons.
 //   SCOPE: stateless rendering driven by SettingsViewModel; save + back callbacks; probe lines (debug builds only).
 //   DEPENDS: M-UI-SETTINGS (SettingsViewModel), M-CONFIG
 //   LINKS: M-UI-SHELL (Phase-2 nav host)
@@ -46,12 +47,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 
 // START_MODULE_MAP
 //   SettingsScreen - Compose surface to edit the API base URL; debug probe button and "Проверить P2P" button
-//     with a selectable monospace result line (BuildConfig.DEBUG only).
+//     with a selectable monospace result line, "Проба событий (debug)" alert probe button with selectable
+//     monospace result lines (BuildConfig.DEBUG only).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 02-03: debug-only "Проверить P2P" button (M-P2P-NATIVE check line).
-//   PREV_CHANGE: v0.2.0 - Scrollable column (Arrangement.Top); sign-probe button replaced by the debug-only
+//   LAST_CHANGE: v0.4.0 - GSD plan 05-00: debug-only "Проба событий (debug)" button (AlertProbe, M-DEBUG-PROBE).
+//   PREV_CHANGE: v0.3.0 - GSD plan 02-03: debug-only "Проверить P2P" button (M-P2P-NATIVE check line).
+//   OLDER_CHANGE: v0.2.0 - Scrollable column (Arrangement.Top); sign-probe button replaced by the debug-only
 //     "Проба эндпоинтов (debug)" button (M-DEBUG-PROBE), hidden in release builds.
 // END_CHANGE_SUMMARY
 
@@ -66,6 +69,8 @@ fun SettingsScreen(
     val probeRunning by viewModel.probeRunning.collectAsState()
     val nativeCheck by viewModel.nativeCheck.collectAsState()
     val nativeCheckRunning by viewModel.nativeCheckRunning.collectAsState()
+    val alertProbeResults by viewModel.alertProbeResults.collectAsState()
+    val alertProbeRunning by viewModel.alertProbeRunning.collectAsState()
     var text by remember { mutableStateOf(baseUrl) }
 
     Scaffold(
@@ -139,6 +144,31 @@ fun SettingsScreen(
                 }
             }
             // END_BLOCK_DEBUG_NATIVE_CHECK
+            // START_BLOCK_DEBUG_ALERT_PROBE
+            if (BuildConfig.DEBUG) {
+                Spacer(Modifier.height(20.dp))
+                Text("Один раз: запрос ленты событий, одно превью и один клип. Показывается только форма ответа.")
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { viewModel.runAlertProbe() },
+                    enabled = !alertProbeRunning,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (alertProbeRunning) "Проба идёт…" else "Проба событий (debug)") }
+                alertProbeResults?.let { lines ->
+                    SelectionContainer {
+                        Column {
+                            lines.forEach {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            // END_BLOCK_DEBUG_ALERT_PROBE
         }
     }
 }
