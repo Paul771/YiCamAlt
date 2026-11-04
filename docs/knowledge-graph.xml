@@ -53,12 +53,13 @@
       <annotations>
         <fn-cameraDao PURPOSE="Access camera cache table operations (schema v2: + transport, shared; no secret column)" />
         <fn-replaceAll PURPOSE="CameraDao.replaceAll: delete + inserts in one Room transaction (BLOCK_DB_REPLACE_ALL)" PATH="app/src/main/java/com/yicamalt/database/CameraDao.kt" />
-        <fn-eventDao PURPOSE="Access event cache table operations" />
+        <fn-eventDao PURPOSE="Event cache (schema v3, plan 05-02): value-free events rows (no URL / key column), observeFeed, thumb path, purge by age" PATH="app/src/main/java/com/yicamalt/database/EventDao.kt" />
         <fn-appMetaDao PURPOSE="Access app metadata key/value store" />
       </annotations>
       <change-summary step="3" phase="1" commit="5d546b3" verification="deferred">YiDatabase implemented: CameraEntity/EventEntity/AppMetaEntity + DAOs (abstract-class DAOs emit BLOCK_DB_WRITE). DatabaseModule Hilt provider with onCreate callback (BLOCK_INIT_DB). Test written (Robolectric), deferred (no Android SDK).</change-summary>
       <change-summary phase="01-secrets-camera-list" commit="d29e98f" verification="passed">GSD phase 01 (plan 01-02): CameraDao BLOCK_DB_WRITE logs no identifiers (online=, hasModel= only); YiDatabaseTest scenario_5 proves a 13-digit serial never appears. Diagnostic log moved to internal filesDir/diag_log.txt with 1 MiB rotation (SEC-02).</change-summary>
       <change-summary phase="01-secrets-camera-list" plan="01-12" commit="15722f2" verification="passed">YiDatabase version 2 (cameras row + transport, shared) with destructive migration (cache wiped once on upgrade); CameraDao.replaceAll in one @Transaction; YiDatabaseTest (11 tests) pins the cameras column set so a secret column cannot be added silently (SEC-04).</change-summary>
+      <change-summary phase="05-events-feed" plan="05-02" verification="passed">2026-11-03: YiDatabase version 3, events table rewritten for the alert feed (event_key PK, time_ms, no URL / key / payload column); YiDatabaseTest 14.</change-summary>
     </M-LOCAL-DB>
 
     <!-- Layer 1: Core Domain -->
@@ -95,7 +96,7 @@
       <path>app/src/main/java/com/yicamalt/camera/DeviceRecordParser.kt</path>
       <path>app/src/main/java/com/yicamalt/camera/YiCloudDeviceApi.kt</path>
       <path>app/src/main/java/com/yicamalt/camera/CameraInfo.kt</path>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG, M-EVENT</depends>
       <verification-ref>V-M-CAMERA-LIST</verification-ref>
       <annotations>
         <fn-getCameraList PURPOSE="Signed GET of DeviceSourcePlan.OWNED_PATHS (/v5/devices/list) on the region kept by login; resolve P2P credentials into P2pCredentialStore; atomic Room replaceAll; 20200/empty = no cameras (clears cache + store); throws Unauthorized / ServerRejected / FetchFailed" />
@@ -118,6 +119,7 @@
       <change-summary phase="01-secrets-camera-list" plan="01-11" verification="in-progress">GRACE sync for waves 4-6: module marked implemented; region is chosen only by M-AUTH login discovery (no registry BLOCK_REGION_FALLBACK, no shared-list path); log markers [Camera][getCameraList][BLOCK_FETCH_SOURCE] source=LABEL code=C count=N, [Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport/mismatch/hasPassword/tnpInfo/needsPincode then stored/withLicense/withPassword, [Camera][getCameraList][BLOCK_FETCH_CAMERA_LIST] devices/shared/tnp/tutk. On-device verification pending (plan 01-11 Task 2/3).</change-summary>
       <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review MED-4: CameraRegistry v0.8.0 refreshCredentials (one getCameraList, errors swallowed, BLOCK_REFRESH_CREDENTIALS result=&lt;ok|ErrorClass&gt; found=&lt;b&gt;) for the live probe's single WRONG_PASSWORD retry. CameraRegistryCredentialsTest creds_13.</change-summary>
       <change-summary phase="02-p2p" plan="02-01" commits="827d67f, 29fa3cc" verification="passed">device_info (/v4/tnp/device_info) is asked once per user refresh for every camera without a transportVerified record; verified records are reused (zero extra calls); a network failure keeps a verified record or yields UNKNOWN / via=none. CameraRegistry implements P2pCredentialsSource (credentialsFor; CameraBindsModule.bindP2pCredentialsSource). Markers: BLOCK_RESOLVE_P2P_CREDENTIALS transport= via=deviceInfo|uid|none listType= tnpInfo= hasPassword= needsPincode=, summary stored= withLicense= withPassword= verified=. The old type-vs-id flag is gone. CameraRegistryCredentialsTest 23, CameraRegistryModuleTest 22.</change-summary>
+      <change-summary phase="05-events-feed" plan="05-02" verification="passed">2026-11-03: wipeLocked also runs EventCacheCleaner.wipeAll under runCatching (logout, start-up purge, no-cameras answer); [CameraRegistry][wipe][BLOCK_WIPE] events=wiped|failed. CameraRegistryModuleTest 24.</change-summary>
     </M-CAMERA-LIST>
 
     <M-CAMERA-CMD NAME="CameraCommand" TYPE="CORE_LOGIC" STATUS="implemented-provisional">
@@ -136,26 +138,40 @@
     </M-CAMERA-CMD>
 
     <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" STATUS="implemented">
-      <purpose>Fetch, cache, and manage motion/event timeline from Yi Cloud. Paginated event list with thumbnails and playback URLs.</purpose>
-      <path>app/src/main/java/com/yicamalt/event/EventServiceModule.kt</path>
+      <purpose>Account-wide motion alert feed (GSD Phase 5): signed GET v2/alert/list, value-free Room v3 cache of 30 days, persisted 5-minute refresh gate, bounded backward paging (10 pages, gap resume), in-memory signed media refs, logout wipe. Package com.yicamalt.event.</purpose>
+      <path>app/src/main/java/com/yicamalt/event/AlertWire.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/AlertListApi.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/AlertMapper.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/EventInfo.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/AlertSync.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/AlertSyncService.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/EventCacheCleaner.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/EventModule.kt</path>
       <support-paths>
-        <support-path>app/src/main/java/com/yicamalt/event/EventInfo.kt</support-path>
-        <support-path>app/src/main/java/com/yicamalt/event/YiCloudEventApi.kt</support-path>
-        <support-path>app/src/main/java/com/yicamalt/event/EventModule.kt</support-path>
-        <support-path>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</support-path>
+        <support-path>app/src/main/java/com/yicamalt/database/EventEntity.kt</support-path>
+        <support-path>app/src/main/java/com/yicamalt/database/EventDao.kt</support-path>
       </support-paths>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-EVENT-PLAYBACK</depends>
       <verification-ref>V-M-EVENT</verification-ref>
       <annotations>
-        <fn-getEventTimeline PURPOSE="Fetch paginated event list" />
-        <fn-getEventById PURPOSE="Get single event with full details" />
-        <fn-getPlaybackUrl PURPOSE="Resolve playback URL for an event" />
-        <fn-syncEventsToDb PURPOSE="Cache events to local Room database" />
-        <fn-getLocalEventCount PURPOSE="Count cached events for offline" />
-        <fn-getLocalTimeline PURPOSE="Read the cached timeline for a device/window without network (added)" />
+        <export-AlertWire PURPOSE="LIST_PATH v2/alert/list, SEQ 0, PAGE_LIMIT, EXPIRES, SUCCESS; signedExtra in vendor order; window (30 days); refreshWindow (±5 s)" />
+        <export-AlertListApi PURPOSE="Retrofit GET v2/alert/list + AlertEnvelope (code string or number)" />
+        <export-AlertMapper PURPOSE="page(envelope) -> AlertPage(records, media); key = id or uid_time; ms times; https media URLs (BLOCK_MAP_ALERTS)" />
+        <type-AlertRecord PURPOSE="Value-free event row source; MediaRef (signed URLs + keys, isStale); AlertPage" />
+        <export-AlertSync PURPOSE="RefreshGate (5 min) and PagePlanner (MAX_PAGES 10, gap)" />
+        <export-AlertSyncService PURPOSE="refresh (gated, single flight; BLOCK_REFRESH_GATE, BLOCK_FETCH_PAGE, BLOCK_SYNC_RESULT, BLOCK_PREFETCH_LAUNCH, BLOCK_PURGE_FILES), refreshMedia (±5 s, BLOCK_REFRESH_MEDIA), mediaFor, lastFetchMs" />
+        <export-MediaRefStore PURPOSE="In-memory key -> MediaRef; never persisted" />
+        <export-EventCacheCleaner PURPOSE="wipeAll (rows, EventMetaKeys, media refs, files; BLOCK_WIPE_EVENTS, BLOCK_WIPE_FILES), generation + writeIfCurrent" />
       </annotations>
-      <change-summary>2026-09-28 implemented. Endpoints are PROVISIONAL (EventPaths constants): development-plan note-1 records GET /v1/camera/event/list, but the reverse-engineering in PROJECT_STATUS.md showed real Yi Cloud paths are versioned without a /v1 prefix, so the path is a guess pending a capture. EventSigner duplicates the HmacSHA1 scheme confirmed on-device for /v5/devices/list; both copies should collapse into M-HTTP once a real capture confirms signing for the event API. EventDao gained getById + getByDeviceInWindow, and its BLOCK_DB_WRITE log line was made non-identifying because it leaked event_id (caught by V-M-EVENT scenario_6).</change-summary>
-      <change-summary phase="01-secrets-camera-list" commit="05dcd39" verification="passed">GSD phase 01 (plan 01-04): EventSigner removed; EventServiceModule signs via M-HTTP YiRequestSigner. EventServiceModuleTest 23/23 green.</change-summary>
+      <tests>app/src/test/java/com/yicamalt/event/AlertWireTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/event/AlertMapperTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/event/ForbiddenEndpointsTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/event/AlertSyncTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/event/AlertSyncServiceTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/database/YiDatabaseTest.kt</tests>
+      <change-summary>2026-09-28: first version with guessed endpoint paths; replaced in GSD Phase 5.</change-summary>
+      <change-summary phase="01-secrets-camera-list" commit="05dcd39" verification="passed">GSD phase 01 (plan 01-04): request signing moved to M-HTTP YiRequestSigner.</change-summary>
+      <change-summary phase="05-events-feed" plan="05-00..05-02" verification="jvm-passed">2026-11-03: rewritten to the real alert feed (05-RESEARCH.md, 05-PROBE.md D-PROBE-1..8, Gate CONTINUE); old client and its 23 tests deleted (05-01); Room v3 events table, gated sync, media refs in memory, logout wipe through CameraRegistry. AlertWireTest 4, AlertMapperTest 14, ForbiddenEndpointsTest 3, AlertSyncTest 13, AlertSyncServiceTest 33. Device checks H-EV1, H-EV8, H-EV9, H-EV10 pending.</change-summary>
     </M-EVENT>
 
     <M-STREAM-LIVE NAME="LiveStream" TYPE="CORE_LOGIC" STATUS="superseded">
@@ -189,18 +205,26 @@
       </annotations>
     </M-STREAM-DECODE>
 
-    <M-EVENT-PLAYBACK NAME="EventPlayback" TYPE="CORE_LOGIC" STATUS="planned">
-      <purpose>Playback of recorded event clips. Resolves playback URL, manages download buffer, delegates to ExoPlayer.</purpose>
-      <path>app/src/main/java/com/yicamalt/event/EventPlaybackModule.kt</path>
-      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
+    <M-EVENT-PLAYBACK NAME="EventPlayback" TYPE="CORE_LOGIC" STATUS="implemented">
+      <purpose>Event media (GSD Phase 5): plain download of signed preview / clip URLs, u32 LE + AES-128-ECB decrypt, 480 px previews in filesDir/event_thumbs (30 days), decrypted MP4 clips in a 50 MB cacheDir/event_clips LRU, one refresh on stale / missing / 403; played by the platform MediaPlayer on a TextureView (replaces the planned ExoPlayer).</purpose>
+      <path>app/src/main/java/com/yicamalt/event/MediaCrypto.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/MediaHttp.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/EventMediaRepository.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/EventMediaFiles.kt</path>
+      <path>app/src/main/java/com/yicamalt/event/ThumbEncoder.kt</path>
+      <depends>M-EVENT, M-LOCAL-DB</depends>
       <verification-ref>V-M-EVENT-PLAYBACK</verification-ref>
       <annotations>
-        <fn-startPlayback PURPOSE="Start playing an event clip" />
-        <fn-stopPlayback PURPOSE="Stop and release playback resources" />
-        <fn-seekTo PURPOSE="Seek to position (ms) in the event clip" />
-        <fn-getPlaybackDuration PURPOSE="Return total clip duration" />
-        <fn-getCurrentPosition PURPOSE="Return current playback position" />
+        <export-MediaCrypto PURPOSE="decrypt, magic, codec, tarPreview" />
+        <export-MediaHttp PURPOSE="plainClient (no interceptors / authenticator / logger), secureUrl (http -> https)" />
+        <export-EventMediaRepository PURPOSE="ThumbPrefetcher.prefetchThumbs (100 max, Semaphore(2); BLOCK_FETCH_THUMB, BLOCK_PREFETCH_PASS), clip(key) -> ClipResult (BLOCK_FETCH_CLIP, BLOCK_CLIP_REFRESH)" />
+        <export-EventMediaFiles PURPOSE="Hashed paths, atomic writes, thumb purge, 50 MB clip LRU, wipeAll" />
+        <export-ThumbEncoder PURPOSE="Port + BitmapThumbEncoder (480 px, q80; device-only)" />
+        <export-MediaFetcher PURPOSE="Ports MediaFetcher (PlainMediaFetcher) and MediaRefSource (over AlertSyncService)" />
       </annotations>
+      <tests>app/src/test/java/com/yicamalt/event/MediaCryptoTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/event/EventMediaRepositoryTest.kt</tests>
+      <change-summary phase="05-events-feed" plan="05-00/05-03/05-05" verification="jvm-passed">2026-11-04: implemented. MediaCryptoTest 11, EventMediaRepositoryTest 22; player in M-UI-EVENTS ClipDialog (MediaPlayer on TextureView). Device checks H-EV4, H-EV5, H-EV9 pending.</change-summary>
     </M-EVENT-PLAYBACK>
 
     <M-PUSH NAME="PushService" TYPE="CORE_LOGIC" STATUS="planned">
@@ -238,7 +262,7 @@
       <path>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</path>
       <path>app/src/main/java/com/yicamalt/ui/cameras/CameraListScreen.kt</path>
       <path>app/src/main/java/com/yicamalt/ui/cameras/CameraListViewModel.kt</path>
-      <depends>M-AUTH, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVEVIEW, M-UI-LIVE-PROBE</depends>
+      <depends>M-AUTH, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVEVIEW, M-UI-LIVE-PROBE, M-UI-EVENTS</depends>
       <verification-ref>V-M-UI-SHELL</verification-ref>
       <annotations>
         <fn-AppShellScreen PURPOSE="Bottom-nav host: Cameras + Settings tabs (BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN); passes onLogout to CameraListScreen as onSessionExpired" />
@@ -248,11 +272,13 @@
         <type-ErrorKind PURPOSE="NETWORK (FetchFailed / other) | SERVER (ServerRejected) | UNAUTHORIZED (Unauthorized)" />
         <fn-onOpenCamera PURPOSE="Camera row tap -> LiveViewScreen overlay (tab=live)" />
         <fn-onLongPressCamera PURPOSE="Camera row long press (combinedClickable) -> LiveProbeScreen debug overlay (tab=probe)" />
+        <fn-EventsTab PURPOSE="GSD Phase 5: third tab «События» -> EventsScreen; clipKey -> ClipDialog; onOpenSd -> LiveViewScreen(initialArchiveMs) overlay (tab=live source=event|list)" />
       </annotations>
       <change-summary step="5" phase="2" commit="3cbee19" verification="deferred-emulator">M-UI-SHELL implemented: AppShellScreen replaces the HomeScreen stub — NavigationBar tabs Cameras (CameraListScreen + CameraListViewModel via CameraListPort) and Settings (existing SettingsScreen). MainActivity hosts the shell post-login. Compose instrumented tests require an emulator (not available in build env); ViewModel unit tests green.</change-summary>
       <change-summary step="10" phase="1" plan="01-10" verification="passed">CAM-01/04/05 camera list UI: cache-first start, Empty vs typed Error (NETWORK/SERVER/UNAUTHORIZED), stale banner over a kept list, single-flight refresh, pull-to-refresh, transport + shared mark in the row, device id removed from the screen (SEC-01). CameraListViewModelTest 17 JVM tests.</change-summary>
       <change-summary phase="02-p2p" plan="02-09" commit="9f696a0" verification="in-progress">Camera row tap (CameraListScreen onOpenCamera) opens the debug live probe (M-UI-LIVE-PROBE) as an AppShellScreen overlay; bars hidden while shown, back returns to the list; [Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live. Device proof: 02-DEVICE-VERIFICATION.md.</change-summary>
       <change-summary phase="03-live-view" plan="03-11" commit="d7aab85" verification="jvm-passed">2026-10-23: row tap opens LiveViewScreen (M-UI-LIVEVIEW), long press opens the debug LiveProbeScreen (M-UI-LIVE-PROBE); both overlays in plain remember, a tab switch clears them; value-free tab=live|probe markers. Device check H-L1 pending.</change-summary>
+      <change-summary phase="05-events-feed" plan="05-04/05-05" verification="compile-only">2026-11-04: ShellTab Cameras / Settings / Events («События»); clip dialog for the tapped key; SD jump opens the live screen with liveArchiveMs (plain remember), closing returns to the Events tab.</change-summary>
     </M-UI-SHELL>
 
     <M-UI-LIVEVIEW NAME="LiveViewScreen" TYPE="UI_COMPONENT" STATUS="implemented">
@@ -284,7 +310,8 @@
         <export-TimelineMath PURPOSE="Pure ruler math: span 15 min..24 h, zoom, pan, ticks, initialCenter, shouldSeekAfterGesture" />
         <export-CalendarGrid PURPOSE="Pure Monday-first month grid (DayCell), monthsWithRecordings" />
         <export-TimelineRuler PURPOSE="Canvas ruler composable, release-to-seek (BLOCK_TIMELINE_GESTURE)" />
-        <export-ArchivePanel PURPOSE="ArchivePanel and DayPickerDialog composables (BLOCK_ARCHIVE_PANEL)" />
+        <export-ArchivePanel PURPOSE="ArchivePanel and DayPickerDialog composables (BLOCK_ARCHIVE_PANEL); DayPickerDialog(today, selected?, markedDays) overload reused by M-UI-EVENTS" />
+        <fn-openAt PURPOSE="ArchiveCoordinator.openAt / LiveViewModel.openAt / LiveViewScreen(initialArchiveMs): one-shot jump to an event moment (BLOCK_ARCHIVE_OPEN_AT, EVENT_SD_PREROLL_MS = 0)" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/ui/live/LiveViewModelTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/ui/live/ZoomMathTest.kt</tests>
@@ -297,22 +324,32 @@
       <change-summary phase="03-live-view" plan="03-11" commit="090649f" verification="compile-only">2026-10-23: LiveViewScreen on TextureView (stable slot, overlays, fullscreen by button or rotation, 4 s auto-hide, pinch / pan / double tap via ZoomMath, keepScreenOn, getBitmap(videoWidth, videoHeight) snapshot, API 26-28 permission, ON_STOP / ON_START). STATUS implemented, JVM-verified view model only; device checks H-L1, H-L6, H-L7, H-L8 pending (03-HUMAN-UAT.md).</change-summary>
       <change-summary phase="04-sd-archive" plan="04-06/04-07" verification="jvm-passed">2026-10-31: ArchiveCoordinator (ArchiveUi, ArchivePanel enum, ArchiveTexts; D-07 states, TUTK hide rule D-06; BLOCK_ARCHIVE_LOAD, BLOCK_ARCHIVE_HIDE, BLOCK_ARCHIVE_TUTK_HIDE), LiveViewModel archive StateFlow + 7 actions (BLOCK_ARCHIVE_ACTION), TimelineMath, CalendarGrid, TimelineRuler (BLOCK_TIMELINE_GESTURE), ArchivePanel / DayPickerDialog (BLOCK_ARCHIVE_PANEL), LiveViewScreen v0.2.0 wiring. ArchiveCoordinatorTest 28, LiveViewModelTest 33, TimelineMathTest 14, CalendarGridTest 6; composables compile-only. Device H-SD1..H-SD10 pending.</change-summary>
       <change-summary phase="04-sd-archive" plan="04-11/04-12" verification="jvm-passed">2026-10-31 gap closure (device defects 1-3, W-1): ArchiveUi.rulerMs (live ruler after «Живой»), ArchivePanel.IDLE (spinner only while fetching on a healthy link), index refresh on liveEpoch / every 60 s / before a seek with a bounded pending seek (BLOCK_ARCHIVE_REFRESH), Paused(SILENT) hint. ArchiveCoordinatorTest 57, LiveViewModelTest 33; composables compile-only. Device H-SD11..H-SD13 pending.</change-summary>
+      <change-summary phase="05-events-feed" plan="05-05" verification="jvm-passed">2026-11-04: openAt entry from an event (QUEUED / FIRED / HIDDEN / IGNORED, hint «Нет записи в это время» for a day without recordings), LiveViewScreen(initialArchiveMs), Toast collector before open; CalendarGrid.month(selected) nullable. ArchiveCoordinatorTest 67, LiveViewModelTest 35. Device H-EV6, H-EV7 pending.</change-summary>
     </M-UI-LIVEVIEW>
 
-    <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" STATUS="planned">
-      <purpose>Events screen: timeline/grid of motion events with thumbnails, date filter, camera selector.</purpose>
+    <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" STATUS="implemented">
+      <purpose>Events tab (GSD Phase 5, D-01..D-04): one feed of all cameras grouped by day, camera chips, the archive day picker, refresh on entry / pull with the 5-minute gate, offline cache texts, clip dialog and the jump to the SD archive at the event moment.</purpose>
+      <path>app/src/main/java/com/yicamalt/ui/events/EventsFeed.kt</path>
+      <path>app/src/main/java/com/yicamalt/ui/events/EventsViewModel.kt</path>
       <path>app/src/main/java/com/yicamalt/ui/events/EventsScreen.kt</path>
-      <depends>M-UI-SHELL, M-EVENT, M-EVENT-PLAYBACK</depends>
+      <path>app/src/main/java/com/yicamalt/ui/events/ClipViewModel.kt</path>
+      <path>app/src/main/java/com/yicamalt/ui/events/ClipDialog.kt</path>
+      <depends>M-UI-SHELL, M-EVENT, M-EVENT-PLAYBACK, M-CAMERA-LIST, M-UI-LIVEVIEW</depends>
       <verification-ref>V-M-UI-EVENTS</verification-ref>
       <annotations>
-        <fn-EventsScreen PURPOSE="Compose screen with event timeline" />
-        <fn-EventTimelineList PURPOSE="Vertical list of events grouped by date" />
-        <fn-EventThumbnailItem PURPOSE="Event card with thumbnail + timestamp" />
-        <fn-DateFilterBar PURPOSE="Horizontal date strip for filtering" />
+        <export-EventsFeed PURPOSE="Pure grouping / filters / labels / subtitle / empty texts; EventCard, DaySection" />
+        <export-EventsViewModel PURPOSE="onTabEntered, onPullRefresh, chips, day picker, onCardTap -> OpenClip, SessionExpired (BLOCK_REFRESH, BLOCK_FILTER, BLOCK_CAMERAS, BLOCK_OPEN_CLIP); ports EventFeedSource / EventSyncSource (EventsUiModule)" />
+        <export-EventsScreen PURPOSE="Chips, «Все дни ▾» day button + DayPickerDialog, subtitle, pull-to-refresh card list" />
+        <export-ClipViewModel PURPOSE="ClipSource port (ClipUiModule), ClipUi / ClipState / ClipEvent.OpenSd, failure texts (BLOCK_CLIP_LOAD, BLOCK_CLIP_OPEN_SD)" />
+        <export-ClipDialog PURPOSE="Dialog with MediaPlayer on TextureView, «Повторить» / «Закрыть» / «Открыть запись на SD» (BLOCK_CLIP_PLAYER)" />
       </annotations>
+      <tests>app/src/test/java/com/yicamalt/ui/events/EventsFeedTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/ui/events/EventsViewModelTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</tests>
+      <change-summary phase="05-events-feed" plan="05-04/05-05" verification="jvm-passed">2026-11-04: implemented. EventsFeedTest 11, EventsViewModelTest 11, ClipViewModelTest 11; composables compile-only. Day button «Все дни ▾» deviates from the letter of D-03 (H-EV3). Device checks H-EV1..H-EV7 pending.</change-summary>
     </M-UI-EVENTS>
 
-    <M-UI-EVENTPLAYBACK NAME="EventPlaybackScreen" TYPE="UI_COMPONENT" STATUS="planned">
+    <M-UI-EVENTPLAYBACK NAME="EventPlaybackScreen" TYPE="UI_COMPONENT" STATUS="superseded">
       <purpose>Event playback screen: video player, seek bar, controls, event metadata overlay.</purpose>
       <path>app/src/main/java/com/yicamalt/ui/eventplayback/EventPlaybackScreen.kt</path>
       <depends>M-UI-SHELL, M-EVENT-PLAYBACK</depends>
@@ -322,6 +359,8 @@
         <fn-PlaybackControls PURPOSE="Player controls overlay" />
         <fn-EventMetadataInfo PURPOSE="Event info chip row" />
       </annotations>
+      <superseded-by>M-UI-EVENTS</superseded-by>
+      <change-summary phase="05-events-feed" plan="05-05" verification="n/a">2026-11-04: superseded by the ClipDialog of M-UI-EVENTS; never built.</change-summary>
     </M-UI-EVENTPLAYBACK>
 
     <M-UI-SETTINGS NAME="SettingsScreen" TYPE="UI_COMPONENT" STATUS="planned">
@@ -413,16 +452,23 @@
       <purpose>Debug-only one-shot probe of device-list endpoints across gateways; emits only status/code/length/count/field names.</purpose>
       <path>app/src/main/java/com/yicamalt/debug/EndpointProbe.kt</path>
       <path>app/src/main/java/com/yicamalt/debug/ProbeMatrix.kt</path>
-      <depends>M-HTTP, M-AUTH</depends>
+      <path>app/src/main/java/com/yicamalt/debug/AlertProbe.kt</path>
+      <path>app/src/main/java/com/yicamalt/debug/AlertProbeShape.kt</path>
+      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
       <verification-ref>V-M-DEBUG-PROBE</verification-ref>
       <annotations>
         <export-runOnce PURPOSE="Run the endpoint x gateway matrix once; value-free report lines" />
         <fn-analyze PURPOSE="Reduce a response to status, code, length, item count and field names" />
         <fn-format PURPOSE="Render one analyzed response as a single value-free line" />
         <fn-targets PURPOSE="12 list targets: US/EU/SG x {v4,v5}/devices/list, deviceshare friends/shareddetail" />
+        <export-AlertProbe PURPOSE="Debug-only alert feed probe, at most 5 requests per press, value-free shape lines (BLOCK_ALERT_PROBE)" />
+        <export-AlertProbeShape PURPOSE="Pure value-free formatters for the alert probe" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/debug/AlertProbeShapeTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/debug/AlertProbeShapeFormsTest.kt</tests>
       <change-summary phase="01-secrets-camera-list" commit="59cce25" verification="passed">GSD phase 01 (plan 01-05): ProbeMatrix (pure analyzer/formatter, ProbeMatrixTest 12/12) + EndpointProbe runner on probeClient (at most 13 GETs, no retries, no auth calls, debug builds only); replaces DeviceSignProbe. Device run pending (plan 01-06 Task 2-3).</change-summary>
+      <change-summary phase="05-events-feed" plan="05-00" verification="passed">2026-11-03: AlertProbe + AlertProbeShape (AlertProbeShapeTest 8, AlertProbeShapeFormsTest 7); device run recorded value-free in 05-PROBE-RESULTS.txt / 05-PROBE.md.</change-summary>
     </M-DEBUG-PROBE>
 
     <M-P2P-CREDS NAME="P2pCredentials" TYPE="CORE_LOGIC" STATUS="implemented">
@@ -790,9 +836,10 @@
     <CrossLink from="M-CAMERA-CMD" to="M-HTTP" relation="uses for command API" />
     <CrossLink from="M-CAMERA-CMD" to="M-AUTH" relation="uses for auth token" />
     <CrossLink from="M-CAMERA-CMD" to="M-CAMERA-LIST" relation="uses camera info" />
-    <CrossLink from="M-EVENT" to="M-HTTP" relation="uses for API calls; signs requests via YiRequestSigner" />
-    <CrossLink from="M-EVENT" to="M-AUTH" relation="uses for auth token" />
-    <CrossLink from="M-EVENT" to="M-LOCAL-DB" relation="caches event data" />
+    <CrossLink from="M-EVENT" to="M-HTTP" relation="uses: signed GET v2/alert/list through the shared Retrofit and YiRequestSigner" />
+    <CrossLink from="M-EVENT" to="M-AUTH" relation="session: userid and signing key; no session = no request" />
+    <CrossLink from="M-EVENT" to="M-LOCAL-DB" relation="persists: Room v3 events rows and app_meta gate marks" />
+    <CrossLink from="M-EVENT" to="M-EVENT-PLAYBACK" relation="ThumbPrefetcher port after Fetched; preview files purged with their rows" />
     <CrossLink from="M-TNP-LINK" to="M-P2P-NATIVE" relation="drives PPPP sessions" />
     <CrossLink from="M-TNP-LINK" to="M-STREAM-CORE" relation="framing, auth, frame heads" />
     <CrossLink from="M-TNP-LINK" to="M-P2P-CREDS" relation="connects with stored credentials" />
@@ -804,9 +851,8 @@
     <CrossLink from="M-TUTK-LINK" to="M-STREAM-CORE" relation="LE frame heads, nonce + HMAC auth, start command" />
     <CrossLink from="M-TUTK-LINK" to="M-TNP-LINK" relation="TransportLinkFactory dispatches TNP to TnpLinkFactory" />
     <CrossLink from="M-UI-LIVE-PROBE" to="M-TUTK-LINK" relation="opens TUTK cameras through TransportLinkFactory" />
-    <CrossLink from="M-EVENT-PLAYBACK" to="M-HTTP" relation="uses for playback URL" />
-    <CrossLink from="M-EVENT-PLAYBACK" to="M-AUTH" relation="uses for auth token" />
-    <CrossLink from="M-EVENT-PLAYBACK" to="M-EVENT" relation="uses for playback resolution" />
+    <CrossLink from="M-EVENT-PLAYBACK" to="M-EVENT" relation="media refs: mediaFor / refreshMedia through the MediaRefSource port" />
+    <CrossLink from="M-EVENT-PLAYBACK" to="M-LOCAL-DB" relation="EventDao thumb path and clip row lookup" />
     <CrossLink from="M-PUSH" to="M-HTTP" relation="uses for FCM token registration" />
     <CrossLink from="M-PUSH" to="M-AUTH" relation="uses for auth token" />
     <CrossLink from="M-PUSH" to="M-EVENT" relation="uses for deep link resolution" />
@@ -823,8 +869,13 @@
     <CrossLink from="M-LIVE-SESSION" to="M-TUTK-LINK" relation="uses" />
     <CrossLink from="M-UI-SHELL" to="M-UI-LIVEVIEW" relation="navigates" />
     <CrossLink from="M-UI-EVENTS" to="M-UI-SHELL" relation="embedded in shell navigation" />
-    <CrossLink from="M-UI-EVENTS" to="M-EVENT" relation="reads event data" />
-    <CrossLink from="M-UI-EVENTS" to="M-EVENT-PLAYBACK" relation="launches playback" />
+    <CrossLink from="M-UI-EVENTS" to="M-EVENT" relation="observes cached rows and calls refresh (EventFeedSource / EventSyncSource ports)" />
+    <CrossLink from="M-UI-EVENTS" to="M-EVENT-PLAYBACK" relation="preview files and clip(key) for the clip dialog (ClipSource port)" />
+    <CrossLink from="M-UI-EVENTS" to="M-UI-LIVEVIEW" relation="SD jump: LiveViewScreen(initialArchiveMs) -> ArchiveCoordinator.openAt; DayPickerDialog reuse" />
+    <CrossLink from="M-UI-EVENTS" to="M-CAMERA-LIST" relation="cached camera names for chips, cards and the SD button" />
+    <CrossLink from="M-UI-SHELL" to="M-UI-EVENTS" relation="hosts the Events tab and the clip dialog" />
+    <CrossLink from="M-DEBUG-PROBE" to="M-EVENT" relation="alert probe uses AlertWire, MediaCrypto and MediaHttp (debug only)" />
+    <CrossLink from="M-CAMERA-LIST" to="M-EVENT" relation="logout wipe: CameraRegistry.wipeLocked runs EventCacheCleaner.wipeAll" />
     <CrossLink from="M-UI-EVENTPLAYBACK" to="M-UI-SHELL" relation="embedded in shell navigation" />
     <CrossLink from="M-UI-EVENTPLAYBACK" to="M-EVENT-PLAYBACK" relation="controls playback" />
     <CrossLink from="M-UI-SETTINGS" to="M-UI-SHELL" relation="embedded in shell navigation" />

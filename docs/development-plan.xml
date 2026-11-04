@@ -134,6 +134,7 @@
       <notes>
         <note-1>BLOCK_DB_WRITE logs no identifiers (SEC-01): only online= and hasModel= flags, never the device serial (plan 01-02).</note-1>
         <note-2>Plan 01-12: schema version 2 (cameras row + transport, shared) with fallbackToDestructiveMigration, so the cache is wiped once on upgrade. P2P secrets never reach Room (SEC-04): YiDatabaseTest pins the exact cameras column set via PRAGMA table_info.</note-2>
+        <note-3>2026-11-03 (GSD Phase 5, plan 05-02): schema version 3. The events table (event_key PK, device_id, time_ms, type, sub_type, file_type, has_clip, play_time_s, thumb_path, cached_at) is value-free: no URL, key or payload column (YiDatabaseTest `events table has no url or key column`). EventDao feed / calendar / thumbnail queries; app_meta holds the M-EVENT gate keys. Destructive migration as for v2.</note-3>
       </notes>
     </M-LOCAL-DB>
 
@@ -254,7 +255,7 @@
         <export-updateCameraStatus PURPOSE="Update online/offline status (pushed from FCM)" />
         <export-cacheCameraList PURPOSE="Persist camera list to local DB for offline access" />
       </interface>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-P2P-CREDS, M-CONFIG, M-EVENT (EventCacheCleaner wipe)</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/camera/CameraRegistry.kt</source>
         <source>app/src/main/java/com/yicamalt/camera/DeviceSourcePlan.kt</source>
@@ -277,6 +278,7 @@
         <note-4>No BLOCK_REGION_FALLBACK in this module (deviation from plan 01-09, per the addendum): the registry uses the region kept by M-AUTH login discovery. The logout wipe is triggered by M-AUTH (LogoutCleanup -> clearSignedOutData); purgeIfSignedOut runs from MainActivity at start without a session. Both log [Camera][clearAll][BLOCK_CLEAR_CAMERA_DATA]; there is no export named clearAll.</note-4>
         <note-5>getLiveStreamUrl stays as legacy (the cloud list carries no stream URL, so it throws NoStreamUrl after a refresh); live view goes through getCredentials in GSD Phase 2.</note-5>
         <note-6>2026-10-16 (GSD Phase 2, plan 02-01): every camera without a transportVerified record gets at most one signed GET /v4/tnp/device_info per user refresh (not only TNP-by-type cameras); verified records are reused with zero extra calls; a network failure keeps a verified record or yields UNKNOWN / via=none (never a guess). The registry implements P2pCredentialsSource (export credentialsFor). Value-free markers: [Camera][creds][BLOCK_RESOLVE_P2P_CREDENTIALS] transport= via=deviceInfo|uid|none listType= tnpInfo=ok|incomplete|notTnp|rejected|failed|reused hasPassword= needsPincode=, and the summary stored= withLicense= withPassword= verified=.</note-6>
+        <note-7>2026-11-03 (GSD Phase 5, plan 05-02): CameraRegistry.wipeLocked also runs M-EVENT EventCacheCleaner.wipeAll (rows, event meta keys, media refs, preview / clip files) under runCatching, so logout, the start-up purge and the no-cameras answer wipe the alert cache; a failing event wipe does not block the credential and camera wipe (log [CameraRegistry][wipe][BLOCK_WIPE] events=wiped|failed).</note-7>
       </notes>
     </M-CAMERA-LIST>
 
@@ -322,42 +324,67 @@
 
     <M-EVENT NAME="EventService" TYPE="CORE_LOGIC" LAYER="1" ORDER="4" STATUS="implemented">
       <contract>
-        <purpose>Fetch, cache, and manage motion/event timeline from Yi Cloud. Provides paginated event list with thumbnails, timestamps, and playback URLs. Events may come from cloud recording or SD-card.</purpose>
+        <purpose>Account-wide motion alert feed from the Yi cloud (GSD Phase 5): signed GET v2/alert/list (the endpoint the official app uses for its message list), value-free Room v3 cache of the last 30 days, a persisted 5-minute refresh gate, bounded backward paging, in-memory signed media references and the logout wipe. No background polling.</purpose>
         <inputs>
-          <param name="deviceId" type="String" />
-          <param name="startTime" type="Long (epoch ms)" />
-          <param name="endTime" type="Long (epoch ms)" />
-          <param name="page" type="Int" />
+          <param name="session" type="Session (M-AUTH): userid and the signing key; no session = no request" />
+          <param name="nowMs / zone" type="injected clock and ZoneId (window bounds, purge cutoff)" />
+          <param name="key" type="String (event key) for refreshMedia / mediaFor" />
         </inputs>
         <outputs>
-          <param name="EventList" type="Paginated event list with thumbnails" />
+          <param name="SyncResult" type="Fetched | TooEarly(minutesAgo) | InProgress | Offline | Unauthorized | Failed(code) | NoSession" />
+          <param name="rows" type="Room events rows (EventEntity) observed by M-UI-EVENTS" />
+          <param name="MediaRef" type="in-memory signed picture / clip URLs (https form) + keys + expire time, per event key" />
         </outputs>
         <errors>
-          <error code="EVENT_FETCH_FAILED" />
-          <error code="EVENT_NO_RECORDING" />
+          <error code="Offline" NOTE="IOException; writes neither gate mark" />
+          <error code="Unauthorized" NOTE="HTTP 401 or app-level auth code; no retry" />
+          <error code="Failed(http-&lt;code&gt;)" NOTE="other HTTP error; counts as answered (attempt mark)" />
+          <error code="Failed(malformed)" NOTE="unreadable body; counts as answered" />
+          <error code="NoSession" NOTE="no session or a logout during the refresh; nothing is written" />
         </errors>
+        <error-policy>No retry inside a refresh. The gate reads the newer of events_last_fetch_ms and events_last_attempt_ms (app_meta), so it survives a restart. Single flight: a second refresh during one returns InProgress.</error-policy>
       </contract>
       <interface>
-        <export-getEventTimeline PURPOSE="Fetch paginated event list" />
-        <export-getEventById PURPOSE="Get single event with full details" />
-        <export-getPlaybackUrl PURPOSE="Resolve playback URL for an event" />
-        <export-syncEventsToDb PURPOSE="Cache events to local Room database" />
-        <export-getLocalEventCount PURPOSE="Count cached events for offline availability" />
+        <export-AlertWire PURPOSE="Wire constants of v2/alert/list: LIST_PATH, SEQ 0, PAGE_LIMIT, EXPIRES, SUCCESS; signedExtra (vendor parameter order after seq / userid, empty values kept), window (last 30 days + 60 s, to = start of tomorrow), refreshWindow (event time ±5 s)" STATUS="implemented" />
+        <export-AlertListApi PURPOSE="Retrofit GET v2/alert/list (caller-supplied signed values, no defaults); AlertEnvelope with AlertCodeSerializer (code as string or number); signed by M-HTTP YiRequestSigner" STATUS="implemented" />
+        <export-AlertMapper PURPOSE="page(envelope) -> AlertPage(records, media): key = id, else uid_time; times in ms; plural pic_urls / video_urls single strings (comma split kept), media URLs rewritten http -> https via MediaHttp.secureUrl, absent play_time = 0, malformed items skipped (BLOCK_MAP_ALERTS)" STATUS="implemented" />
+        <type-AlertRecord PURPOSE="key, deviceId (= uid = CameraInfo.deviceId), timeMs, type, subType, fileType, playTimeS, hasClip; toString hides key and id (EventInfo.kt, with MediaRef and AlertPage)" STATUS="implemented" />
+        <export-AlertSync PURPOSE="Pure RefreshGate (5 min, GateDecision Fetch | TooEarly) and PagePlanner (first / next / gap; PageStep Next | Done | Capped; MAX_PAGES 10)" STATUS="implemented" />
+        <export-AlertSyncService PURPOSE="refresh(): gated, single flight, at most 10 pages backward per refresh, one saved gap boundary (events_gap_to_sec) resumed by the next refresh, de-duplication by key, 30-day purge of rows and preview files, prefetch pass after Fetched; refreshMedia(key): one ±5 s request, at most once per 60 s per key and 6 per rolling minute; mediaFor(key); lastFetchMs()" STATUS="implemented" />
+        <export-MediaRefStore PURPOSE="@Singleton in-memory key -> MediaRef; never persisted; cleared by the wipe" STATUS="implemented" />
+        <export-EventCacheCleaner PURPOSE="wipeAll(): media refs, every event row, every EventMetaKeys entry, preview / clip files; generation + writeIfCurrent so a sync started before logout writes nothing afterwards; called from CameraRegistry.wipeLocked (logout, start-up purge, no-cameras answer)" STATUS="implemented" />
+        <export-EventModule PURPOSE="Hilt: AlertListApi from the shared Retrofit, EventMediaFiles, ThumbPrefetcher (dagger.Lazy breaks the AlertSyncService / EventMediaRepository cycle)" STATUS="implemented" />
       </interface>
-      <depends>M-HTTP, M-AUTH, M-LOCAL-DB</depends>
+      <depends>M-HTTP, M-AUTH, M-LOCAL-DB, M-EVENT-PLAYBACK (ThumbPrefetcher port, files purge)</depends>
       <target>
-        <source>app/src/main/java/com/yicamalt/event/EventServiceModule.kt</source>
-        <tests>app/src/test/java/com/yicamalt/event/EventServiceModuleTest.kt</tests>
+        <source>app/src/main/java/com/yicamalt/event/AlertWire.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/AlertListApi.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/AlertMapper.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/EventInfo.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/AlertSync.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/AlertSyncService.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/EventCacheCleaner.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/EventModule.kt</source>
+        <source>app/src/main/java/com/yicamalt/database/EventEntity.kt</source>
+        <source>app/src/main/java/com/yicamalt/database/EventDao.kt</source>
+        <tests>app/src/test/java/com/yicamalt/event/AlertWireTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/event/AlertMapperTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/event/ForbiddenEndpointsTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/event/AlertSyncTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/event/AlertSyncServiceTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/database/YiDatabaseTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/test/FakeEventCache.kt</tests>
       </target>
       <observability>
         <log-prefix>[Event]</log-prefix>
-        <critical-block>BLOCK_FETCH_EVENTS, BLOCK_SYNC_TO_DB, BLOCK_RESOLVE_PLAYBACK_URL</critical-block>
+        <critical-block>BLOCK_REFRESH_GATE, BLOCK_FETCH_PAGE, BLOCK_SYNC_RESULT, BLOCK_PREFETCH_LAUNCH, BLOCK_PURGE_FILES (sync); BLOCK_REFRESH_MEDIA (media); BLOCK_MAP_ALERTS (map); BLOCK_WIPE_EVENTS, BLOCK_WIPE_FILES (cache wipe)</critical-block>
       </observability>
       <verification-ref>V-M-EVENT</verification-ref>
       <notes>
-        <note-1>Cloud endpoint: GET /v1/camera/event/list (paginated with cursor).</note-1>
-        <note-2>Event thumbnails are JPEG blobs returned inline; full video needs separate URL resolution.</note-2>
-        <note-3>EventSigner removed (plan 01-04); requests are signed via M-HTTP YiRequestSigner, the single HMAC-SHA1 signer.</note-3>
+        <note-1>2026-11-03 (GSD Phase 5, plans 05-00..05-02): rewritten to the built design. The guessed client of 2026-09-28 (its event service module, its Retrofit interface and its parser, 23 tests) was deleted in plan 05-01; requests are signed by M-HTTP YiRequestSigner, the single HMAC-SHA1 signer.</note-1>
+        <note-2>Decisions come from 05-RESEARCH.md (endpoint, parameter order, media decrypt) and the device probe 05-PROBE.md: D-PROBE-1 envelope (plural URL fields, one string each, no play_time), D-PROBE-2 ms times, D-PROBE-3 uid = camera deviceId, D-PROBE-5 / D-PROBE-6 media over https only (cleartext stays off), D-PROBE-7 link lifetime up to about a day (stale = expire + 10 s), D-PROBE-8 server retention unknown (open for device UAT 05-07).</note-2>
+        <note-3>Deny list: ForbiddenEndpointsTest walks every main source literal and fails on other alert / push / VAS / order paths (v4 alert events, push properties, get_push, del_list, monitor alarm, ai alert, orderpay, vas, cloud isGive); the only allowed alert/ literal is v2/alert/list. No WorkManager, no periodic work, no open loop in the event package.</note-3>
+        <note-4>Logs are value-free: counts, codes, result classes, page numbers; no uid, key, URL, host, pwd or absolute time.</note-4>
       </notes>
     </M-EVENT>
 
@@ -446,38 +473,54 @@
       </notes>
     </M-STREAM-DECODE>
 
-    <M-EVENT-PLAYBACK NAME="EventPlayback" TYPE="CORE_LOGIC" LAYER="1" ORDER="7" STATUS="planned">
+    <M-EVENT-PLAYBACK NAME="EventPlayback" TYPE="CORE_LOGIC" LAYER="1" ORDER="7" STATUS="implemented">
       <contract>
-        <purpose>Playback of recorded event clips. Resolves playback URL (cloud CDN or local), manages download buffer, and delegates to ExoPlayer for video rendering.</purpose>
+        <purpose>Event media (GSD Phase 5): download the encrypted preview and clip of an alert from its signed URL, decrypt them, keep 480 px previews for 30 days and decrypted MP4 clips in a small LRU, and hand a local file to the clip player (platform MediaPlayer on a TextureView, M-UI-EVENTS ClipDialog).</purpose>
         <inputs>
-          <param name="eventId" type="String" />
-          <param name="playbackUrl" type="String" />
+          <param name="records" type="List&lt;AlertRecord&gt; (prefetchThumbs, from M-EVENT after Fetched)" />
+          <param name="key" type="String event key (clip)" />
+          <param name="MediaRef" type="via the MediaRefSource port over M-EVENT AlertSyncService.mediaFor / refreshMedia" />
         </inputs>
         <outputs>
-          <param name="PlaybackHandle" type="PlaybackHandle (surface + progress)" />
+          <param name="thumb" type="JPEG file filesDir/event_thumbs/&lt;yyyyMMdd&gt;/&lt;hash&gt;.jpg + EventDao.setThumb(relative path)" />
+          <param name="ClipResult" type="Ready(file, codec) | Unsupported | Expired | Failed(http | decrypt | format | io | no-clip)" />
         </outputs>
         <errors>
-          <error code="PLAYBACK_URL_FAILED" />
-          <error code="PLAYBACK_DECODE_ERROR" />
+          <error code="Unsupported" NOTE="file_type ts (HLS): no download" />
+          <error code="Expired" NOTE="ref missing or stale and the single refresh returned nothing" />
+          <error code="Failed(http)" NOTE="non-2xx, or 403 after the one refresh" />
+          <error code="Failed(decrypt|format)" NOTE="decrypt error or wrong magic (JPEG / PNG for previews, MP4 for clips)" />
         </errors>
+        <error-policy>At most ONE refreshMedia per clip() call whatever the trigger (missing ref, stale ref, first 403). Prefetch never refreshes and never retries; each failure is logged once and skipped. Size caps 2 MB per preview, 8 MB per clip.</error-policy>
       </contract>
       <interface>
-        <export-startPlayback PURPOSE="Start playing an event clip" />
-        <export-stopPlayback PURPOSE="Stop and release playback resources" />
-        <export-seekTo PURPOSE="Seek to position (ms) in the event clip" />
-        <export-getPlaybackDuration PURPOSE="Return total clip duration" />
-        <export-getCurrentPosition PURPOSE="Return current playback position" />
+        <export-MediaCrypto PURPOSE="decrypt: u32 LE plain length + AES-128/ECB/NoPadding with the 16-char pic_pwd / video_pwd; magic (JPEG, PNG, MP4, TAR, TS, UNKNOWN), codec (AVC, HEVC, UNKNOWN), tarPreview (first image of a tar preview)" STATUS="implemented" />
+        <export-MediaHttp PURPOSE="plainClient(): separate OkHttpClient without interceptors, authenticator or logger, so no Authorization header reaches the CDN and no signed URL is logged; secureUrl(): http -> https for media URLs only (D-PROBE-5; cleartext stays off)" STATUS="implemented" />
+        <export-EventMediaRepository PURPOSE="ThumbPrefetcher.prefetchThumbs(records): newest first, capped at 100, 2 downloads at once (Semaphore(2)), .yitar skipped, .tar -> tarPreview, blank pwd -> raw body, ThumbEncoder 480 px JPEG q80; clip(key): no row / no clip -> Failed(no-clip), ts -> Unsupported, cached file -> Ready without network (LRU touch), missing / stale ref or first 403 -> one refresh, MP4 magic, atomic write, trimClips" STATUS="implemented" />
+        <export-EventMediaFiles PURPOSE="Hashed paths (SHA-256), thumbFile refuses paths outside event_thumbs, atomic tmp + move writes, purgeThumbsOlderThan (also orphan day folders), cacheDir/event_clips LRU CLIP_CACHE_MAX_BYTES 50 MB, wipeAll" STATUS="implemented" />
+        <export-ThumbEncoder PURPOSE="Port encode(image) -> small JPEG; BitmapThumbEncoder (Android, 480 px wide, q80; device-only, not JVM-tested)" STATUS="implemented" />
+        <export-MediaFetcher PURPOSE="Port: one plain GET with a body size cap (PlainMediaFetcher over MediaHttp.plainClient); MediaRefSource port over AlertSyncService" STATUS="implemented" />
       </interface>
-      <depends>M-HTTP, M-AUTH, M-EVENT</depends>
+      <depends>M-EVENT (MediaRef, refreshMedia), M-LOCAL-DB (EventDao thumb path)</depends>
       <target>
-        <source>app/src/main/java/com/yicamalt/event/EventPlaybackModule.kt</source>
-        <tests>app/src/test/java/com/yicamalt/event/EventPlaybackModuleTest.kt</tests>
+        <source>app/src/main/java/com/yicamalt/event/MediaCrypto.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/MediaHttp.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/EventMediaRepository.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/EventMediaFiles.kt</source>
+        <source>app/src/main/java/com/yicamalt/event/ThumbEncoder.kt</source>
+        <tests>app/src/test/java/com/yicamalt/event/MediaCryptoTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/event/EventMediaRepositoryTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</tests>
       </target>
       <observability>
-        <log-prefix>[Playback]</log-prefix>
-        <critical-block>BLOCK_RESOLVE_URL, BLOCK_INIT_PLAYER, BLOCK_PLAY_EVENT</critical-block>
+        <log-prefix>[EventMedia]</log-prefix>
+        <critical-block>BLOCK_FETCH_THUMB, BLOCK_PREFETCH_PASS (thumb); BLOCK_FETCH_CLIP, BLOCK_CLIP_REFRESH (clip); player side [Events][clip][BLOCK_CLIP_PLAYER] in M-UI-EVENTS</critical-block>
       </observability>
       <verification-ref>V-M-EVENT-PLAYBACK</verification-ref>
+      <notes>
+        <note-1>2026-11-04 (GSD Phase 5, plans 05-00 / 05-03 / 05-05): implemented. The planned ExoPlayer pipeline was replaced by the platform MediaPlayer on a TextureView over a decrypted local MP4 (no new dependency; SurfaceView stays black on MIUI unless forced on top, so the TextureView path of the live screen is reused). There is no stream URL resolution: media URLs come with the alert itself (M-EVENT MediaRef).</note-1>
+        <note-2>Media writes run under EventCacheCleaner.writeIfCurrent, so a download that finishes after a logout writes nothing. Logs carry status, size bucket, extension, decryptOk and magic only; no URL, host, key, pwd, uid or hashed path.</note-2>
+      </notes>
     </M-EVENT-PLAYBACK>
 
     <M-PUSH NAME="PushService" TYPE="CORE_LOGIC" LAYER="1" ORDER="8" STATUS="planned">
@@ -583,7 +626,8 @@
         <export-TimelineMath PURPOSE="Pure ruler math (plan 04-07): span clamp 15 min..24 h (default 3 h), zoom, pan, xOf, visibleSegments, tick step 10 min / 1 h / 3 h, ticks, initialCenter, shouldSeekAfterGesture (moved &gt;= max(4 px, 2 s))" STATUS="implemented" />
         <export-CalendarGrid PURPOSE="Pure Monday-first 42-cell month grid (DayCell enabled = recorded or today, marked = recorded), monthsWithRecordings contiguous range, title, weekdayHeaders" STATUS="implemented" />
         <export-TimelineRuler PURPOSE="Composable 64 dp Canvas ruler: segments, ticks, centre cursor, pinch / pan, release-to-seek (BLOCK_TIMELINE_GESTURE)" STATUS="implemented" />
-        <export-ArchivePanel PURPOSE="Composables ArchivePanel (day button, pause / Живой row, D-07 texts, Повторить, ruler; BLOCK_ARCHIVE_PANEL) and DayPickerDialog (month grid with dots on recorded days)" STATUS="implemented" />
+        <export-ArchivePanel PURPOSE="Composables ArchivePanel (day button, pause / Живой row, D-07 texts, Повторить, ruler; BLOCK_ARCHIVE_PANEL) and DayPickerDialog (month grid with dots on recorded days); overload DayPickerDialog(today, selected?, markedDays) reused by M-UI-EVENTS (plan 05-04)" STATUS="implemented" />
+        <fn-openAt PURPOSE="GSD Phase 5, plan 05-05: ArchiveCoordinator.openAt(targetMs) one-shot jump (QUEUED until the index is known, FIRED = selectDay + seek, HIDDEN, IGNORED; a day without recordings -> hint «Нет записи в это время»; NO_CARD / CARD_ERROR drop it; any user archive action cancels it; BLOCK_ARCHIVE_OPEN_AT); LiveViewModel.openAt forwards (Toast «Архив SD на этой камере недоступен» when hidden); LiveViewScreen(initialArchiveMs) calls it once per screen entry" STATUS="implemented" />
       </interface>
       <depends>M-UI-SHELL, M-LIVE-SESSION, M-MEDIA-RENDER, M-MEDIA-AUDIO, M-MEDIA-SNAPSHOT, M-STREAM-CORE, M-P2P-CREDS, M-SD-ARCHIVE</depends>
       <target>
@@ -612,32 +656,59 @@
         <note-3>2026-10-23 (plans 03-09, 03-10, 03-11): implemented. ZoomMath (ZoomMathTest 6), LiveViewModel (LiveViewModelTest 23, virtual time, RedactionScanner over logs and every LiveViewUi.toString()), LiveViewScreen (compile-only on the JVM; no Compose UI test, no emulator). Mute is restored on every onStop, so sound is off again after returning from background (stricter than D-05; to be confirmed on the phone in H-L5 / H-L6). Device checks H-L1, H-L4, H-L6, H-L7, H-L8 pending (03-HUMAN-UAT.md).</note-3>
         <note-4>2026-10-31 (GSD Phase 4, plans 04-06 / 04-07): SD archive on the camera screen. ArchiveCoordinator (ArchiveCoordinatorTest 28) per open, closed with the screen; LiveViewModel v0.3.0 archive API (LiveViewModelTest 33), LiveEnvironment.wallNow / zone, onStop calls coordinator onBackground before the background stop, HD/SD hidden in the archive; TimelineMath (TimelineMathTest 14), CalendarGrid (CalendarGridTest 6), TimelineRuler and ArchivePanel / DayPickerDialog composables (compile-only, no Compose UI test); LiveViewScreen v0.2.0 shows the panel under the video in portrait and pause / Живой in the fullscreen overlay. Depends += M-SD-ARCHIVE. Device checks H-SD1..H-SD10 pending (04-HUMAN-UAT.md).</note-4>
         <note-5>2026-10-31 (GSD Phase 4, plans 04-11 / 04-12, device defects 1-3 and W-1): ArchiveUi.rulerMs (live wall time floored to 1 s in Live for today, archive position otherwise; null in Live with a past day; «Живой» selects today, midnight roll-over), ArchivePanel.IDLE (display-only; spinner only while a fetch is in flight on a healthy link), index refresh (index only, BLOCK_ARCHIVE_REFRESH) on every liveEpoch, every 60 s (today, healthy, foreground) and before a seek from Live / past the last known end (pending seek &lt;= 3 s, then the old list); Paused(SILENT) hint «Нет записи в это время». ArchiveCoordinatorTest 57, LiveViewModelTest 33. Device: H-SD11, H-SD12, H-SD13 pending.</note-5>
+        <note-6>2026-11-04 (GSD Phase 5, plan 05-05): entry point from an event: LiveViewScreen(initialArchiveMs) / LiveViewModel.openAt / ArchiveCoordinator.openAt (ArchiveCoordinatorTest 67 with the openAt cases, LiveViewModelTest 35). The Toast collector starts before open / openAt so the hidden-archive Toast is not lost. CalendarGrid.month(selected) is nullable for the events picker. Device checks H-EV6 / H-EV7 pending.</note-6>
       </notes>
     </M-UI-LIVEVIEW>
 
-    <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="3" STATUS="planned">
+    <M-UI-EVENTS NAME="EventsScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="3" STATUS="implemented">
       <contract>
-        <purpose>Events screen: timeline/grid of motion events with thumbnails, date filter, camera selector. Click on event opens EventPlaybackScreen.</purpose>
+        <purpose>Events tab (GSD Phase 5): one feed of all cameras from the M-EVENT cache, cards grouped by day, camera chips and the archive day picker, refresh on tab entry and pull only (5-minute gate), offline cache texts, a clip dialog over the list and the jump from an event to the camera's SD archive at the event moment.</purpose>
+        <inputs>
+          <param name="rows" type="EventDao.observeFeed(fromMs, toMs) via the EventFeedSource port (window now - 30 d .. now + 1 d, moved on every tab entry)" />
+          <param name="cameras" type="cached camera list (M-CAMERA-LIST) for names and chips" />
+          <param name="refresh" type="EventSyncSource port over M-EVENT AlertSyncService.refresh" />
+        </inputs>
+        <outputs>
+          <param name="EventsUi" type="sections, cameras, allSelected, dayLabel, selectedDay, today, daysWithEvents, daysDialogOpen, subtitle, refreshing, emptyText" />
+          <param name="EventsEvent" type="OpenClip(key) | SessionExpired" />
+          <param name="ClipEvent" type="OpenSd(deviceId, timeMs) with a redacted toString" />
+        </outputs>
       </contract>
       <interface>
-        <export-EventsScreen PURPOSE="Compose screen with event timeline" />
-        <export-EventTimelineList PURPOSE="Vertical list of events grouped by date" />
-        <export-EventThumbnailItem PURPOSE="Event card with thumbnail + timestamp" />
-        <export-DateFilterBar PURPOSE="Horizontal date strip for filtering" />
+        <export-EventsFeed PURPOSE="Pure: build (camera set + day filter, day sections «Сегодня» / «Вчера» / «d MMMM», newest first, unknown uid -> «Камера» only under «Все»), daysWithEvents, subtitle, freshness («Обновлено только что» / «Обновлено N мин назад»), emptyText; EventCard / DaySection with redacted toString" STATUS="implemented" />
+        <export-EventsViewModel PURPOSE="onTabEntered (moves the window, reloads camera names, one refresh), onPullRefresh (one refresh per gesture), toggleCamera, selectAllCameras, openDays, closeDays, selectDay, clearDay, onCardTap -> OpenClip, thumbFile; Unauthorized -> SessionExpired once per streak, NoSession -> «Сессия истекла» subtitle; offline -> «Нет сети, показан кэш»; no timer, no delay loop" STATUS="implemented" />
+        <export-EventFeedSource PURPOSE="Ports EventFeedSource / EventSyncSource bound in EventsUiModule (SingletonComponent)" STATUS="implemented" />
+        <export-EventsScreen PURPOSE="Composable: FilterChip row («Все» + cameras), day button («Все дни ▾» with no day, the archive day label with one) -> DayPickerDialog(today, selected?, markedDays) reused from M-UI-LIVEVIEW, «Сбросить», subtitle, pull-to-refresh LazyColumn of headers and cards (128x72 preview from the thumb file, play icon when hasClip), empty text" STATUS="implemented" />
+        <export-ClipViewModel PURPOSE="open(key) over the ClipSource port (RepositoryClipSource: EventMediaRepository.clip + EventDao.getByKey, ClipUiModule): camera name, «d MMMM, HH:mm:ss» label, SD button enabled only for a camera in the cached list (else «Камера недоступна»), texts «Клип недоступен» / «Клип устарел, обновите ленту» / «Не удалось загрузить клип» / «Не удалось воспроизвести клип»; a new key cancels the old load; openSd -> OpenSd; dismiss" STATUS="implemented" />
+        <export-ClipDialog PURPOSE="Compose Dialog: 16:9 box with spinner, TextureView + platform MediaPlayer (setDataSource(file), setSurface, prepareAsync, start; onError -> onPlayerError; released in onSurfaceTextureDestroyed and DisposableEffect) or a message; buttons «Повторить», «Закрыть», «Открыть запись на SD»" STATUS="implemented" />
+        <fn-sdJump PURPOSE="AppShellScreen: onOpenSd sets liveCamera + liveArchiveMs; LiveViewScreen(initialArchiveMs) -> LiveViewModel.openAt -> ArchiveCoordinator.openAt(event time), EVENT_SD_PREROLL_MS = 0; closing the live screen returns to the Events tab" STATUS="implemented" />
       </interface>
-      <depends>M-UI-SHELL, M-EVENT, M-EVENT-PLAYBACK</depends>
+      <depends>M-UI-SHELL, M-EVENT, M-EVENT-PLAYBACK, M-CAMERA-LIST, M-UI-LIVEVIEW</depends>
       <target>
+        <source>app/src/main/java/com/yicamalt/ui/events/EventsFeed.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/events/EventsViewModel.kt</source>
         <source>app/src/main/java/com/yicamalt/ui/events/EventsScreen.kt</source>
-        <tests>app/src/androidTest/java/com/yicamalt/ui/events/EventsScreenTest.kt</tests>
+        <source>app/src/main/java/com/yicamalt/ui/events/ClipViewModel.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/events/ClipDialog.kt</source>
+        <source>app/src/main/java/com/yicamalt/ui/shell/AppShellScreen.kt</source>
+        <tests>app/src/test/java/com/yicamalt/ui/events/EventsFeedTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/events/EventsViewModelTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/ui/live/ArchiveCoordinatorTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Events]</log-prefix>
-        <critical-block>BLOCK_LOAD_TIMELINE, BLOCK_RENDER_EVENT_LIST, BLOCK_OPEN_PLAYBACK</critical-block>
+        <critical-block>BLOCK_REFRESH, BLOCK_FILTER, BLOCK_CAMERAS, BLOCK_OPEN_CLIP (view model); BLOCK_CLIP_LOAD, BLOCK_CLIP_PLAYER, BLOCK_CLIP_OPEN_SD (clip); jump target [LiveView][archive][BLOCK_ARCHIVE_OPEN_AT]</critical-block>
       </observability>
       <verification-ref>V-M-UI-EVENTS</verification-ref>
+      <notes>
+        <note-1>2026-11-04 (GSD Phase 5, plans 05-04 / 05-05): implemented from 05-CONTEXT.md: D-01 third bottom tab «События», one feed for all cameras; D-02 cards + day sections, clip dialog with «Открыть запись на SD»; D-03 camera chips + the archive day picker; D-04 refresh on entry / pull only, not more often than every 5 minutes, «Обновлено N мин назад», 30-day cache visible offline.</note-1>
+        <note-2>Deliberate deviation from the letter of D-03: the day button reads «Все дни ▾» with no day selected (D-03 says «Сегодня ▾»); confirmed by eye in device check H-EV3.</note-2>
+        <note-3>Compose screens are compile-only on the JVM (no Compose UI test, no emulator); the clip player and the SD jump are device checks H-EV4..H-EV7 (05-HUMAN-UAT.md). The planned separate playback screen (M-UI-EVENTPLAYBACK) is not built: the clip dialog replaces it.</note-3>
+      </notes>
     </M-UI-EVENTS>
 
-    <M-UI-EVENTPLAYBACK NAME="EventPlaybackScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="4" STATUS="planned">
+    <M-UI-EVENTPLAYBACK NAME="EventPlaybackScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="4" STATUS="superseded">
       <contract>
         <purpose>Event playback screen: video player surface, seek bar, play/pause, skip back/forward, close button. Shows event metadata (date, camera name, motion type).</purpose>
       </contract>
@@ -656,6 +727,10 @@
         <critical-block>BLOCK_INIT_PLAYER_VIEW, BLOCK_HANDLE_SEEK, BLOCK_CLOSE_PLAYER</critical-block>
       </observability>
       <verification-ref>V-M-UI-EVENTPLAYBACK</verification-ref>
+      <superseded-by>M-UI-EVENTS (ClipDialog)</superseded-by>
+      <notes>
+        <note-superseded>2026-11-04 (GSD Phase 5, plan 05-05): no separate playback screen; a 6-second event clip plays in the ClipDialog of M-UI-EVENTS (MediaPlayer on a TextureView). Never built.</note-superseded>
+      </notes>
     </M-UI-EVENTPLAYBACK>
 
     <M-UI-SETTINGS NAME="SettingsScreen" TYPE="UI_COMPONENT" LAYER="2" ORDER="5" STATUS="planned">
@@ -832,12 +907,18 @@
         <fn-targets PURPOSE="12 list targets, region-major US/EU/SG x {v4,v5}/devices/list, deviceshare friends/shareddetail" />
         <fn-firstDeviceUid PURPOSE="In-memory uid of the first device row for the single tnp device_info follow-up; never logged" />
         <fn-isDeviceSource PURPOSE="False for deviceshare friends (person rows never feed tnp)" />
+        <export-AlertProbe PURPOSE="GSD Phase 5, plan 05-00: debug-only alert feed probe (Settings button «Проба событий (debug)»): one signed v2/alert/list request + the first preview and clip, each with one https retry of an http URL; at most 5 requests per press, no auth calls; value-free shape lines (BLOCK_ALERT_PROBE)" STATUS="implemented" />
+        <export-AlertProbeShape PURPOSE="Pure value-free formatters: list counters, URL field forms, uid match per id type, field kinds, media attempts, httpsVariant" STATUS="implemented" />
       </interface>
-      <depends>M-HTTP, M-AUTH</depends>
+      <depends>M-HTTP, M-AUTH, M-EVENT (AlertWire, MediaCrypto, MediaHttp for the alert probe)</depends>
       <target>
         <source>app/src/main/java/com/yicamalt/debug/EndpointProbe.kt</source>
         <source>app/src/main/java/com/yicamalt/debug/ProbeMatrix.kt</source>
+        <source>app/src/main/java/com/yicamalt/debug/AlertProbe.kt</source>
+        <source>app/src/main/java/com/yicamalt/debug/AlertProbeShape.kt</source>
         <tests>app/src/test/java/com/yicamalt/debug/ProbeMatrixTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/debug/AlertProbeShapeTest.kt</tests>
+        <tests>app/src/test/java/com/yicamalt/debug/AlertProbeShapeFormsTest.kt</tests>
       </target>
       <observability>
         <log-prefix>[Probe]</log-prefix>
@@ -847,6 +928,7 @@
       <notes>
         <note-1>Debug builds only. Never logs values: no tokens, serials, uids, passwords, URLs with query strings.</note-1>
         <note-2>Request bound per press: at most 13 GET (12 list + at most 1 tnp device_info), 0 POST, 0 auth_token. Runs on HttpClientModule.probeClient() (no auth interceptor, Authenticator.NONE). Expired session = zero requests. Replaces the deleted DeviceSignProbe.</note-2>
+        <note-3>2026-11-03 (GSD Phase 5, plan 05-00): AlertProbe (log prefix [EventProbe], marker [EventProbe][run][BLOCK_ALERT_PROBE]); the plan allowed 3 requests, raised to 5 by the https retry of http media URLs. Result recorded value-free in 05-PROBE-RESULTS.txt and turned into D-PROBE-1..8 (05-PROBE.md).</note-3>
       </notes>
     </M-DEBUG-PROBE>
 
@@ -1295,6 +1377,7 @@
         <note-1>2026-10-30 (GSD Phase 4, plans 04-01, 04-03, 04-05): implemented and JVM-verified against FakeArchivePort (SdArchiveCodecTest 21, SdTimeTest 10, SdTimelineTest 18, SdStatusTest 7, PlaybackCommandsTest 10, SdIndexRepositoryTest 17, PlaybackControllerTest 28). Logs are value-free: counts, codes, sizes, enum names; no wire times.</note-1>
         <note-2>2026-10-30 device probe (04-PROBE.md): the TNP camera has no SD card (tfstat 5, verified: 816 / 817 and 9031 / 9032 exchanges work end-to-end, index empty); the TUTK camera was unreachable, so TUTK archive feasibility is unverified. WIRE_IS_UTC stays true and BOUNDARY_MS 8000 is kept, both unverified. SD-01..SD-04 need a camera with a microSD card that has recordings; the no-card state (H-SD6) is checkable on the TNP camera.</note-2>
         <note-3>2026-10-31 (GSD Phase 4, plan 04-10, gap closure W-2): ArchiveLinkPort.archiveStallCount() (default 0, so ProbeArchivePort is unchanged); PlaybackController past-end ENDED (log reason ended-past-index) and the silent re-seek cap (BLOCK_SILENT_RESEEK; Paused(SILENT) with live video, log reason silent-reseek-cap; network drops never count; seek / resume / goLive / pause reset the count). PlaybackControllerTest 36. Device: H-SD14 pending.</note-3>
+        <note-4>2026-11-04 (GSD Phase 5, plan 05-05): no module change. The event -> SD jump enters through M-UI-LIVEVIEW ArchiveCoordinator.openAt / LiveViewScreen(initialArchiveMs) and uses the existing selectDay + seek path (SdTimeline.resolveSeek, PlaybackController.seek); flow DF-EVENT-SD-JUMP.</note-4>
       </notes>
     </M-SD-ARCHIVE>
 
@@ -1472,22 +1555,33 @@
       <note>2026-10-31 (GSD Phase 4): the archive reuses the live session; there is no second link.</note>
     </DF-SD-ARCHIVE>
 
-    <DF-EVENT-LIST NAME="EventTimelineLoad" TRIGGER="User navigates to Events tab">
-      <step-1>M-UI-EVENTS requests events via M-EVENT</step-1>
-      <step-2>M-EVENT fetches from cloud (GET /v1/camera/event/list) via M-HTTP</step-2>
-      <step-3>M-EVENT caches to M-LOCAL-DB (syncEventsToDb)</step-3>
-      <step-4>M-EVENT returns paginated events with thumbnails</step-4>
-      <step-5>UI renders timeline</step-5>
-      <evidence>V-M-EVENT scenario-1 (paginated list), log marker [Event][getEventTimeline][BLOCK_FETCH_EVENTS]</evidence>
+    <DF-EVENT-LIST NAME="EventFeedLoad" TRIGGER="User opens the Events tab or pulls the list down">
+      <step-1>M-UI-EVENTS EventsViewModel.onTabEntered / onPullRefresh moves the 30-day window and calls M-EVENT AlertSyncService.refresh() once</step-1>
+      <step-2>RefreshGate reads the app_meta marks (M-LOCAL-DB): less than 5 minutes -> TooEarly, no request, subtitle «Обновлено N мин назад»</step-2>
+      <step-3>Otherwise signed GET v2/alert/list via M-HTTP (YiRequestSigner), backward pages planned by PagePlanner, at most 10 per refresh, gap boundary saved when capped</step-3>
+      <step-4>AlertMapper -> AlertRecord rows upserted into Room v3 events (de-duplicated by key), MediaRef kept in memory (MediaRefStore), rows older than 30 days purged with their preview files</step-4>
+      <step-5>After Fetched a prefetch pass outside the Mutex: M-EVENT-PLAYBACK EventMediaRepository.prefetchThumbs downloads, decrypts and stores 480 px previews, EventDao.setThumb</step-5>
+      <step-6>EventDao.observeFeed emits; EventsFeed groups cards by day with camera names from the cached camera list; offline -> cached cards + «Нет сети, показан кэш»</step-6>
+      <evidence>V-M-EVENT, V-M-EVENT-PLAYBACK, V-M-UI-EVENTS (JVM); device checks H-EV1, H-EV2, H-EV3, H-EV8, H-EV9 pending (05-HUMAN-UAT.md); log markers [Event][sync][BLOCK_REFRESH_GATE], [Event][sync][BLOCK_FETCH_PAGE], [Event][sync][BLOCK_SYNC_RESULT], [EventMedia][thumb][BLOCK_PREFETCH_PASS], [Events][vm][BLOCK_REFRESH]</evidence>
     </DF-EVENT-LIST>
 
-    <DF-PLAYBACK NAME="EventClipPlayback" TRIGGER="User taps event item">
-      <step-1>M-UI-EVENTS sends eventId to M-UI-EVENTPLAYBACK</step-1>
-      <step-2>M-EVENT-PLAYBACK resolves playback URL via M-EVENT.getPlaybackUrl()</step-2>
-      <step-3>M-EVENT-PLAYBACK creates ExoPlayer MediaSource</step-3>
-      <step-4>Video plays on surface with controls</step-4>
-      <evidence>V-M-EVENT-PLAYBACK scenario-1 (playback success), log marker [Playback][startPlayback][BLOCK_INIT_PLAYER]</evidence>
+    <DF-PLAYBACK NAME="EventClipPlayback" TRIGGER="User taps an event card">
+      <step-1>EventsViewModel.onCardTap -> OpenClip(key); AppShellScreen shows ClipDialog; ClipViewModel.open(key)</step-1>
+      <step-2>M-EVENT-PLAYBACK EventMediaRepository.clip(key): cached decrypted MP4 in cacheDir/event_clips -> Ready without network</step-2>
+      <step-3>Otherwise MediaRef from M-EVENT (missing / stale -> one refreshMedia ±5 s request), plain GET over MediaHttp.plainClient (no Authorization, no logging), first 403 -> one refresh + retry</step-3>
+      <step-4>MediaCrypto.decrypt (u32 LE + AES-128-ECB), MP4 magic check, atomic write, LRU trim to 50 MB</step-4>
+      <step-5>ClipDialog plays the local file with the platform MediaPlayer on a TextureView; «Повторить» replays; failures map to the ClipTexts messages</step-5>
+      <evidence>V-M-EVENT-PLAYBACK, V-M-UI-EVENTS (JVM); device checks H-EV4, H-EV5 pending; log markers [EventMedia][clip][BLOCK_FETCH_CLIP], [EventMedia][clip][BLOCK_CLIP_REFRESH], [Events][clip][BLOCK_CLIP_PLAYER]</evidence>
     </DF-PLAYBACK>
+
+    <DF-EVENT-SD-JUMP NAME="EventToSdArchive" TRIGGER="User presses «Открыть запись на SD» in the clip dialog">
+      <step-1>ClipViewModel.openSd -> OpenSd(deviceId, timeMs) (camera must be in the cached list)</step-1>
+      <step-2>AppShellScreen sets liveCamera + liveArchiveMs and opens LiveViewScreen(initialArchiveMs) (M-UI-LIVEVIEW)</step-2>
+      <step-3>LiveViewModel.open then openAt(timeMs) -> ArchiveCoordinator.openAt queues the jump until the SD index (M-SD-ARCHIVE) is loaded</step-3>
+      <step-4>Day with recordings or today -> selectDay + seek to the event time (EVENT_SD_PREROLL_MS = 0); other day -> hint «Нет записи в это время»; no card / card error / hidden archive -> the Phase 4 texts (or Toast), jump dropped</step-4>
+      <step-5>Closing the live screen returns to the Events tab</step-5>
+      <evidence>V-M-UI-EVENTS, V-M-UI-LIVEVIEW (ArchiveCoordinatorTest openAt cases); device checks H-EV6, H-EV7 pending; log marker [LiveView][archive][BLOCK_ARCHIVE_OPEN_AT], [Events][clip][BLOCK_CLIP_OPEN_SD]</evidence>
+    </DF-EVENT-SD-JUMP>
 
     <DF-CMD-PTZ NAME="PTZControl" TRIGGER="User drags PTZ joystick">
       <step-1>M-UI-LIVEVIEW converts joystick delta to PTZ angles</step-1>
@@ -1497,12 +1591,13 @@
       <evidence>V-M-CAMERA-CMD scenario-1 (PTZ success), log markers [CameraCmd][sendPTZ][BLOCK_SEND_COMMAND]</evidence>
     </DF-CMD-PTZ>
 
-    <DF-PUSH-NOTIF NAME="PushNotificationDelivery" TRIGGER="Cloud sends push for motion event">
+    <DF-PUSH-NOTIF NAME="PushNotificationDelivery" TRIGGER="Cloud sends push for motion event" STATUS="deferred">
       <step-1>FCM delivers notification to M-PUSH (FirebaseMessagingService)</step-1>
       <step-2>M-PUSH parses payload, shows local notification</step-2>
       <step-3>User taps notification → deep link to event playback</step-3>
       <step-4>M-PUSH navigates to M-UI-EVENTPLAYBACK with eventId</step-4>
       <evidence>V-M-PUSH scenario-1 (push → playback), log marker [Push][handlePayload][BLOCK_SHOW_NOTIFICATION]</evidence>
+      <note>2026-11-04: out of scope of GSD Phase 5 (deferred, 05-CONTEXT.md); M-PUSH stays planned. The app never calls the push registration endpoints (ForbiddenEndpointsTest).</note>
     </DF-PUSH-NOTIF>
 
     <DF-CMD-CONFIG NAME="CameraConfiguration" TRIGGER="User renames camera in settings">
@@ -1543,10 +1638,10 @@
       <step-1 module="M-STREAM-DECODE" status="superseded" verification="V-M-STREAM-DECODE">Implement AES decryption handshake (superseded 2026-10-12, GSD Phase 2: no cloud handshake)</step-1>
       <step-2 module="M-STREAM-LIVE" status="superseded" verification="V-M-STREAM-LIVE">Implement live stream lifecycle (superseded 2026-10-12, GSD Phase 2: P2P via vendor libs)</step-2>
       <step-3 module="M-UI-LIVEVIEW" status="implemented" verification="V-M-UI-LIVEVIEW">Build live view screen with video + controls</step-3>
-      <step-4 module="M-EVENT" status="done" verification="V-M-EVENT">Implement event timeline API</step-4>
-      <step-5 module="M-EVENT-PLAYBACK" status="pending" verification="V-M-EVENT-PLAYBACK">Implement event playback pipeline</step-5>
-      <step-6 module="M-UI-EVENTS" status="pending" verification="V-M-UI-EVENTS">Build events timeline screen</step-6>
-      <step-7 module="M-UI-EVENTPLAYBACK" status="pending" verification="V-M-UI-EVENTPLAYBACK">Build playback screen</step-7>
+      <step-4 module="M-EVENT" status="done" verification="V-M-EVENT" plans="05-00, 05-01, 05-02">Alert feed: v2/alert/list, mapper, gated sync, Room v3 cache, logout wipe (GSD Phase 5)</step-4>
+      <step-5 module="M-EVENT-PLAYBACK" status="done" verification="V-M-EVENT-PLAYBACK" plans="05-00, 05-03, 05-05">Event media: decrypt, previews, clip cache, MediaPlayer on TextureView (GSD Phase 5)</step-5>
+      <step-6 module="M-UI-EVENTS" status="done" verification="V-M-UI-EVENTS" plans="05-04, 05-05">Events tab, filters, day picker, clip dialog, SD jump (GSD Phase 5)</step-6>
+      <step-7 module="M-UI-EVENTPLAYBACK" status="superseded" verification="V-M-UI-EVENTPLAYBACK">Build playback screen (superseded 2026-11-04, GSD Phase 5: the clip dialog of M-UI-EVENTS replaces it)</step-7>
       <step-8 module="M-P2P-NATIVE" status="implemented" verification="V-M-P2P-NATIVE">Vendor PPPP library: extraction, JNI shim, runtime init</step-8>
       <step-9 module="M-STREAM-CORE" status="implemented" verification="V-M-STREAM-CORE">Port types, auth, codecs, I-frame decrypt, frame pipeline</step-9>
       <step-10 module="M-TNP-LINK" status="implemented" verification="V-M-TNP-LINK">TNP session over PpppNative</step-10>
@@ -1556,13 +1651,14 @@
       <step-14 module="M-LIVE-SESSION" status="implemented" verification="V-M-LIVE-SESSION">Live session supervisor: retries, stall, network, lifecycle, quality</step-14>
       <step-15 module="M-MEDIA-AUDIO" status="implemented" verification="V-M-MEDIA-AUDIO">AAC audio decode and playback</step-15>
       <step-16 module="M-MEDIA-SNAPSHOT" status="implemented" verification="V-M-MEDIA-SNAPSHOT">Snapshot to MediaStore</step-16>
-      <phase-note>2026-09-28: M-EVENT done (23 unit tests; suite 91/91 green; assembleDebug OK). Endpoint paths and request signing are PROVISIONAL — they are isolated in EventPaths/EventSigner so a live capture only needs constants edited, not restructuring. Exports getLocalTimeline and EventTimelinePort were added beyond the planned contract because syncEventsToDb/getLocalEventCount were otherwise write-only. Errors Unauthorized and NotFound were added alongside the planned EVENT_FETCH_FAILED/EVENT_NO_RECORDING. Remaining steps stay blocked on the stream protocol capture.</phase-note>
+      <phase-note>2026-09-28: first M-EVENT version with guessed endpoint paths (23 unit tests). Superseded 2026-11-03 by GSD Phase 5 (plan 05-01 deleted that client).</phase-note>
       <phase-note>2026-10-12: GSD Phase 2 (02-p2p) replaces the cloud-stream design: steps 1-2 superseded by steps 8-13 (P2P via the vendor PPPP/TUTK libraries).</phase-note>
       <phase-note>2026-10-16: GSD Phase 2 (02-p2p) implemented; device verification in 02-DEVICE-VERIFICATION.md. Plans 02-00..02-11; steps 8-13 implemented; M-TUTK-LINK needed per GATE_2B.</phase-note>
       <phase-note>2026-10-22: GSD Phase 3 (03-live-view) plans 03-00..03-13; M-UI-LIVEVIEW rewritten (no PTZ/camera selector)</phase-note>
       <phase-note>2026-10-23: GSD Phase 3 (03-live-view) implemented, JVM-verified; device checks H-L1..H-L9 pending (03-HUMAN-UAT.md). Steps 3, 14, 15, 16 implemented (plans 03-00..03-11, GRACE sync 03-12); M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-MEDIA-RENDER, M-UI-SHELL extended. TNP behaviour stays JVM-only until Phase 2 device check H1 passes. Device session: plan 03-13.</phase-note>
       <step-17 module="M-SD-ARCHIVE" status="implemented" verification="V-M-SD-ARCHIVE">SD card archive over the live session: status, index, timeline, seek / pause / live (GSD Phase 4)</step-17>
       <phase-note>2026-10-31: GSD Phase 4 (04-sd-archive) implemented, JVM-verified; device checks H-SD1..H-SD10 pending (04-HUMAN-UAT.md, plan 04-09). Plans 04-00..04-07, GRACE sync 04-08: new module M-SD-ARCHIVE (step 17, flow DF-SD-ARCHIVE); M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-LIVE-SESSION, M-UI-LIVEVIEW, M-UI-LIVE-PROBE extended. Device probe 04-04: the TNP camera has no SD card, the TUTK camera was unreachable; SD-01..SD-04 need a microSD with recordings.</phase-note>
+      <phase-note>2026-11-04: GSD Phase 5 (05-events-feed) implemented, JVM-verified; device checks H-EV1..H-EV10 pending (05-HUMAN-UAT.md, plan 05-07). Plans 05-00..05-05, GRACE sync 05-06: steps 4-6 rewritten and done (M-EVENT, M-EVENT-PLAYBACK, M-UI-EVENTS), step 7 superseded by the clip dialog; M-UI-LIVEVIEW (openAt), M-LOCAL-DB (schema v3), M-DEBUG-PROBE (AlertProbe), M-CAMERA-LIST (event wipe) extended; flows DF-EVENT-LIST, DF-PLAYBACK rewritten, DF-EVENT-SD-JUMP added. Device probe 05-PROBE.md: Gate CONTINUE.</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">
@@ -1571,7 +1667,7 @@
       <step-2 module="M-MEDIA" status="pending" verification="V-M-MEDIA">Implement media download and cache</step-2>
       <step-3 module="M-ONBOARDING" status="pending" verification="V-M-ONBOARDING">Build onboarding flow</step-3>
       <step-4 module="M-UI-LIVEVIEW" status="in-progress" verification="V-M-UI-LIVEVIEW">Polish live view (multi-camera, quality selector)</step-4>
-      <step-5 module="M-UI-EVENTS" status="in-progress" verification="V-M-UI-EVENTS">Polish events (date filter, pagination)</step-5>
+      <step-5 module="M-UI-EVENTS" status="done" verification="V-M-UI-EVENTS" plans="05-04">Polish events (date filter via the day picker; paging is bounded server-side paging inside M-EVENT, no scroll-to-load)</step-5>
     </Phase-4>
   </ImplementationOrder>
 
