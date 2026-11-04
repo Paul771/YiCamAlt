@@ -2,8 +2,9 @@
 # FILE: tools/git-hooks/test-pre-commit.sh
 # ROLE: SCRIPT
 #
-# PURPOSE: Self-test of the SEC-03 pre-commit hook in a throwaway repository: 6 cases that must
-#   be blocked (incl. range mode) and 2 that must be allowed. Prints PASS/FAIL per case.
+# PURPOSE: Self-test of the SEC-03 pre-commit hook in a throwaway repository: 10 cases that must
+#   be blocked (incl. range mode, signing keys and signing password values) and 3 that must be
+#   allowed. Prints PASS/FAIL per case.
 #
 # USAGE (Git Bash, from the repo root): sh tools/git-hooks/test-pre-commit.sh
 #
@@ -35,6 +36,14 @@ V=$(printf 'E%.0s' $(seq 1 30))
 H='hm'; H="${H}ac="
 V2=$(printf 'A%.0s' $(seq 1 27))
 W='JADX'; W="$W WARN"
+# Signing password assignments (GSD Phase 6, D-01), split so this file never matches s4/s5.
+P='storePass'; P="${P}word="
+Q='storePass'; Q="${Q}word = "
+D='"'
+# Signing key file names, assembled from a stem and extensions.
+KS=release
+KX1=jks; KX2=keystore; KX3=p12
+SP=signing.properties
 # END_BLOCK_PAYLOADS
 
 fails=0
@@ -62,6 +71,24 @@ expect_block() {
     reset_case "$@"
 }
 
+# expect_block_each <case> <path...>: like expect_block, but every staged path must be named
+# in its own BLOCKED line (one forbidden path must not hide the others).
+expect_block_each() {
+    name=$1; shift
+    git add -f -- "$@"
+    if out=$(git commit -q -m "case $name" 2>&1); then
+        fail "$name"
+        git reset -q --soft HEAD~1 2>/dev/null
+    else
+        missing=
+        for p in "$@"; do
+            printf '%s\n' "$out" | grep -qF "BLOCKED rule=vendor-or-capture-path code=HYGIENE_FORBIDDEN_PATH file=$p [RepoGuard]" || missing="$missing $p"
+        done
+        if [ -z "$missing" ]; then pass "$name"; else fail "$name (not blocked:$missing)"; fi
+    fi
+    reset_case "$@"
+}
+
 # expect_allow <case> <path>: commit must succeed.
 expect_allow() {
     name=$1; shift
@@ -80,6 +107,10 @@ expect_allow allow-plain-readme Readme.md
 
 printf 'val j = %s:"SYNTH%s"\n' "$K" "$V" > Fixture.kt
 expect_allow allow-synth-fixture Fixture.kt
+
+printf 'val signingProps = java.util.Properties()\n    %ssigningProps.getProperty(%sstorePassword%s)\n' "$Q" "$D" "$D" > Signing.gradle.kts
+printf 'Template line: %s<generated>\n' "$P" > Release.md
+expect_allow allow-gradle-signing-line Signing.gradle.kts Release.md
 # END_BLOCK_ALLOW_CASES
 
 # START_BLOCK_BLOCK_CASES
@@ -101,6 +132,23 @@ expect_block block-hmac-query Leak2.kt
 
 printf 'class A {\n    // %s: Code restructure failed\n}\n' "$W" > Decomp.java
 expect_block block-decompiled-java Decomp.java
+
+mkdir -p x
+for e in "$KX1" "$KX2" "$KX3"; do printf 'key bytes\n' > "x/$KS.$e"; done
+expect_block_each block-keystore-file "x/$KS.$KX1" "x/$KS.$KX2" "x/$KS.$KX3"
+rm -rf x
+
+mkdir -p cfg
+printf 'keyAlias=fixture\n' > "cfg/$KS-$SP"
+printf 'keyAlias=fixture\n' > "$KX2.properties"
+expect_block_each block-signing-properties "cfg/$KS-$SP" "$KX2.properties"
+rm -rf cfg
+
+printf '%s%s\n' "$P" "$V" > signing-notes.txt
+expect_block block-store-password-value signing-notes.txt
+
+printf 'android {\n    %s%s%s%s\n}\n' "$Q" "$D" "$V" "$D" > Quoted.gradle.kts
+expect_block block-quoted-password-value Quoted.gradle.kts
 # END_BLOCK_BLOCK_CASES
 
 # START_BLOCK_RANGE_CASE
@@ -119,5 +167,5 @@ if [ "$fails" -ne 0 ]; then
     echo "RESULT: $fails case(s) failed"
     exit 1
 fi
-echo "RESULT: all 8 cases passed"
+echo "RESULT: all 13 cases passed"
 exit 0
