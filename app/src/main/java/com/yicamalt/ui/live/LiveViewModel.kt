@@ -475,6 +475,18 @@ class LiveViewModel @Inject constructor(
     fun archiveCloseDays() = archiveAction("close-days") { it.closeDays() }
     fun archiveSelectDay(day: LocalDate) = archiveAction("select-day") { it.selectDay(day) }
 
+    // START_CONTRACT: openAt
+    //   PURPOSE: Event -> SD jump (EVT-04): open the archive at an absolute moment once the index is known.
+    //   INPUTS: { targetMs: Long - event time, epoch ms; never logged }
+    //   OUTPUTS: { Unit }
+    //   SIDE_EFFECTS: ArchiveCoordinator.openAt; LiveEvent.Toast(«Архив SD на этой камере недоступен») when the archive
+    //     is hidden; no-op without an open screen; BLOCK_ARCHIVE_ACTION log
+    //   LINKS: ArchiveCoordinator.openAt, BLOCK_ARCHIVE_OPEN_AT
+    // END_CONTRACT: openAt
+    fun openAt(targetMs: Long) = archiveAction("open-at") { c ->
+        if (c.openAt(targetMs) == OpenAtResult.HIDDEN) _events.tryEmit(LiveEvent.Toast(ArchiveTexts.UNSUPPORTED))
+    }
+
     private inline fun archiveAction(name: String, block: (ArchiveCoordinator) -> Unit) {
         // START_BLOCK_ARCHIVE_ACTION
         val c = coordinator ?: return

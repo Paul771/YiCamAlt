@@ -1,9 +1,9 @@
 // FILE: LiveViewModelTest.kt
-// VERSION: 0.2.1
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the live view model: badge table (D-04), auto-connect, retry / connect, sound
 //     (D-05, D-07), HD/SD (D-06, D-07), snapshot messages, lifecycle stop / resume (D-10), debug line, video size;
-//     Phase 4 archive state and actions (SD-01..SD-05, D-01..D-07).
+//     Phase 4 archive state and actions (SD-01..SD-05, D-01..D-07); event -> SD jump openAt (EVT-04).
 //   SCOPE: JVM only, virtual time; real LiveSessionSupervisor + DefaultMediaSession over LiveFakes (FakeLinkFactory,
 //     FakeNetworkMonitor, FakeCredentialsSource), fake LiveEnvironment outputs and a fake SnapshotStore.
 //   DEPENDS: M-UI-LIVEVIEW (LiveViewModel, badgeFor), M-LIVE-SESSION, LiveFakes, TraceRecorder, RedactionScanner
@@ -85,12 +85,15 @@ import java.time.ZoneOffset
 //     zone Europe/Moscow, records created outputs.
 //   FakeSnapshotStore - scripted SnapshotResult, call counter.
 //   LiveViewModelTest - badge table + one test per view-model behaviour bullet of plan 03-10 Task 2 and plan 04-06
-//     Task 3 (archiveVm: link scripted to answer 816 / 9031).
+//     Task 3 (archiveVm: link scripted to answer 816 / 9031; beforeLive hook runs between open and Streaming);
+//     openAt forwarding and the hidden-archive Toast (plan 05-05).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.1 - GSD plan 04-11: the archive state starts IDLE (no spinner before a fetch).
-//   PREVIOUS: v0.2.0 - GSD plan 04-06: archive state, forced mute, quality hidden in archive, background marker
+//   LAST_CHANGE: v0.3.0 - GSD plan 05-05: openAt queued right after open fires once after the archive load; hidden
+//     archive -> Toast «Архив SD на этой камере недоступен».
+//   PREVIOUS: v0.2.1 - GSD plan 04-11: the archive state starts IDLE (no spinner before a fetch).
+//   EARLIER: v0.2.0 - GSD plan 04-06: archive state, forced mute, quality hidden in archive, background marker
 //     across auto-resume, closeScreen closes the coordinator.
 //   EARLIER: v0.1.0 - GSD plan 03-10 RED.
 // END_CHANGE_SUMMARY
@@ -624,7 +627,7 @@ class LiveViewModelTest {
     // START_BLOCK_ARCHIVE_TESTS
     // Opens the screen with a link that answers 816 (card ok) and 9031 (one segment today, 09:00-10:00 local),
     // then brings the first link to Streaming.
-    private fun TestScope.archiveVm(): LiveViewModel {
+    private fun TestScope.archiveVm(beforeLive: (LiveViewModel) -> Unit = {}): LiveViewModel {
         val v = newVm()
         links.configure = { l ->
             l.onIoCtrl = { type, _ ->
@@ -641,6 +644,7 @@ class LiveViewModelTest {
         }
         v.open(LIVE_DEVICE_ID, "Кухня")
         runCurrent()
+        beforeLive(v)
         link.flow.value = LinkState.Streaming(tnpLan, authOk = true)
         runCurrent()
         return v
@@ -781,6 +785,32 @@ class LiveViewModelTest {
         advance(60_000)
         assertEquals(sent, link.sentIoCtrl.size)
         vm = null
+    }
+
+    @Test
+    fun `openAt after open forwards to the coordinator once`() = vmTest {
+        val t = utc("2026-10-30T06:15:00Z")
+        val v = archiveVm(beforeLive = { it.openAt(t) })
+        assertTrue(v.archive.value.inArchive)
+        assertEquals(t, v.archive.value.cursorMs)
+        assertEquals(1, link.sentIoCtrl.count { it.first == 9030 })
+        v.openAt(t)
+        runCurrent()
+        assertEquals(1, link.sentIoCtrl.count { it.first == 9030 })
+        recorder.assertMarkerAppeared("BLOCK_ARCHIVE_OPEN_AT")
+    }
+
+    @Test
+    fun `openAt for hidden archive emits Toast Архив SD на этой камере недоступен`() = vmTest {
+        creds.stored = liveCreds(transport = TransportType.LANGTAO)
+        val v = newVm()
+        val events = mutableListOf<LiveEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { v.events.collect { events += it } }
+        v.open(LIVE_DEVICE_ID, "Кухня")
+        runCurrent()
+        v.openAt(utc("2026-10-30T06:15:00Z"))
+        runCurrent()
+        assertEquals(listOf<LiveEvent>(LiveEvent.Toast("Архив SD на этой камере недоступен")), events)
     }
     // END_BLOCK_ARCHIVE_TESTS
 }

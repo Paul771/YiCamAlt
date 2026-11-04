@@ -86,6 +86,14 @@ import java.util.Locale
 //   EARLIER: v0.1.0 - GSD plan 04-06 RED: signatures only.
 // END_CHANGE_SUMMARY
 
+// Event -> SD jump offset. The vendor app seeks exactly to alert_time; its -3 s / -6 s offsets apply only to the H21 /
+// H18 models and are not taken (05-RESEARCH §4).
+internal const val EVENT_SD_PREROLL_MS = 0L
+
+// openAt outcome: QUEUED - waits for the index; FIRED - resolved now (seek, «Нет записи в это время» or dropped on a
+// card problem); HIDDEN - the archive is hidden on this camera; IGNORED - not started / closed / a jump already ran.
+enum class OpenAtResult { QUEUED, FIRED, HIDDEN, IGNORED }
+
 // IDLE - nothing known yet and nothing being fetched (no link, failed / retrying / waiting link, or the last load
 // ended NotReady): empty area, no text, no spinner. Display-only: the coordinator keeps LOADING internally.
 enum class ArchivePanel { HIDDEN, IDLE, LOADING, NO_CARD, CARD_ERROR, LIST_FAILED, NO_RECORDINGS, TIMELINE }
@@ -392,6 +400,8 @@ class ArchiveCoordinator(
         controller.onSessionStopped()
         onPlayback(controller.state.value)
     }
+
+    fun openAt(targetMs: Long): OpenAtResult = error("RED stub")
 
     // ---- internals ----
 
