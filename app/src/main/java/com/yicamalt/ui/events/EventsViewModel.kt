@@ -1,5 +1,5 @@
 // FILE: EventsViewModel.kt
-// VERSION: 0.1.0
+// VERSION: 0.2.0
 // START_MODULE_CONTRACT
 //   PURPOSE: View-model of the «События» tab (EVT-01, EVT-02, EVT-05, EVT-06; D-01..D-04): cached feed of all
 //     cameras from Room, camera chips, day filter, refresh on tab entry and pull with the 5-minute subtitle.
@@ -8,7 +8,7 @@
 //     OpenClip / SessionExpired events. No ticker, no delay loop, no background refresh: the «N мин» label is
 //     recomputed only on tab entry, pull, filter change or a DB emission (D-04).
 //   DEPENDS: M-EVENT (AlertSyncService, SyncResult), M-DATABASE (EventDao, EventEntity), M-CAMERA-LIST (CameraListPort),
-//     M-UI-EVENTS (EventsFeed), M-UI-LIVEVIEW (ArchiveTexts.dayLabel)
+//     M-UI-EVENTS (EventsFeed), M-UI-LIVEVIEW (ArchiveTexts.dayLabel), M-EVENT-PLAYBACK (EventMediaFiles.thumbFile)
 //   LINKS: M-UI-EVENTS, V-M-UI-EVENTS
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
@@ -21,6 +21,7 @@ import com.yicamalt.camera.CameraListPort
 import com.yicamalt.database.EventDao
 import com.yicamalt.database.EventEntity
 import com.yicamalt.event.AlertSyncService
+import com.yicamalt.event.EventMediaFiles
 import com.yicamalt.event.SyncResult
 import com.yicamalt.ui.live.ArchiveTexts
 import dagger.Binds
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
@@ -52,12 +54,13 @@ import javax.inject.Inject
 //     daysDialogOpen, subtitle, refreshing, emptyText).
 //   EventsEvent - one-shot OpenClip(key) | SessionExpired.
 //   EventsViewModel - onTabEntered, onPullRefresh, toggleCamera, selectAllCameras, openDays, closeDays, selectDay,
-//     clearDay, onCardTap; state, events.
+//     clearDay, onCardTap, thumbFile; state, events.
 //   ALL_DAYS_LABEL - «Все дни ▾».
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-04: initial view-model. Discretion choices: the day button reads «Все дни ▾»
+//   LAST_CHANGE: v0.2.0 - GSD plan 05-04 Task 2: thumbFile(thumbPath) over EventMediaFiles.thumbFile for the screen.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-04: initial view-model. Discretion choices: the day button reads «Все дни ▾»
 //     with no day selected (the list spans the last days, «Сегодня ▾» would be misleading; D-03 "по умолчанию
 //     последние дни без выбора конкретного") and ArchiveTexts.dayLabel with a day selected. The ports are bound in
 //     EventsUiModule in this file (not in EventModule) to keep the UI wiring next to its only consumer. The port has
@@ -124,10 +127,18 @@ class EventsViewModel internal constructor(
     private val cameraPort: CameraListPort,
     private val clock: () -> Long,
     private val zone: () -> ZoneId,
+    private val thumbResolver: (String) -> File? = { null },
 ) : ViewModel() {
 
-    @Inject constructor(feed: EventFeedSource, sync: EventSyncSource, cameraPort: CameraListPort) :
-        this(feed, sync, cameraPort, System::currentTimeMillis, ZoneId::systemDefault)
+    @Inject constructor(
+        feed: EventFeedSource,
+        sync: EventSyncSource,
+        cameraPort: CameraListPort,
+        mediaFiles: EventMediaFiles,
+    ) : this(feed, sync, cameraPort, System::currentTimeMillis, ZoneId::systemDefault, mediaFiles::thumbFile)
+
+    /** Preview file of a card (Room relative path), null when absent or outside event_thumbs. */
+    fun thumbFile(thumbPath: String?): File? = thumbPath?.let(thumbResolver)
 
     // Main-thread state (viewModelScope runs on Dispatchers.Main).
     private var rows: List<EventEntity> = emptyList()

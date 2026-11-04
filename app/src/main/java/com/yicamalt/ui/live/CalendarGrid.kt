@@ -1,5 +1,5 @@
 // FILE: CalendarGrid.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Pure month grid for the archive day dialog (SD-02, D-02): recorded days marked and tappable, other days
 //     disabled, today always tappable so the user can come back to the default day.
@@ -23,7 +23,9 @@ import java.util.Locale
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-07 GREEN: month grid. enabled = recorded || today.
+//   LAST_CHANGE: v0.1.1 - GSD plan 05-04: month(selected) is nullable (events tab with no day selected highlights
+//     no cell); archive callers unchanged.
+//   PREV_CHANGE: v0.1.0 - GSD plan 04-07 GREEN: month grid. enabled = recorded || today.
 //   PREVIOUS: v0.0.1 - GSD plan 04-07 RED: signatures only.
 // END_CHANGE_SUMMARY
 
@@ -38,12 +40,12 @@ object CalendarGrid {
     // START_CONTRACT: month
     //   PURPOSE: Cells of one month, Monday first, padded to 6 weeks.
     //   INPUTS: { month: YearMonth; today: LocalDate; recorded: Set<LocalDate> - days with recordings;
-    //     selected: LocalDate - currently selected day }
+    //     selected: LocalDate? - currently selected day, null = none }
     //   OUTPUTS: { List<DayCell> - exactly 42 cells }
     //   SIDE_EFFECTS: none
     //   LINKS: D-02
     // END_CONTRACT: month
-    fun month(month: YearMonth, today: LocalDate, recorded: Set<LocalDate>, selected: LocalDate): List<DayCell> {
+    fun month(month: YearMonth, today: LocalDate, recorded: Set<LocalDate>, selected: LocalDate?): List<DayCell> {
         val leading = month.atDay(1).dayOfWeek.value - 1
         val out = ArrayList<DayCell>(CELLS)
         repeat(leading) { out += EMPTY }

@@ -1,13 +1,13 @@
 // FILE: AppShellScreen.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
-//   PURPOSE: Top-level post-login shell: tab host (Cameras / Settings) with session-aware header.
+//   PURPOSE: Top-level post-login shell: tab host (Cameras / Settings / Events) with session-aware header.
 //   SCOPE: renders active tab content; emits BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN markers.
-//     Live-View / Events tabs arrive in Phase-3; only Cameras + Settings are wired now. A camera row tap shows
+//     Tabs in order Камеры, Настройки, События (D-01; indices 0 / 1 unchanged). A camera row tap shows
 //     LiveViewScreen, a long press the debug LiveProbeScreen, in place of the tab content (bottom bar hidden) until
 //     back / tab switch / logout.
-//   DEPENDS: M-UI-SHELL, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVEVIEW, M-UI-LIVE-PROBE, M-AUTH (logout via caller)
-//   LINKS: M-UI-SHELL, M-UI-LIVEVIEW, M-UI-LIVE-PROBE
+//   DEPENDS: M-UI-SHELL, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVEVIEW, M-UI-LIVE-PROBE, M-UI-EVENTS, M-AUTH (logout via caller)
+//   LINKS: M-UI-SHELL, M-UI-LIVEVIEW, M-UI-LIVE-PROBE, M-UI-EVENTS
 //   ROLE: RUNTIME
 //   MAP_MODE: EXPORTS
 // END_MODULE_CONTRACT
@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
@@ -38,16 +39,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.yicamalt.camera.CameraInfo
+import com.yicamalt.ui.events.EventsScreen
 import com.yicamalt.ui.live.LiveProbeScreen
 import com.yicamalt.ui.live.LiveViewScreen
 import timber.log.Timber
 
 // START_MODULE_MAP
-//   AppShellScreen - bottom-nav host for Cameras/Settings tabs (post-login) plus the live view and debug probe overlays.
+//   AppShellScreen - bottom-nav host for Cameras / Settings / Events tabs (post-login) plus the live view and debug
+//     probe overlays.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 03-11: tap -> LiveViewScreen, long-press -> LiveProbeScreen (debug, TNP H1-H3
+//   LAST_CHANGE: v0.4.0 - GSD plan 05-04: third tab «События» (EventsScreen, D-01). clipKey is a plain remember
+//     (never saveable: the event key stays out of the Bundle) set by a card tap; 05-05 renders the clip dialog for
+//     it, until then a non-null clipKey is ignored. Tab switch / logout clears it.
+//   PREV_CHANGE: v0.3.0 - GSD plan 03-11: tap -> LiveViewScreen, long-press -> LiveProbeScreen (debug, TNP H1-H3
 //     relay-only). probeCamera is a plain remember like liveCamera (no cloud uid in the saved-instance Bundle); tab
 //     switch clears both; render / navigate markers log tab=live|probe only.
 //   PREV_CHANGE: v0.2.0 - GSD plan 02-09: onOpenCamera from the camera list shows LiveProbeScreen (plain remember,
@@ -60,6 +66,7 @@ import timber.log.Timber
 private enum class ShellTab(val label: String, val icon: ImageVector) {
     Cameras("Камеры", Icons.Filled.Videocam),
     Settings("Настройки", Icons.Filled.Settings),
+    Events("События", Icons.Filled.Notifications),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +77,9 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
     var liveCamera by remember { mutableStateOf<CameraInfo?>(null) }
     // Same reason: the debug probe camera stays out of the Bundle too.
     var probeCamera by remember { mutableStateOf<CameraInfo?>(null) }
+    // Same reason: the event key of a tapped card stays out of the Bundle. 05-05 renders the clip dialog for it.
+    @Suppress("UNUSED_VARIABLE", "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE", "UNUSED_VALUE")
+    var clipKey by remember { mutableStateOf<String?>(null) }
     // START_BLOCK_RENDER_SHELL
     val tabLabel = when {
         liveCamera != null -> "live"
@@ -119,6 +129,7 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
                             Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=${tab.label}")
                             liveCamera = null
                             probeCamera = null
+                            clipKey = null
                             selected = index
                             // END_BLOCK_NAVIGATE_SCREEN
                         },
@@ -143,6 +154,10 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
                     },
                 )
                 ShellTab.Settings -> com.yicamalt.ui.settings.SettingsScreen(onBack = {})
+                ShellTab.Events -> EventsScreen(
+                    onSessionExpired = onLogout,
+                    onOpenClip = { key -> clipKey = key },
+                )
             }
         }
     }
