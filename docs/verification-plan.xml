@@ -204,6 +204,7 @@
         <scenario-16 kind="success" evidence-type="deterministic">base-url-switch-without-rebuild (alias of scenario-8; one Retrofit instance follows ConfigModule A to B)</scenario-16>
         <scenario-17 kind="success" evidence-type="deterministic">app-headers-not-on-login (alias of scenario-9; /v4/users carries no x-kamihome-*/x-xiaoyi-* header)</scenario-17>
         <scenario-18 kind="success" evidence-type="deterministic">YiRequestSigner vector: HMAC-SHA1 published vector, canonical message with and without extra params, confirmed device-list wire format (YiRequestSignerTest 6 cases)</scenario-18>
+        <scenario-19 kind="failure" evidence-type="deterministic">http-failed-line-value-free: the BASIC logger's `&lt;-- HTTP FAILED: &lt;exception&gt;` line keeps only the exception simpleName and `after Nms`; host, resolved IPv4, local IPv4 and ports from SocketTimeout/Connect/UnknownHost messages never reach the log (LogRedactorTest redactHttpLine*, HttpClientModuleTest scenario_14 dead port; RedactionScanner clean)</scenario-19>
       </scenarios>
       <required-log-markers>
         <marker-1>[Network][init][BLOCK_INIT_HTTP_CLIENT]</marker-1>
@@ -213,9 +214,11 @@
         <anchor-1>BLOCK_RESOLVE_BASE_URL (HttpClientModule baseUrlInterceptor; code anchor, emits no log line, evidenced by scenario-8/10/11)</anchor-1>
         <anchor-2>BLOCK_MASK_JSON_BODY (LogRedactor)</anchor-2>
         <anchor-3>BLOCK_SIGN_REQUEST (YiRequestSigner)</anchor-3>
+        <anchor-4>BLOCK_REDACT_HTTP_FAILED (LogRedactor.redactHttpLine; every redactedLogger line passes through it, evidenced by scenario-19)</anchor-4>
       </code-anchors>
       <gate-evidence>
         <evidence-1>2026-10-11 full :app:testDebugUnitTest (plan 01-06 wave-2 gate): 165 tests, 1 skipped, 0 failures; HttpClientModuleTest 15/15, LogRedactorTest 14/14, YiRequestSignerTest 6/6</evidence-1>
+        <evidence-2>2026-11-04 full :app:testDebugUnitTest --rerun :app:assembleDebug after the HTTP FAILED leak fix: 1102 tests, 1 skipped, 0 failures (scenario-19 RED first: 6 failures on the stub)</evidence-2>
       </gate-evidence>
       <required-trace-assertions>
         <assertion-1>401 triggers exactly one token refresh and one retry</assertion-1>
