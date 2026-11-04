@@ -1,5 +1,5 @@
 // FILE: EventClipFlowTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: End-to-end JVM check of the device path «лента загружена -> тап по карточке -> клип» (EVT-01, EVT-03,
 //     EVT-04): real AlertSyncService refresh + preview prefetch into a strict in-memory Room (production main-thread
@@ -17,11 +17,15 @@
 
 // START_MODULE_MAP
 //   FlowCameras - CameraListPort with the cached «Спальня» camera; network calls fail the test.
-//   EventClipFlowTest - refresh + prefetch, cards from the stored rows, tap -> Ready for both key shapes.
+//   EventClipFlowTest - refresh + prefetch, cards from the stored rows, tap -> Ready for both key shapes; an event
+//     missing from MediaRefStore (new process) -> refreshMedia with server http URLs -> https GET -> Ready.
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - Phase 5 device bug: the clip dialog failed with IllegalStateException before any request
+//   LAST_CHANGE: v0.1.1 - Phase 5 device bug A: missing-ref path (refreshMedia, real AlertMapper with http URLs)
+//     covered; it plays and every media GET is https, so the cleartext hypothesis is excluded. The real cause was
+//     the media client (dead pooled connection, PlainMediaFetcherTest).
+//   PREV_CHANGE: v0.1.0 - Phase 5 device bug: the clip dialog failed with IllegalStateException before any request
 //     because RepositoryClipSource.event ran the blocking EventDao.getByKey on Dispatchers.Main. ClipViewModelTest
 //     used a fake ClipSource and every Room test allowed main-thread queries, so no JVM test could see it.
 // END_CHANGE_SUMMARY
@@ -219,5 +223,37 @@ class EventClipFlowTest {
         // END_BLOCK_TAP_CARDS
         assertFalse(recorder.bufferText().contains("[Events][clip][BLOCK_CLIP_LOAD] error="))
         assertEquals(2, fetcher.calls.count { it.contains("/v/") })
+    }
+
+    @Test
+    fun `an event missing from the media store plays after refreshMedia with an http URL from the server`() = runTest(main) {
+        val old = rec("0f1e2d3c4b5a6978", "old", t0 - 12 * 3_600_000L)
+        api.enqueue(AlertEnvelope(code = AlertWire.SUCCESS, data = JsonArray(listOf(old))))
+        fetcher.answer(MediaHttp.secureUrl(picUrl("old")), FetchResponse(200, encrypt(jpeg)))
+        assertTrue(service.refresh() is SyncResult.Fetched)
+        appJob.children.toList().forEach { it.join() }
+
+        // START_BLOCK_NEW_PROCESS
+        // A new process: rows and previews survive, the memory-only media refs do not.
+        media.clear()
+        assertEquals(null, service.mediaFor("0f1e2d3c4b5a6978"))
+        // END_BLOCK_NEW_PROCESS
+
+        // The plus minus 5 s refresh answers with the server's http URLs (real AlertMapper).
+        api.enqueue(AlertEnvelope(code = AlertWire.SUCCESS, data = JsonArray(listOf(old))))
+        fetcher.answer(MediaHttp.secureUrl(clipUrl("old")), FetchResponse(200, encrypt(mp4)))
+        val vm = ClipViewModel(RepositoryClipSource(repo, db.eventDao()), FlowCameras(), { zone })
+        vm.open("0f1e2d3c4b5a6978")
+        val ui = vm.ui.first { it != null && it.state !is ClipState.Loading }
+        val state = ui!!.state
+        assertTrue("clip ready after refreshMedia, was $state", state is ClipState.Ready)
+        assertArrayEquals(mp4, (state as ClipState.Ready).file.readBytes())
+        vm.dismiss()
+
+        val log = recorder.bufferText()
+        assertTrue(log.contains("[EventMedia][clip][BLOCK_CLIP_REFRESH] reason=missing result=ok"))
+        assertTrue(fetcher.calls.isNotEmpty())
+        assertTrue("media requests are https only", fetcher.calls.all { it.startsWith("https://") })
+        assertTrue(service.mediaFor("0f1e2d3c4b5a6978")!!.videoUrl!!.startsWith("https://"))
     }
 }

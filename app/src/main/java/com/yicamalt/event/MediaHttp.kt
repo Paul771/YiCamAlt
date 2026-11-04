@@ -1,8 +1,9 @@
 // FILE: MediaHttp.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Plain HTTP client for alert previews and clips on the vendor CDN.
-//   SCOPE: plainClient - lazily built OkHttpClient (connect 5 s, read 20 s, redirects on, no connection retry)
+//   SCOPE: plainClient - lazily built OkHttpClient (connect 5 s, read 20 s, redirects on, transparent reconnect of a
+//     dead pooled connection on, no app-level retry)
 //     with no interceptors, no authenticator and no logger; secureUrl - http -> https rewrite of media URLs.
 //   DEPENDS: none
 //   LINKS: M-EVENT-PLAYBACK, V-M-EVENT-PLAYBACK, EVT-03
@@ -21,11 +22,16 @@ import java.util.concurrent.TimeUnit
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 05-01: secureUrl. 05-PROBE: pic_urls / video_urls are http, the app
+//   LAST_CHANGE: v0.3.0 - Phase 5 device bug A: a clip opened a few minutes after the previous one failed in ~10 ms
+//     with status=-1 (no request reached the CDN). The previous download left a keep-alive connection in the pool,
+//     the CDN closed it while idle, and with retryOnConnectionFailure(false) OkHttp surfaced the dead socket as an
+//     IOException instead of reconnecting. Reconnect is on now (GET only, same request, OkHttp's own bounded
+//     recovery); the app still never repeats a request on its own. Evidence: PlainMediaFetcherTest.
+//   PREV_CHANGE: v0.2.0 - GSD plan 05-01: secureUrl. 05-PROBE: pic_urls / video_urls are http, the app
 //     forbids cleartext (UnknownServiceException), the same path over https works (200, decrypt ok).
 //     Media URLs are rewritten to https; the network security config stays cleartext-off (no global or
 //     per-host cleartext exception).
-//   PREV_CHANGE: v0.1.0 - GSD plan 05-00: separate client for media downloads (research §2 "Network client").
+//   OLDER_CHANGE: v0.1.0 - GSD plan 05-00: separate client for media downloads (research §2 "Network client").
 //   HAZARD: media URLs are signed CDN URLs on a foreign host. The shared Yi client would add our Authorization
 //     header (token leak, CDN rejects) and its logger would print the signed URL. Never add an interceptor,
 //     authenticator or logger here, and never log the URL at call sites.
@@ -38,12 +44,15 @@ object MediaHttp {
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .followRedirects(true)
-            .retryOnConnectionFailure(false)
+            // A pooled keep-alive connection that the CDN closed while idle must be replaced, not reported as a
+            // failed download (Phase 5 bug A). OkHttp only recovers connection-level failures here.
+            .retryOnConnectionFailure(true)
             .build()
     }
 
     // START_CONTRACT: plainClient
-    //   PURPOSE: Client for one-shot media GETs (no auth header, no logging, no automatic retry).
+    //   PURPOSE: Client for one-shot media GETs (no auth header, no logging, no app-level retry; OkHttp reconnects
+    //     a dead pooled connection inside the same call).
     //   INPUTS: none
     //   OUTPUTS: { OkHttpClient - process-wide plain client }
     //   SIDE_EFFECTS: builds the client on first use

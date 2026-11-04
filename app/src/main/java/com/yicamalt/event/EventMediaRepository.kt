@@ -1,5 +1,5 @@
 // FILE: EventMediaRepository.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Event previews and clips as local files (M-EVENT-PLAYBACK): download through the plain media client,
 //     decrypt, check the container, downscale previews into filesDir, write clips into the cacheDir LRU.
@@ -32,7 +32,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 // START_MODULE_MAP
-//   FetchResponse - HTTP code (or CODE_IO / CODE_TOO_LARGE) and the body of a 2xx answer within the size cap.
+//   FetchResponse - HTTP code (or CODE_IO / CODE_TOO_LARGE), the body of a 2xx answer within the size cap and, for
+//     CODE_IO, the exception class name (logged as error=, never the message).
 //   MediaFetcher - port: one plain GET with a body size cap.
 //   PlainMediaFetcher - MediaFetcher over MediaHttp.plainClient() (no auth header, no logger).
 //   MediaRefSource - port over AlertSyncService.mediaFor / refreshMedia.
@@ -42,7 +43,10 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 05-03: created. Previews: .yitar skipped, .tar -> tarPreview, JPEG/PNG only,
+//   LAST_CHANGE: v0.1.1 - Phase 5 device bug A: status=-1 lines said nothing about the cause. FetchResponse carries
+//     the exception class name and BLOCK_FETCH_CLIP / BLOCK_FETCH_THUMB append error=<SimpleName> on CODE_IO. The
+//     cause itself (dead pooled CDN connection) is fixed in MediaHttp.
+//   PREV_CHANGE: v0.1.0 - GSD plan 05-03: created. Previews: .yitar skipped, .tar -> tarPreview, JPEG/PNG only,
 //     downscaled by ThumbEncoder, saved under a hashed name, thumb_path set. Clips: ts -> Unsupported, stale /
 //     missing ref or one CDN 403 -> one refreshMedia, MP4 only, cached file reused, LRU trim after each write.
 //   HAZARD: signed URLs and decrypt keys stay in memory; logs carry status, size bucket, extension class,
@@ -50,8 +54,11 @@ import javax.inject.Singleton
 //     carry the URL or a path). File writes run under EventCacheCleaner.writeIfCurrent so a logout wipe wins.
 // END_CHANGE_SUMMARY
 
-/** One media GET: [code] is the HTTP status (or a negative CODE_*); [body] only for 2xx within the cap. */
-internal class FetchResponse(val code: Int, val body: ByteArray?) {
+/**
+ * One media GET: [code] is the HTTP status (or a negative CODE_*); [body] only for 2xx within the cap;
+ * [error] is the simple class name of the exception behind CODE_IO (never its message: it can carry the URL).
+ */
+internal class FetchResponse(val code: Int, val body: ByteArray?, val error: String? = null) {
     companion object {
         const val CODE_IO = -1
         const val CODE_TOO_LARGE = -2
@@ -89,9 +96,9 @@ internal class PlainMediaFetcher : MediaFetcher {
                 FetchResponse(response.code, buffer.readByteArray())
             }
         } catch (e: IOException) {
-            FetchResponse(FetchResponse.CODE_IO, null)
+            FetchResponse(FetchResponse.CODE_IO, null, e.javaClass.simpleName)
         } catch (e: IllegalArgumentException) {
-            FetchResponse(FetchResponse.CODE_IO, null)
+            FetchResponse(FetchResponse.CODE_IO, null, e.javaClass.simpleName)
         }
         // END_BLOCK_PLAIN_GET
     }
@@ -186,7 +193,7 @@ class EventMediaRepository internal constructor(
         }
         val body = response.body
         if (response.code !in 200..299 || body == null) {
-            logFetch("thumb", "BLOCK_FETCH_THUMB", response.code, 0, ext, false, "none")
+            logFetch("thumb", "BLOCK_FETCH_THUMB", response.code, 0, ext, false, "none", response.error)
             return FAILED
         }
         val plain = decryptOrRaw(body, ref.picPwd)
@@ -260,7 +267,7 @@ class EventMediaRepository internal constructor(
         val body = response.body
         val ext = extClass(url)
         if (response.code !in 200..299 || body == null) {
-            logFetch("clip", "BLOCK_FETCH_CLIP", response.code, 0, ext, false, "none")
+            logFetch("clip", "BLOCK_FETCH_CLIP", response.code, 0, ext, false, "none", response.error)
             return@withContext ClipResult.Failed(
                 when (response.code) {
                     FetchResponse.CODE_IO -> REASON_IO
@@ -293,10 +300,14 @@ class EventMediaRepository internal constructor(
         Timber.d("[EventMedia][clip][BLOCK_CLIP_REFRESH] reason=%s result=%s", reason, if (ok) "ok" else "none")
     }
 
-    private fun logFetch(kind: String, block: String, status: Int, bytes: Int, ext: String, decryptOk: Boolean, magic: String) {
+    private fun logFetch(
+        kind: String, block: String, status: Int, bytes: Int, ext: String, decryptOk: Boolean, magic: String,
+        error: String? = null,
+    ) {
+        val suffix = if (error != null) " error=$error" else ""
         Timber.d(
-            "[EventMedia][%s][%s] status=%d bytes=%s ext=%s decryptOk=%s magic=%s",
-            kind, block, status, sizeBucket(bytes), ext, decryptOk, magic,
+            "[EventMedia][%s][%s] status=%d bytes=%s ext=%s decryptOk=%s magic=%s%s",
+            kind, block, status, sizeBucket(bytes), ext, decryptOk, magic, suffix,
         )
     }
 
