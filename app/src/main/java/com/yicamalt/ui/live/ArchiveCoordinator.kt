@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinator.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: One screen state for the SD archive under the live view: card status, recorded days, the selected day's
 //     timeline and playback (SD-01..SD-05; D-01, D-02, D-04..D-07). Live video keeps running under every state.
@@ -9,7 +9,7 @@
 //     position or live wall time), «Живой» back to today, Live day roll-over at local midnight. Value-free logs.
 //     Refresh: first liveEpoch full load; index-only refresh on every later liveEpoch, every refreshMs while today is
 //     shown / healthy / foreground, before a seek (plan 04-12 Task 2), on openDays when stale; never overlapping;
-//     failure keeps the old list.
+//     failure keeps the old list. One-shot event -> SD jump openAt (EVT-04, plan 05-05).
 //   DEPENDS: M-SD-ARCHIVE (ArchiveLinkPort, ArchiveSupport, SdIndexRepository, PlaybackController, SdTimeline, SdTime),
 //     camera (TransportType), kotlinx.coroutines, Timber
 //   LINKS: M-UI-LIVEVIEW, V-M-UI-LIVEVIEW, M-SD-ARCHIVE
@@ -52,13 +52,22 @@ import java.util.Locale
 //   ArchiveUi - archive part of the camera screen (panel + message + retry, days, timeline, cursor, rulerMs, playback labels);
 //     ArchiveUi.initial(today, dayStartMs, dayEndMs) - IDLE state before the coordinator exists.
 //   ArchiveTexts - Russian archive texts (D-07) and dayLabel(day, today).
-//   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground;
+//   EVENT_SD_PREROLL_MS - event -> SD jump offset (0: the vendor seeks exactly to the alert time).
+//   OpenAtResult - QUEUED | FIRED | HIDDEN | IGNORED.
+//   ArchiveCoordinator - ui, start, close, retry, openDays, closeDays, selectDay, seek, togglePause, goLive, onBackground,
+//     openAt (BLOCK_ARCHIVE_OPEN_AT: resolveOpenAt after every full load / on the call, cancelOpenAt on user actions);
 //     internal refresh policy (BLOCK_ARCHIVE_REFRESH: launchLoad reasons, shouldPoll, needsRefreshBeforeSeek,
 //     firePendingSeek / cancelPendingSeek; SEEK_REFRESH_MIN_AGE_MS, SEEK_REFRESH_WAIT_MS).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 04-12 (W-1): today's index is refreshed (index only, BLOCK_ARCHIVE_REFRESH) on
+//   LAST_CHANGE: v0.5.0 - GSD plan 05-05: openAt(targetMs) - one-shot jump to an event moment. Queued until the
+//     index is known (resolved after every load and on the call): today / recorded day -> selectDay + seek(target +
+//     EVENT_SD_PREROLL_MS = 0) outside the lock via seekNow (seek's refresh-first rules apply); other day -> hint «Нет
+//     записи в это время» in Live, today's panel kept; NO_CARD / CARD_ERROR -> dropped; LIST_FAILED -> kept for a
+//     retry. User seek / selectDay / togglePause / goLive cancel a queued jump and clear its hint; at most once per
+//     coordinator. Log BLOCK_ARCHIVE_OPEN_AT result=seek|no-day|no-card|list-failed|hidden|cancelled only.
+//   PREVIOUS: v0.4.0 - GSD plan 04-12 (W-1): today's index is refreshed (index only, BLOCK_ARCHIVE_REFRESH) on
 //     every liveEpoch increase after the first and every refreshMs (60 s) while today's TIMELINE / NO_RECORDINGS
 //     panel is shown, the link is healthy and the app is not backgrounded (onBackground sets the flag, the next
 //     liveEpoch increase clears it). The poll counts from the last success or attempt, so a failed refresh waits
@@ -69,7 +78,7 @@ import java.util.Locale
 //     the load at most SEEK_REFRESH_WAIT_MS) and then resolves against the new (or, on timeout, the old) list; the
 //     ruler stays on the target meanwhile; a second seek replaces the target; goLive / togglePause / onBackground /
 //     close cancel it. Paused(SILENT) from plan 04-10 shows «Нет записи в это время» with «Продолжить».
-//   PREVIOUS: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
+//   EARLIER: v0.3.0 - GSD plan 04-11 (device defect 1): ArchiveUi.rulerMs - archive position in the archive, wall
 //     clock floored to 1 s in Live for today; «Живой» selects today; the Live day rolls over at local midnight.
 //     cursorMs semantics unchanged. (device defect 2): ArchivePanel.IDLE; the spinner (LOADING) is shown only while
 //     a status / index fetch is in flight on a healthy link; LIST_FAILED only after a real failure; liveEpoch reload
@@ -188,6 +197,9 @@ class ArchiveCoordinator(
     private var lastEpoch = 0
     private var pendingSeekMs: Long? = null // refresh-first seek target waiting for the refresh
     private var pendingJob: Job? = null
+    private var pendingOpenAtMs: Long? = null // queued event -> SD jump (openAt), waits for the index
+    private var openAtDone = false // a jump ran, was dropped or was cancelled: never again
+    private var openAtHint: String? = null // «Нет записи в это время» after a jump to a day without recordings
 
     // Playback tracking for the TUTK hide rule and the cursor day.
     private var prev: PlaybackState = PlaybackState.Live
@@ -247,6 +259,7 @@ class ArchiveCoordinator(
             closed = true
             fetching = false
             pendingSeekMs = null
+            pendingOpenAtMs = null
             val j = jobs + listOfNotNull(loadJob, pendingJob)
             jobs = emptyList()
             loadJob = null
@@ -311,6 +324,7 @@ class ArchiveCoordinator(
     fun selectDay(day: LocalDate) {
         synchronized(lock) {
             if (!active()) return
+            cancelOpenAt()
             if (day != today() && day !in recordedDays) return
             selectedDay = day
             refreshDayPanel()
@@ -328,6 +342,12 @@ class ArchiveCoordinator(
     //   LINKS: PlaybackController.seek, BLOCK_ARCHIVE_REFRESH, SdTimeline.resolveSeek
     // END_CONTRACT: seek
     fun seek(targetMs: Long) {
+        synchronized(lock) { if (active()) cancelOpenAt() }
+        seekNow(targetMs)
+    }
+
+    // seek without touching a queued openAt (also used by openAt itself).
+    private fun seekNow(targetMs: Long) {
         val fromLive: Boolean
         val pending: Boolean
         synchronized(lock) {
@@ -361,7 +381,7 @@ class ArchiveCoordinator(
     //   LINKS: PlaybackController.pause, PlaybackController.resume
     // END_CONTRACT: togglePause
     fun togglePause() {
-        if (!synchronized(lock) { active().also { if (it) cancelPendingSeek() } }) return
+        if (!synchronized(lock) { active().also { if (it) { cancelPendingSeek(); cancelOpenAt() } } }) return
         when (controller.state.value) {
             is PlaybackState.Starting, is PlaybackState.Playing -> controller.pause()
             is PlaybackState.Paused, is PlaybackState.Failed -> controller.resume()
@@ -378,7 +398,7 @@ class ArchiveCoordinator(
     //   LINKS: PlaybackController.goLive
     // END_CONTRACT: goLive
     fun goLive() {
-        if (!synchronized(lock) { active().also { if (it) cancelPendingSeek() } }) return
+        if (!synchronized(lock) { active().also { if (it) { cancelPendingSeek(); cancelOpenAt() } } }) return
         forceMute()
         controller.goLive()
         onPlayback(controller.state.value)
@@ -401,7 +421,33 @@ class ArchiveCoordinator(
         onPlayback(controller.state.value)
     }
 
-    fun openAt(targetMs: Long): OpenAtResult = error("RED stub")
+    // START_CONTRACT: openAt
+    //   PURPOSE: Event -> SD jump (EVT-04): open the archive at an absolute moment, at most once per coordinator.
+    //   INPUTS: { targetMs: Long - event time, epoch ms; never logged }
+    //   OUTPUTS: { OpenAtResult - HIDDEN (archive hidden), IGNORED (not started / closed / a jump already ran or was
+    //     cancelled), QUEUED (waits for the index), FIRED (resolved now) }
+    //   SIDE_EFFECTS: once the index is known (TIMELINE / NO_RECORDINGS): today or a recorded day -> select that day and
+    //     seek(target + EVENT_SD_PREROLL_MS) (refresh-first rules of seek apply); another day -> hint «Нет записи в это
+    //     время», today's panel kept; NO_CARD / CARD_ERROR -> dropped (the panel text explains); LIST_FAILED -> kept
+    //     until a later full load succeeds. A user seek / selectDay / togglePause / goLive cancels a queued jump.
+    //     BLOCK_ARCHIVE_OPEN_AT log with the result only.
+    //   LINKS: seek, selectDay, BLOCK_ARCHIVE_LOAD, EVENT_SD_PREROLL_MS
+    // END_CONTRACT: openAt
+    fun openAt(targetMs: Long): OpenAtResult {
+        val seekTo: Long?
+        synchronized(lock) {
+            if (hidden) {
+                logOpenAt("hidden")
+                return OpenAtResult.HIDDEN
+            }
+            if (!started || closed || openAtDone) return OpenAtResult.IGNORED
+            pendingOpenAtMs = targetMs
+            seekTo = resolveOpenAt()
+            if (pendingOpenAtMs != null) return OpenAtResult.QUEUED
+        }
+        seekTo?.let { seekNow(it) }
+        return OpenAtResult.FIRED
+    }
 
     // ---- internals ----
 
@@ -432,6 +478,53 @@ class ArchiveCoordinator(
         }
         controller.seek(t)
         onPlayback(controller.state.value)
+    }
+
+    // Under lock: a user archive action ends a queued jump and clears its hint.
+    private fun cancelOpenAt() {
+        openAtHint = null
+        if (pendingOpenAtMs == null) return
+        pendingOpenAtMs = null
+        openAtDone = true
+        logOpenAt("cancelled")
+    }
+
+    // Under lock: resolves a queued openAt once the index (or the card status) is known. Returns the seek target to
+    // run outside the lock (same pattern as seek), or null.
+    private fun resolveOpenAt(): Long? {
+        // START_BLOCK_ARCHIVE_OPEN_AT
+        val target = pendingOpenAtMs ?: return null
+        var seekTo: Long? = null
+        val result = when (panel) {
+            ArchivePanel.TIMELINE, ArchivePanel.NO_RECORDINGS -> {
+                val day = SdTime.localDate(target, zone)
+                if (day == today() || day in recordedDays) {
+                    selectedDay = day
+                    refreshDayPanel()
+                    seekTo = target + EVENT_SD_PREROLL_MS
+                    "seek"
+                } else {
+                    openAtHint = ArchiveTexts.NO_RECORDING_AT // today's panel stays
+                    "no-day"
+                }
+            }
+            ArchivePanel.NO_CARD, ArchivePanel.CARD_ERROR -> "no-card"
+            ArchivePanel.LIST_FAILED -> {
+                logOpenAt("list-failed") // kept: a retry / liveEpoch reload may succeed
+                return null
+            }
+            else -> return null // LOADING / IDLE / HIDDEN: not known yet
+        }
+        pendingOpenAtMs = null
+        openAtDone = true
+        logOpenAt(result)
+        publish()
+        return seekTo
+        // END_BLOCK_ARCHIVE_OPEN_AT
+    }
+
+    private fun logOpenAt(result: String) {
+        Timber.i("[LiveView][archive][BLOCK_ARCHIVE_OPEN_AT] result=%s", result)
     }
 
     // Under lock.
@@ -489,7 +582,7 @@ class ArchiveCoordinator(
             SdStatus.NoCard, is SdStatus.Abnormal -> null
             else -> repository.fetchIndex(wallClock())
         }
-        synchronized(lock) {
+        val openAtSeek = synchronized(lock) {
             fetching = false
             if (closed || hidden) return
             when {
@@ -512,7 +605,9 @@ class ArchiveCoordinator(
                 status?.toString() ?: "skipped", index?.toString() ?: "skipped", recordedDays.size, panel.name,
             )
             publish()
+            resolveOpenAt()
         }
+        openAtSeek?.let { seekNow(it) } // a queued event -> SD jump, outside the lock
         // END_BLOCK_ARCHIVE_LOAD
     }
 
@@ -656,6 +751,7 @@ class ArchiveCoordinator(
             s is PlaybackState.Paused && s.reason == PauseReason.SILENT -> ArchiveTexts.NO_RECORDING_AT
             s is PlaybackState.Failed && s.reason == FailReason.NO_RECORDING -> ArchiveTexts.NO_RECORDING_AT
             s is PlaybackState.Failed -> ArchiveTexts.START_FAILED
+            s == PlaybackState.Live -> openAtHint
             else -> null
         }
         return ArchiveUi(
