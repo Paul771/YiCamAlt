@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 04-13-PLAN.md (device re-check recorded; phase human_needed)
-last_updated: "2026-10-31T15:51:30.389Z"
-last_activity: 2026-10-31
+status: verifying
+stopped_at: Completed 05-07-PLAN.md (device verification recorded; phase 5 human_needed)
+last_updated: "2026-11-04T10:38:59.974Z"
+last_activity: 2026-11-04
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 54
-  completed_plans: 53
+  total_plans: 62
+  completed_plans: 61
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 4 — Архив SD-карты
+**Current focus:** Phase 5 — Лента событий
 
 ## Current Position
 
 Phase: 5
-Plan: Not started
-Status: Gap closure plans 04-10..04-13 done; device re-check: H-SD10, H-SD11, H-SD13 passed, H-SD12, H-SD14 partial; phase stays human_needed
-Last activity: 2026-10-31
+Plan: 8 of 8
+Status: Verifying - 05-07 device verification recorded (H-EV 9 passed, H-EV7 not exercised, 0 failed; H-EV3 label vs D-03 awaits the user); phase 5 stays human_needed, not complete
+Last activity: 2026-11-04
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -92,6 +92,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P11 | 6min | 3 tasks | 5 files |
 | Phase 04 P12 | 25min | 2 tasks | 2 files |
 | Phase 04 P13 | ~1h | 3 tasks | 5 files |
+| Phase 05 P07 | device session + 20min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -175,6 +176,8 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-11: ArchivePanel.IDLE is display-only; internal LOADING kept so the next liveEpoch reloads a missing list
 - [Phase 04]: 04-12: one 60 s refreshMs rule for dialog refresh and periodic poll; today's NO_RECORDINGS polled too; pre-seek refresh only when index older than 5 s, 3 s wait then old list
 - [Phase 04]: 04-13: H-SD12 and H-SD14 partial (AuthFailed variant / natural end not reached on device); phase 4 stays human_needed
+- [Phase 05]: 05-07: Phase 5 verification human_needed: 9/10 H-EV passed, H-EV7 not exercised, 0 failed; H-EV3 label «Все дни ▾» vs D-03 awaits the user
+- [Phase 05]: 05-07: MediaPlayer on TextureView kept (mp4/H.264 plays on MIUI), no Media3
 
 ### Pending Todos
 
@@ -188,6 +191,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-31T15:22:28.276Z
-Stopped at: Completed 04-13-PLAN.md (device re-check recorded; phase human_needed)
+Last session: 2026-11-04T10:38:59.968Z
+Stopped at: Completed 05-07-PLAN.md (device verification recorded; phase 5 human_needed)
 Resume file: None
