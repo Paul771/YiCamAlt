@@ -340,12 +340,14 @@
         <export-EventsFeed PURPOSE="Pure grouping / filters / labels / subtitle / empty texts; EventCard, DaySection" />
         <export-EventsViewModel PURPOSE="onTabEntered, onPullRefresh, chips, day picker, onCardTap -> OpenClip, SessionExpired (BLOCK_REFRESH, BLOCK_FILTER, BLOCK_CAMERAS, BLOCK_OPEN_CLIP); ports EventFeedSource / EventSyncSource (EventsUiModule)" />
         <export-EventsScreen PURPOSE="Chips, «Все дни ▾» day button + DayPickerDialog, subtitle, pull-to-refresh card list" />
-        <export-ClipViewModel PURPOSE="ClipSource port (ClipUiModule), ClipUi / ClipState / ClipEvent.OpenSd, failure texts (BLOCK_CLIP_LOAD, BLOCK_CLIP_OPEN_SD)" />
+        <export-ClipViewModel PURPOSE="ClipSource port (ClipUiModule; RepositoryClipSource reads Room on io), ClipUi / ClipState / ClipEvent.OpenSd, failure texts (BLOCK_CLIP_LOAD, BLOCK_CLIP_OPEN_SD)" />
         <export-ClipDialog PURPOSE="Dialog with MediaPlayer on TextureView, «Повторить» / «Закрыть» / «Открыть запись на SD» (BLOCK_CLIP_PLAYER)" />
       </annotations>
       <tests>app/src/test/java/com/yicamalt/ui/events/EventsFeedTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/ui/events/EventsViewModelTest.kt</tests>
       <tests>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</tests>
+      <tests>app/src/test/java/com/yicamalt/ui/events/EventClipFlowTest.kt</tests>
+      <change-summary phase="05-events-feed" plan="bugfix" verification="jvm-passed">2026-11-04: clip dialog failed on device (IllegalStateException before any request) because RepositoryClipSource.event ran the blocking EventDao.getByKey on Dispatchers.Main; now on an io dispatcher. EventClipFlowTest covers refresh + prefetch + tap with a strict Room.</change-summary>
       <change-summary phase="05-events-feed" plan="05-04/05-05" verification="jvm-passed">2026-11-04: implemented. EventsFeedTest 11, EventsViewModelTest 11, ClipViewModelTest 11; composables compile-only. Day button «Все дни ▾» deviates from the letter of D-03 (H-EV3). Device checks H-EV1..H-EV7 pending.</change-summary>
     </M-UI-EVENTS>
 

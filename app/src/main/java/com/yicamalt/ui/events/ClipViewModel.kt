@@ -1,5 +1,5 @@
 // FILE: ClipViewModel.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: State of the event clip dialog (EVT-03, EVT-04; D-02): load the decrypted local clip of one event, map
 //     every failure to a short Russian text, enable «Открыть запись на SD» only for a camera in the cached list.
@@ -27,6 +27,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.components.SingletonComponent
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.time.Instant
@@ -46,6 +49,7 @@ import javax.inject.Inject
 // START_MODULE_MAP
 //   ClipLoad - Ready(file) | Unsupported | Expired | Failed(reason): public mirror of ClipResult.
 //   ClipSource - port: clip(key), event(key) (impl RepositoryClipSource; ClipUiModule binds it).
+//   RepositoryClipSource - ClipSource over EventMediaRepository.clip and EventDao.getByKey (read on the io dispatcher).
 //   ClipState - Loading | Ready(file) | Message(text).
 //   ClipUi - dialog state (state, cameraName, timeLabel, sdEnabled, sdLabel); null in ClipViewModel.ui = closed.
 //   ClipEvent - one-shot OpenSd(deviceId, timeMs) with a redacted toString.
@@ -54,7 +58,12 @@ import javax.inject.Inject
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 05-05 GREEN: open (same key while shown = no-op, a new key cancels the old job;
+//   LAST_CHANGE: v0.3.0 - Device bug fix: every tap failed with «Не удалось загрузить клип», title «Камера», SD
+//     button disabled, no request. Root cause: RepositoryClipSource.event called the blocking EventDao.getByKey on
+//     Dispatchers.Main and Room threw IllegalStateException (main-thread query); row = null -> Failed(no-row). The read
+//     now runs on an io dispatcher. guarded() logs the failing step (event | cameras | clip). Regression:
+//     EventClipFlowTest (strict Room, real refresh + prefetch + tap).
+//   PREVIOUS_0_2_0: v0.2.0 - GSD plan 05-05 GREEN: open (same key while shown = no-op, a new key cancels the old job;
 //     a late result of an old key is dropped), row + cached camera -> name, «d MMMM, HH:mm:ss» label and the SD rule
 //     (a row whose camera is not in the cached list -> «Камера недоступна»), ClipLoad -> texts, onPlayerError keeps
 //     the SD button, openSd -> OpenSd + dismiss, dismiss cancels. Logs: state names and booleans only.
@@ -75,10 +84,13 @@ interface ClipSource {
     suspend fun event(key: String): EventEntity?
 }
 
-class RepositoryClipSource @Inject constructor(
+class RepositoryClipSource internal constructor(
     private val repository: EventMediaRepository,
     private val dao: EventDao,
+    private val io: CoroutineDispatcher,
 ) : ClipSource {
+    @Inject constructor(repository: EventMediaRepository, dao: EventDao) : this(repository, dao, Dispatchers.IO)
+
     override suspend fun clip(key: String): ClipLoad = when (val r = repository.clip(key)) {
         is ClipResult.Ready -> ClipLoad.Ready(r.file)
         ClipResult.Unsupported -> ClipLoad.Unsupported
@@ -86,7 +98,9 @@ class RepositoryClipSource @Inject constructor(
         is ClipResult.Failed -> ClipLoad.Failed(r.reason)
     }
 
-    override suspend fun event(key: String): EventEntity? = dao.getByKey(key)
+    // Room rejects blocking queries on the main thread (IllegalStateException); ClipViewModel calls this from
+    // viewModelScope (Dispatchers.Main), so the read must hop to [io].
+    override suspend fun event(key: String): EventEntity? = withContext(io) { dao.getByKey(key) }
 }
 
 @Module
@@ -169,8 +183,8 @@ class ClipViewModel internal constructor(
 
     private suspend fun load(key: String) {
         // START_BLOCK_CLIP_LOAD
-        val row = guarded { source.event(key) }
-        val cameras = guarded { cameraPort.cachedCameras() } ?: emptyList()
+        val row = guarded("event") { source.event(key) }
+        val cameras = guarded("cameras") { cameraPort.cachedCameras() } ?: emptyList()
         val camera = row?.let { r -> cameras.firstOrNull { it.deviceId == r.deviceId } }
         val sdEnabled = row != null && camera != null
         if (row != null && camera != null) {
@@ -185,7 +199,7 @@ class ClipViewModel internal constructor(
             sdLabel = if (sdEnabled) ClipTexts.OPEN_SD else ClipTexts.CAMERA_UNAVAILABLE,
         )
         _ui.value = meta
-        val result = if (row == null) ClipLoad.Failed("no-row") else guarded { source.clip(key) } ?: ClipLoad.Failed("error")
+        val result = if (row == null) ClipLoad.Failed("no-row") else guarded("clip") { source.clip(key) } ?: ClipLoad.Failed("error")
         if (currentKey != key) return
         val (state, name) = when (result) {
             is ClipLoad.Ready -> ClipState.Ready(result.file) to "ready"
@@ -198,12 +212,13 @@ class ClipViewModel internal constructor(
         // END_BLOCK_CLIP_LOAD
     }
 
-    private suspend fun <T> guarded(block: suspend () -> T): T? = try {
+    /** Runs one load step; a failure is logged as `error=<simple class> step=<step>` (no message, no values). */
+    private suspend fun <T> guarded(step: String, block: suspend () -> T): T? = try {
         block()
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Timber.d("[Events][clip][BLOCK_CLIP_LOAD] error=%s", e.javaClass.simpleName)
+        Timber.d("[Events][clip][BLOCK_CLIP_LOAD] error=%s step=%s", e.javaClass.simpleName, step)
         null
     }
 

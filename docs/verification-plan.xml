@@ -1407,6 +1407,7 @@
         <file>app/src/test/java/com/yicamalt/ui/events/EventsFeedTest.kt</file>
         <file>app/src/test/java/com/yicamalt/ui/events/EventsViewModelTest.kt</file>
         <file>app/src/test/java/com/yicamalt/ui/events/ClipViewModelTest.kt</file>
+        <file>app/src/test/java/com/yicamalt/ui/events/EventClipFlowTest.kt</file>
         <file>app/src/test/java/com/yicamalt/ui/live/ArchiveCoordinatorTest.kt</file>
       </test-files>
       <module-checks>
@@ -1419,13 +1420,14 @@
         <scenario-2 kind="success" evidence-type="deterministic" status="passed">View model: one refresh per tab entry and per pull, window moves on entry, TooEarly -> «Обновлено N мин назад», Offline -> «Нет сети, показан кэш», Unauthorized -> SessionExpired once, NoSession -> «Сессия истекла», chips and day picker state, card tap -> OpenClip; no timer (EventsViewModelTest 11)</scenario-2>
         <scenario-3 kind="success" evidence-type="deterministic" status="passed">Clip dialog state: camera name, time label, SD button only for a known camera, failure texts, OpenSd with a redacted toString (ClipViewModelTest 11)</scenario-3>
         <scenario-4 kind="success" evidence-type="deterministic" status="passed">SD jump: openAt before load fires after the first full load, after load at once, today seeks without segments, a past day without recordings keeps the panel and sets «Нет записи в это время», no card drops the jump, list failure keeps it until a retry, hidden transport reports hidden; user actions cancel a queued jump (ArchiveCoordinatorTest openAt cases)</scenario-4>
+        <scenario-6 kind="regression" evidence-type="deterministic" status="passed">Feed loaded -> tap -> clip end to end: real AlertSyncService refresh + preview prefetch into a strict Room (production main-thread guard, InMemoryRoom.buildStrict), cards from the stored rows for both key shapes (server id, uid_time), ClipViewModel over the real RepositoryClipSource on the main dispatcher -> Ready, camera name, SD button enabled, no BLOCK_CLIP_LOAD error line (EventClipFlowTest 1)</scenario-6>
         <scenario-5 kind="device" evidence-type="trace" status="pending">H-EV1..H-EV7 (tab and feed, chips, day picker and button label, clip, stale clip, SD jump, jump without SD) in 05-HUMAN-UAT.md (plan 05-07)</scenario-5>
       </scenarios>
       <required-log-markers>
         <marker-1>[Events][vm][BLOCK_REFRESH] trigger=enter|pull result=&lt;class&gt;</marker-1>
         <marker-2>[Events][vm][BLOCK_FILTER] cameras=&lt;n&gt; day=&lt;b&gt; shown=&lt;n&gt;</marker-2>
         <marker-3>[Events][vm][BLOCK_OPEN_CLIP]</marker-3>
-        <marker-4>[Events][clip][BLOCK_CLIP_LOAD]</marker-4>
+        <marker-4>[Events][clip][BLOCK_CLIP_LOAD] state=&lt;name&gt; sd=&lt;b&gt; | error=&lt;simple class&gt; step=event|cameras|clip</marker-4>
         <marker-5>[Events][clip][BLOCK_CLIP_OPEN_SD]</marker-5>
         <marker-6>[LiveView][archive][BLOCK_ARCHIVE_OPEN_AT]</marker-6>
       </required-log-markers>
@@ -1436,8 +1438,10 @@
       <gate-evidence>
         <evidence-1>2026-11-04 plan 05-04: EventsFeedTest 11, EventsViewModelTest 11; full suite 1066 tests, 0 failures</evidence-1>
         <evidence-2>2026-11-04 plan 05-05: ClipViewModelTest 11, ArchiveCoordinatorTest openAt cases; full suite 1089 tests, 0 failures</evidence-2>
+        <evidence-3>2026-11-04 device bug fix (clip dialog IllegalStateException step=event: blocking EventDao.getByKey on Dispatchers.Main): EventClipFlowTest 1; full suite 1090 tests, 0 failures</evidence-3>
       </gate-evidence>
       <notes>
+        <note-3>JVM tests that touch Room through a production port on the main dispatcher must use InMemoryRoom.buildStrict(); build() allows main-thread queries and hid the clip-dialog bug.</note-3>
         <note-1>EventsScreen, ClipDialog and the shell wiring are compile-only (no Compose UI test, no emulator); the old instrumented EventsScreenTest plan is dropped.</note-1>
         <note-2>Day button «Все дни ▾» with no day selected deviates from the letter of D-03 («Сегодня ▾»); the user confirms or asks to change it in H-EV3.</note-2>
       </notes>
