@@ -1,5 +1,5 @@
 // FILE: LiveViewScreen.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Compose live view of one camera (M-UI-LIVEVIEW renderer): TextureView video with badge and controls drawn
 //     over the picture, fullscreen, pinch / pan / double-tap zoom, snapshot and lifecycle binding.
@@ -107,7 +107,10 @@ import java.time.format.DateTimeFormatter
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-07: archive panel under the video (D-01), day dialog, overlay pause / «Живой»
+//   LAST_CHANGE: v0.3.0 - GSD plan 05-05: initialArchiveMs (default null keeps every call site): after open() the
+//     same LaunchedEffect(deviceId, initialArchiveMs) calls LiveViewModel.openAt once per screen entry; the Toast
+//     collector now starts first so the synchronous hidden-archive Toast is not lost. Log hasOpenAt only.
+//   PREV_CHANGE: v0.2.0 - GSD plan 04-07: archive panel under the video (D-01), day dialog, overlay pause / «Живой»
 //     in fullscreen (portrait keeps them in the panel only). TextureView slot, zoom, snapshot, fullscreen unchanged
 //     and in the same composition position (panel added after the video Box). D-05 accepted state: after a
 //     background auto-resume the archive is Paused(BACKGROUND), live plays under «Продолжить» / «Живой».
@@ -144,7 +147,8 @@ private fun badgeColor(tone: BadgeTone): Color = when (tone) {
 // START_CONTRACT: LiveViewScreen
 //   PURPOSE: Show the live stream of one camera with all Phase 3 controls (D-04..D-10).
 //   INPUTS: { deviceId: String - cloud uid, never shown or logged; title: String - camera name for the title row;
-//     onClose: () -> Unit - leave the screen; viewModel: LiveViewModel }
+//     onClose: () -> Unit - leave the screen; initialArchiveMs: Long? - event time to open the SD archive at (EVT-04),
+//     null for a plain open; plain remember state of the caller, never saved or logged; viewModel: LiveViewModel }
 //   OUTPUTS: { Unit - composable }
 //   SIDE_EFFECTS: LiveViewModel.open / onStop / onStart / closeScreen; activity requestedOrientation and system bars
 //     (restored on dispose); Toasts; BLOCK_RENDER_VIDEO_SURFACE / BLOCK_FULLSCREEN / BLOCK_LIFECYCLE logs
@@ -155,6 +159,7 @@ fun LiveViewScreen(
     deviceId: String,
     title: String,
     onClose: () -> Unit,
+    initialArchiveMs: Long? = null,
     viewModel: LiveViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -173,13 +178,20 @@ fun LiveViewScreen(
     }
 
     // START_BLOCK_BIND_LIVE
-    LaunchedEffect(deviceId) { viewModel.open(deviceId, title) }
+    // The Toast collector is declared first so it subscribes before open / openAt can emit (the hidden-archive Toast
+    // of openAt is emitted synchronously, events have no replay).
     LaunchedEffect(viewModel) {
         viewModel.events.collect { e ->
             when (e) {
                 is LiveEvent.Toast -> Toast.makeText(context, e.text, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+    // Once per screen entry: open, then the optional event -> SD jump (EVT-04).
+    LaunchedEffect(deviceId, initialArchiveMs) {
+        viewModel.open(deviceId, title)
+        Timber.d("[LiveView][screen][BLOCK_BIND_LIVE] hasOpenAt=%b", initialArchiveMs != null)
+        if (initialArchiveMs != null) viewModel.openAt(initialArchiveMs)
     }
     // END_BLOCK_BIND_LIVE
 

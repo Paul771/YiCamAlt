@@ -1,11 +1,12 @@
 // FILE: AppShellScreen.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Top-level post-login shell: tab host (Cameras / Settings / Events) with session-aware header.
 //   SCOPE: renders active tab content; emits BLOCK_RENDER_SHELL / BLOCK_NAVIGATE_SCREEN markers.
 //     Tabs in order Камеры, Настройки, События (D-01; indices 0 / 1 unchanged). A camera row tap shows
 //     LiveViewScreen, a long press the debug LiveProbeScreen, in place of the tab content (bottom bar hidden) until
-//     back / tab switch / logout.
+//     back / tab switch / logout. On the Events tab a card tap shows ClipDialog over the list; its «Открыть запись на
+//     SD» opens LiveViewScreen of that camera with initialArchiveMs = event time (EVT-03, EVT-04).
 //   DEPENDS: M-UI-SHELL, M-CAMERA-LIST, M-UI-SETTINGS, M-UI-LIVEVIEW, M-UI-LIVE-PROBE, M-UI-EVENTS, M-AUTH (logout via caller)
 //   LINKS: M-UI-SHELL, M-UI-LIVEVIEW, M-UI-LIVE-PROBE, M-UI-EVENTS
 //   ROLE: RUNTIME
@@ -38,8 +39,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.yicamalt.camera.CameraInfo
+import com.yicamalt.ui.events.ClipDialog
 import com.yicamalt.ui.events.EventsScreen
+import com.yicamalt.ui.events.EventsViewModel
 import com.yicamalt.ui.live.LiveProbeScreen
 import com.yicamalt.ui.live.LiveViewScreen
 import timber.log.Timber
@@ -50,7 +54,13 @@ import timber.log.Timber
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 05-04: third tab «События» (EventsScreen, D-01). clipKey is a plain remember
+//   LAST_CHANGE: v0.5.0 - GSD plan 05-05: clip dialog and SD jump. clipKey renders ClipDialog while the Events tab is
+//     shown; onOpenSd(deviceId, timeMs) clears clipKey, resolves the camera name from the EventsViewModel chips (the
+//     same cached camera list the dialog used to enable the button) and sets liveCamera + liveArchiveMs (both plain
+//     remember, never saveable). LiveViewScreen gets initialArchiveMs = liveArchiveMs; closing it clears both and the
+//     Events tab stays selected; opening a camera from the list resets liveArchiveMs. Navigate logs tab=live
+//     source=event|list only.
+//   PREV_CHANGE: v0.4.0 - GSD plan 05-04: third tab «События» (EventsScreen, D-01). clipKey is a plain remember
 //     (never saveable: the event key stays out of the Bundle) set by a card tap; 05-05 renders the clip dialog for
 //     it, until then a non-null clipKey is ignored. Tab switch / logout clears it.
 //   PREV_CHANGE: v0.3.0 - GSD plan 03-11: tap -> LiveViewScreen, long-press -> LiveProbeScreen (debug, TNP H1-H3
@@ -77,9 +87,10 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
     var liveCamera by remember { mutableStateOf<CameraInfo?>(null) }
     // Same reason: the debug probe camera stays out of the Bundle too.
     var probeCamera by remember { mutableStateOf<CameraInfo?>(null) }
-    // Same reason: the event key of a tapped card stays out of the Bundle. 05-05 renders the clip dialog for it.
-    @Suppress("UNUSED_VARIABLE", "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE", "UNUSED_VALUE")
+    // Same reason: the event key of a tapped card stays out of the Bundle; it drives ClipDialog.
     var clipKey by remember { mutableStateOf<String?>(null) }
+    // Same reason: the event time of an SD jump (EVT-04) stays out of the Bundle; null for a plain camera open.
+    var liveArchiveMs by remember { mutableStateOf<Long?>(null) }
     // START_BLOCK_RENDER_SHELL
     val tabLabel = when {
         liveCamera != null -> "live"
@@ -94,7 +105,11 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
         LiveViewScreen(
             deviceId = live.deviceId,
             title = live.name.ifBlank { "Камера" },
-            onClose = { liveCamera = null },
+            onClose = {
+                liveCamera = null
+                liveArchiveMs = null
+            },
+            initialArchiveMs = liveArchiveMs,
         )
         return
     }
@@ -128,6 +143,7 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
                             // START_BLOCK_NAVIGATE_SCREEN
                             Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=${tab.label}")
                             liveCamera = null
+                            liveArchiveMs = null
                             probeCamera = null
                             clipKey = null
                             selected = index
@@ -145,7 +161,8 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
                 ShellTab.Cameras -> com.yicamalt.ui.cameras.CameraListScreen(
                     onSessionExpired = onLogout,
                     onOpenCamera = { camera ->
-                        Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live")
+                        Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live source=list")
+                        liveArchiveMs = null
                         liveCamera = camera
                     },
                     onLongPressCamera = { camera ->
@@ -154,10 +171,29 @@ fun AppShellScreen(userId: String, onLogout: () -> Unit) {
                     },
                 )
                 ShellTab.Settings -> com.yicamalt.ui.settings.SettingsScreen(onBack = {})
-                ShellTab.Events -> EventsScreen(
-                    onSessionExpired = onLogout,
-                    onOpenClip = { key -> clipKey = key },
-                )
+                ShellTab.Events -> {
+                    val eventsVm: EventsViewModel = hiltViewModel()
+                    EventsScreen(
+                        onSessionExpired = onLogout,
+                        onOpenClip = { key -> clipKey = key },
+                        viewModel = eventsVm,
+                    )
+                    clipKey?.let { key ->
+                        ClipDialog(
+                            key = key,
+                            onDismiss = { clipKey = null },
+                            onOpenSd = { deviceId, timeMs ->
+                                clipKey = null
+                                // LiveViewScreen needs only the uid and the title; the button is enabled only for a
+                                // camera of the cached list, which also feeds these chips.
+                                val name = eventsVm.state.value.cameras.firstOrNull { it.deviceId == deviceId }?.name
+                                Timber.d("[Shell][navigate][BLOCK_NAVIGATE_SCREEN] tab=live source=event")
+                                liveArchiveMs = timeMs
+                                liveCamera = CameraInfo(deviceId, name.orEmpty(), model = "", online = true, streamUrl = null)
+                            },
+                        )
+                    }
+                }
             }
         }
     }
