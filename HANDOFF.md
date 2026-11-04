@@ -106,6 +106,8 @@ git reset --hard origin/master
 - **APK Yi Home** — в репозитории нет ни APK, ни `.so`. Положите свой собственный APK Yi Home (`.xapk`/`.apkm`/универсальный `.apk`, либо `split_config.arm64_v8a.apk` + `split_config.armeabi_v7a.apk` в `_apk/extracted/`) в `_apk/` (папка в `.gitignore`) или передайте `-PvendorApk=<path>`. Сборка (`:app:extractVendorNatives`) извлекает `libPPPP_API.so`, `libIOTCAPIs.so`, `libAVAPIs.so`, `libsCHL.so` для `arm64-v8a` и `armeabi-v7a` в `app/build/generated/vendorJniLibs` и сверяет их с `app/vendor-natives.sha256` (Yi Home 6.9.8). Другая версия приложения валит сборку APK (`:app:verifyVendorNatives`) с наблюдёнными хэшами; закрепить их можно только после ревью: `-PvendorNativesAccept=true` (перепишет манифест, проверьте diff). JVM-тесты (`:app:testDebugUnitTest`) работают без APK.
 - **Документы плана/статуса** — обычные файлы в репозитории.
 
+Релизная сборка и ключ подписи: `docs/RELEASE.md` (ключ лежит вне репозитория, в Git не попадает; проверка без вывода значений: `tools/new-release-key.ps1 -Check`).
+
 ## 4. Что проверить на новой машине
 
 1. **AppLocker / Group Policy.** Если `.cmd`/`.bat` заблокированы, запускайте Gradle напрямую:
