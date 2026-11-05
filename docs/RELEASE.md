@@ -48,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assemb
 
 ## 5. Проверка
 
-- `tools/check-release-apk.ps1` — проверка подписи, ABI, отсутствия отладочных флагов (появится в плане 06-02).
+- `powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-release-apk.ps1` — проверка подписи (v2/v3), ABI (только arm64-v8a и armeabi-v7a), 8 вендорских .so по `app/vendor-natives.sha256`, версии и `debuggable=false`. Успех: `RESULT=PASS`. С `-CompareApk app/build/outputs/apk/debug/app-debug.apk` печатает `signerSame=<true|false>` (у release другой ключ, чем у debug: первую установку поверх debug-сборки нужно делать после удаления). `-SkipVersion` отключает проверку версии. Вывод не содержит путей, DN и отпечатков сертификата.
 - `tools/clean-clone-build.ps1` — сборка из чистого клона, чтобы убедиться, что ничего не берётся из рабочей копии (появится в плане 06-03).
 
 ## 6. Установка
