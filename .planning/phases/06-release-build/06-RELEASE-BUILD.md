@@ -24,6 +24,12 @@
 | Hook self-test | PASS | `tools/git-hooks/test-pre-commit.sh`: `RESULT: all 13 cases passed` |
 | Key outside the repo | PASS | `new-release-key.ps1 -Check`: `keys=4/4 store=found acl=ok`; key lives under `%USERPROFILE%\.yicamalt\`; backup of the key is pending with the user |
 
+## Re-run on the device build commit (plan 06-04)
+
+Full gate `:app:testDebugUnitTest --rerun :app:assembleDebug :app:assembleRelease` BUILD SUCCESSFUL, exit 0: 77 suites, 1103 tests, 0 failures, 2 skipped (RealLogScanTest without a log file); `check-release-apk.ps1 -CompareApk app-debug.apk` -> `signerSame=false`, `RESULT=PASS`.
+
+Clean clone re-run for the installed APK: commit 664db41 RESULT=PASS
+
 ## How the clean clone build works
 
 `tools/clean-clone-build.ps1` requires a committed worktree, clones HEAD into `<temp>/yicamalt-clean-<id>` with `--no-hardlinks`, checks out the exact commit detached, and runs the clone's own `tools/gradle.ps1 :app:assembleRelease --no-daemon --no-build-cache -PvendorApkDir=<repo _apk>`. The signing file is found at its default location and is never copied into the clone. Gradle output stays in memory and is never printed; only the anchors `vendor natives: OK (8 libs, manifest match)` and `BLOCK_VERIFY_RELEASE_SIGNING] result=ok` are read from the clone's log. The clone is removed only after guards: under the system temp root, name prefix `yicamalt-clean-`, not under the repo.

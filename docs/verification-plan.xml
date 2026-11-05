@@ -1852,7 +1852,7 @@
       </commands>
       <required-evidence>
         <evidence-1>2026-11-05 plans 06-02 / 06-03 (06-RELEASE-BUILD.md): release APK signed v2/v3 with one signer, signerSame=false against the debug APK, ABIs arm64-v8a + armeabi-v7a only, vendorLibs=8/8 otherLibs=0, versionName 1.0.0 versionCode 10000, debuggable=false, no minifyReleaseWithR8, missing signing file -> RELEASE_SIGNING_MISSING value-free; checker RESULT=PASS</evidence-1>
-        <evidence-2>2026-11-05 plan 06-03: tools/clean-clone-build.ps1 RESULT=PASS on commit f75ec64 (trackedVendorFiles=0, build=OK, apkCheck=PASS, trackedChanged=0 untrackedNotIgnored=0, clone removed)</evidence-2>
+        <evidence-2>2026-11-05 plan 06-03: tools/clean-clone-build.ps1 RESULT=PASS on commit f75ec64 (trackedVendorFiles=0, build=OK, apkCheck=PASS, trackedChanged=0 untrackedNotIgnored=0, clone removed). Clean clone re-run for the installed APK: commit 664db41 RESULT=PASS (plan 06-04; full gate 1103 tests, 0 failures, 2 skipped; checker RESULT=PASS signerSame=false)</evidence-2>
         <evidence-3>pending: device regression H-R1..H-R13</evidence-3>
         <evidence-4>pending: redaction sweeps H-D1 / H-R14</evidence-4>
       </required-evidence>
