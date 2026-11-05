@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assemb
 ## 5. Проверка
 
 - `powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-release-apk.ps1` — проверка подписи (v2/v3), ABI (только arm64-v8a и armeabi-v7a), 8 вендорских .so по `app/vendor-natives.sha256`, версии и `debuggable=false`. Успех: `RESULT=PASS`. С `-CompareApk app/build/outputs/apk/debug/app-debug.apk` печатает `signerSame=<true|false>` (у release другой ключ, чем у debug: первую установку поверх debug-сборки нужно делать после удаления). `-SkipVersion` отключает проверку версии. Вывод не содержит путей, DN и отпечатков сертификата.
-- `tools/clean-clone-build.ps1` — сборка из чистого клона, чтобы убедиться, что ничего не берётся из рабочей копии (появится в плане 06-03).
+- `powershell -NoProfile -ExecutionPolicy Bypass -File tools/clean-clone-build.ps1` — сборка из чистого клона текущего коммита во временной папке (вне репозитория), чтобы убедиться, что ничего не берётся из рабочей копии. Передаёт только `-PvendorApkDir` (по умолчанию `_apk` репозитория), собирает `:app:assembleRelease --no-build-cache`, сверяет подписанта с APK из репозитория (`signerSame=true`), проверяет, что в клоне не изменилось ни одного отслеживаемого файла, и удаляет клон. Успех: `RESULT=PASS`. Требует закоммиченного рабочего дерева. Ключи: `-VendorApk <file>`, `-Offline` (при ошибках загрузки/trustStore), `-KeepClone`.
 
 ## 6. Установка
 
