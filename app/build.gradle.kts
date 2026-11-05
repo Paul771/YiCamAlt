@@ -373,4 +373,8 @@ tasks.withType<Test> {
     val redactionLogFile = (project.findProperty("redactionLogFile") as String?).orEmpty()
     systemProperty("redaction.logFile", redactionLogFile)
     if (redactionLogFile.isNotBlank()) outputs.upToDateWhen { false }
+    // SEC-01 / GSD 06-04: opt-in sweep of a release logcat capture, -PredactionLogcatFile=<abs path>.
+    val redactionLogcatFile = (project.findProperty("redactionLogcatFile") as String?).orEmpty()
+    systemProperty("redaction.logcatFile", redactionLogcatFile)
+    if (redactionLogcatFile.isNotBlank()) outputs.upToDateWhen { false }
 }
