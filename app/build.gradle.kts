@@ -1,4 +1,5 @@
 import java.security.MessageDigest
+import java.util.Properties
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
@@ -11,6 +12,22 @@ plugins {
     id("de.mannodermaus.android-junit5")
 }
 
+// START_BLOCK_RELEASE_SIGNING
+// Release signing (GSD Phase 6, D-01): key and passwords live OUTSIDE the repository in a Properties file
+// (storeFile, storePassword, keyAlias, keyPassword). Default %USERPROFILE%/.yicamalt/release-signing.properties,
+// override with -PyicamaltSigningFile=<file> or the same key in ~/.gradle/gradle.properties. Values are never logged.
+val releaseSigningFile: File = providers.gradleProperty("yicamaltSigningFile").orNull?.takeIf { it.isNotBlank() }
+    ?.let { File(it) } ?: File(System.getProperty("user.home"), ".yicamalt/release-signing.properties")
+val releaseSigning = Properties().apply {
+    if (releaseSigningFile.isFile) releaseSigningFile.reader(Charsets.UTF_8).use { load(it) } // UTF-8, as written by new-release-key.ps1
+}
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val releaseStoreFile: File? = releaseSigning.getProperty("storeFile")?.takeIf { it.isNotBlank() }
+    ?.let { File(it).let { f -> if (f.isAbsolute) f else File(releaseSigningFile.parentFile, it) } }
+val releaseSigningReady: Boolean = releaseSigningKeys.all { !releaseSigning.getProperty(it).isNullOrBlank() } &&
+    releaseStoreFile?.isFile == true
+// END_BLOCK_RELEASE_SIGNING
+
 android {
     namespace = "com.yicamalt"
     compileSdk = 34
@@ -19,12 +36,26 @@ android {
         applicationId = "com.yicamalt"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // versionCode = major*10000 + minor*100 + patch; only ever increases (GSD Phase 6, D-02)
+        versionCode = 10000
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         // Vendor P2P libraries exist only for these two ABIs (GSD Phase 2, M-P2P-NATIVE).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningReady) {
+                storeFile = releaseStoreFile
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -34,8 +65,12 @@ android {
             buildConfigField("boolean", "LOCAL_RTSP_ENABLED", "true")
         }
         release {
-            isMinifyEnabled = true
+            // R8 stays OFF for 1.0.0 (GSD Phase 6, D-02).
+            isMinifyEnabled = false
+            isShrinkResources = false
+            // kept for a later R8 phase; unused while minify is off (D-02)
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (releaseSigningReady) signingConfigs.getByName("release") else null
             buildConfigField("String", "YI_API_BASE_URL", "\"https://gw-us.xiaoyi.com/\"")
             buildConfigField("boolean", "LOCAL_RTSP_ENABLED", "false")
         }
@@ -236,6 +271,28 @@ tasks.named("preBuild") { dependsOn(extractVendorNatives) }
 val verifyHook = Regex("(assemble|install|bundle)(Debug|Release)|merge(Debug|Release)JniLibFolders")
 tasks.matching { verifyHook.matches(it.name) }.configureEach { dependsOn(verifyVendorNatives) }
 // END_BLOCK_VERIFY_VENDOR_NATIVES
+
+// START_BLOCK_VERIFY_RELEASE_SIGNING
+// Value-free guard: reports only found/missing and the key count, never a path, alias or password.
+val verifyReleaseSigning by tasks.registering {
+    group = "release"
+    description = "Fails release packaging when the external signing file is missing or incomplete (D-01)."
+    doLast {
+        if (!releaseSigningReady) {
+            val present = releaseSigningKeys.count { !releaseSigning.getProperty(it).isNullOrBlank() }
+            throw GradleException(
+                "[ReleaseBuild][gradle][BLOCK_VERIFY_RELEASE_SIGNING] code=RELEASE_SIGNING_MISSING " +
+                    "file=${if (releaseSigningFile.isFile) "found" else "missing"} keys=$present/4 " +
+                    "store=${if (releaseStoreFile?.isFile == true) "found" else "missing"}: " +
+                    "run tools/new-release-key.ps1 or set -PyicamaltSigningFile (docs/RELEASE.md)",
+            )
+        }
+        logger.lifecycle("[ReleaseBuild][gradle][BLOCK_VERIFY_RELEASE_SIGNING] result=ok keys=4/4")
+    }
+}
+val releaseSigningHook = Regex("(assemble|install|bundle|package)Release")
+tasks.matching { releaseSigningHook.matches(it.name) }.configureEach { dependsOn(verifyReleaseSigning) }
+// END_BLOCK_VERIFY_RELEASE_SIGNING
 
 dependencies {
     // AndroidX core
