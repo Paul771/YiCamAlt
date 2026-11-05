@@ -172,10 +172,11 @@
       <verification-ref>V-M-REPO-HYGIENE</verification-ref>
       <notes>
         <note-1>History is NOT rewritten (owner decision); the guard only protects new commits.</note-1>
+        <note-2>Plan 06-00 (GSD Phase 6 D-01): keystore files (jks / keystore / p12 / pfx) and signing properties files are blocked by path, store / key password values by content; a Gradle getProperty(...) signing line and a &lt;generated&gt; placeholder are allowed.</note-2>
       </notes>
     </M-REPO-HYGIENE>
 
-    <M-RELEASE-BUILD NAME="ReleaseBuild" TYPE="TOOLING" LAYER="0" ORDER="5" STATUS="planned">
+    <M-RELEASE-BUILD NAME="ReleaseBuild" TYPE="TOOLING" LAYER="0" ORDER="5" STATUS="implemented">
       <contract>
         <purpose>Build a signed, unminified ARM release APK from a clean clone plus the user's own Yi Home APK; the signing key and its passwords stay outside the repository (REL-01, D-01, D-02).</purpose>
         <inputs>
@@ -219,6 +220,8 @@
       <notes>
         <note-1>R8/minify off by user decision (06-CONTEXT D-02); proguard-rules.pro stays for a later R8 phase.</note-1>
         <note-2>Release builds plant no Timber tree (YiCamAltApp): no diag_log and no app log lines; device log sweeps use the debug build, release uses a logcat capture (plan 06-04).</note-2>
+        <note-3>Plan 06-02: release signing from the external properties file, version 1.0.0 / 10000, R8 off; check-release-apk.ps1 PASS (v2/v3, one signer, ARM ABIs only, vendor libs 8/8, not debuggable), signer differs from debug, missing key fails value-free before packaging.</note-3>
+        <note-4>Plan 06-03: clean-clone-build.ps1 builds the signed release from a fresh clone in TEMP with only -PvendorApkDir, checks it, leaves no changed or untracked file and removes the clone; Gradle output of the clone is never printed.</note-4>
       </notes>
     </M-RELEASE-BUILD>
 

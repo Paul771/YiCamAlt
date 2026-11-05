@@ -450,9 +450,10 @@
         <fn-preCommitRange PURPOSE="sh tools/git-hooks/pre-commit --range base..head applies the same rules to a commit range" />
       </annotations>
       <change-summary phase="01-secrets-camera-list" commit="09dbb13" verification="passed">GSD phase 01 (plan 01-03): pre-commit guard (HYGIENE_FORBIDDEN_PATH, HYGIENE_DECOMPILED_CODE, HYGIENE_SECRET_VALUE) with --range mode, copy installer keeping LFS hooks, SEC-03 .gitignore block, 8-case self-test green.</change-summary>
+      <change-summary phase="06-release-build" verification="passed">GSD phase 06 (plan 06-00): keystore / signing-properties path rule and signing-password value rules, Gradle getProperty line allowed; 13-case self-test green.</change-summary>
     </M-REPO-HYGIENE>
 
-    <M-RELEASE-BUILD NAME="ReleaseBuild" TYPE="TOOLING" STATUS="planned">
+    <M-RELEASE-BUILD NAME="ReleaseBuild" TYPE="TOOLING" STATUS="implemented">
       <purpose>Build a signed, unminified ARM release APK from a clean clone plus the user's own Yi Home APK; the signing key and its passwords stay outside the repository.</purpose>
       <path>app/build.gradle.kts</path>
       <path>tools/new-release-key.ps1</path>
@@ -467,7 +468,7 @@
         <fn-checkReleaseApk PURPOSE="Check signature schemes, signer, ABI dirs, vendor lib hashes, version and debuggable flag" />
         <fn-cleanCloneBuild PURPOSE="Clone to a temp dir outside the repo, assembleRelease with the local _apk, check, clean up" />
       </annotations>
-      <change-summary phase="06-release-build" verification="pending">contract only (plan 06-00)</change-summary>
+      <change-summary phase="06-release-build" verification="passed">Plans 06-00..06-04: contract (06-00); release signing, version 1.0.0 / 10000, R8 off and check-release-apk.ps1 PASS with signer != debug (06-02); clean clone release build PASS (06-03); REL-01 build part passed, device regression REL-02 pending (06-05..06-07).</change-summary>
     </M-RELEASE-BUILD>
 
     <M-DEBUG-PROBE NAME="EndpointProbe" TYPE="UTILITY" STATUS="implemented">
