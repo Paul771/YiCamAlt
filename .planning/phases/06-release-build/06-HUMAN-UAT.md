@@ -8,7 +8,7 @@ updated: 2026-11-05
 
 ## Current Test
 
-[pending: H-D1 in plan 06-05 (debug build), H-R1 in plan 06-06 (uninstall debug, install release after the user's «да»), H-R2..H-R14 in plan 06-07 (release build). Nothing run yet.]
+[H-D1 partial (plan 06-05); pending: H-R1 in plan 06-06 (uninstall debug, install release after the user's «да»), H-R2..H-R14 in plan 06-07 (release build). H-R1..H-R14 not run yet.]
 
 ## Pre-conditions
 
@@ -56,7 +56,7 @@ requirement: REL-02, SEC-01 (plan 06-05, debug build)
 steps: очистить diag log на телефоне (перед сессией); LAN live «Спальня» 1 мин и «YI Home Camera» 1 мин, на одной включить звук на 10 с; один раз переключить HD/SD; архив SD на обеих камерах (диалог дня, перемотка по шкале, «Живой»); «События»: открыть клип и «Открыть запись на SD»; Home и возврат в пределах 5 мин; снять лог.
 expected: everything works; RealLogScanTest over the pulled diag log `tests=1 skipped=0 failures=0` for the device-log test; grep for forbidden paths `alert/events|push_prop|get_push|del_list|orderpay|/vas/|monitor/alarm|ai/alert` = 0; no `HTTP FAILED` line with an address (the 2026-11-04 fix).
 evidence: markers `[P2P][tnp][BLOCK_CONNECT]`, `BLOCK_AUTH_REPLY`, `[Archive][playback][BLOCK_SEEK]`, `[Events][clip][BLOCK_CLIP_OPEN_SD]`, `BLOCK_STOP reason=background`, `BLOCK_RESUME`; RealLogScanTest result XML counts; grep counts.
-result: pending
+result: partial — sweep passed (device-log test executed, 0 failures, forbidden paths 0, HTTP FAILED 0), both cameras LAN/HD-SD/archive/background ok; звук не подтверждён пользователем, клип -> «Открыть запись на SD» в существующий момент не выполнен (событие вне хранения SD, показано «Нет записи в это время»); gaps in 06-DEVICE-VERIFICATION.md
 
 ### H-R1. Release signer, debug removal and release install
 requirement: REL-01, REL-02 (plan 06-06)
