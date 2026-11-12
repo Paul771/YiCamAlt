@@ -21,6 +21,8 @@ app/src/main/jniLibs/
 auth_log.txt
 
 # SEC-03: vendor binaries, RE output, captures, local agent state
+# Scratchpad for device-verification evidence (pulled APKs, uids, screenshots): value-free only, never in Git
+.tmp/
 *.apk
 *.apks
 *.apkm
