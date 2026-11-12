@@ -1858,7 +1858,7 @@
       </required-evidence>
       <device-checks>
         <H-D1 requirement="REL-02 SEC-01" status="partial">Debug session with the diag log and RealLogScanTest (plan 06-05): LAN live both cameras, HD/SD, SD archive both, events clip + «Открыть запись на SD», Home and return; sweep tests=1 skipped=0 failures=0, forbidden paths 0, no HTTP FAILED line with an address</H-D1>
-        <H-R1 requirement="REL-01 REL-02" status="pending">Release signer, debug removal and release install: signerSame=false, install -r refused, after the user's «да» debug removed and release installed, versionName 1.0.0 versionCode 10000</H-R1>
+        <H-R1 requirement="REL-01 REL-02" status="passed">Release signer, debug removal and release install: signerSame=false, install -r refused, after the user's «да» debug removed and release installed, versionName 1.0.0 versionCode 10000</H-R1>
         <H-R2 requirement="REL-02 CAM-01 CAM-02 CAM-03" status="pending">Login by the user and the camera list: both cameras with name, model and online status</H-R2>
         <H-R3 requirement="REL-02 LIVE-01" status="pending">Live LAN «Спальня» (TNP): picture within 20 s, badge LAN, sound, HD/SD</H-R3>
         <H-R4 requirement="REL-02 LIVE-01" status="pending">Live LAN «YI Home Camera» (TUTK): picture within 20 s, badge LAN, sound, HD/SD</H-R4>

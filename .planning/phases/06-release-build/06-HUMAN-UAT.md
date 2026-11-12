@@ -63,7 +63,7 @@ requirement: REL-01, REL-02 (plan 06-06)
 steps: сравнить подпись релиза с установленной debug-сборкой; попробовать `adb install -r app-release.apk`; после ответа пользователя «да» удалить debug-сборку и поставить app-release.apk; `dumpsys package com.yicamalt`.
 expected: `signerSame=false`; `adb install -r` refused with INSTALL_FAILED_UPDATE_INCOMPATIBLE; after the user's «да» the debug app is removed and app-release.apk installed; versionName=1.0.0 versionCode=10000; the installed APK signer equals the built release APK.
 evidence: checker lines, install result code, dumpsys version lines.
-result: pending
+result: pass — signerSame=false перед установкой; `adb install -r` отказал с INSTALL_FAILED_UPDATE_INCOMPATIBLE (данные не тронуты); после «да» debug удалён (`adb uninstall` -> Success), release установлен, versionName=1.0.0 versionCode=10000; подпись установленного APK совпала с собранным release (signerSame=true, RESULT=PASS); run-as отказал («package not debuggable»); логин введён самим пользователем. Отклонение: установка выполнена пользователем с телефона из Загрузок (MIUI отменила установку по USB: INSTALL_FAILED_USER_RESTRICTED и для `adb install`, и для `pm install` из shell). Скриншоты в scratchpad (h-r1-launch — экран входа, h-r1-after-login).
 
 ### H-R2. Login by the user and the camera list
 requirement: REL-02, CAM-01, CAM-02, CAM-03
