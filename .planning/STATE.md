@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-06-PLAN.md (H-R1 pass; release 1.0.0 installed by the user from the phone)
-last_updated: "2026-11-12T18:56:23.132Z"
+stopped_at: "Paused mid 06-07-PLAN.md: H-R2..H-R8 done (H-R3 sound gap), H-R9 in progress («Повтор (3/5)» on YI Home Camera archive); H-R10..H-R12, H-R6/H-R7, H-R14 pending"
+last_updated: "2026-11-12T20:45:42.740Z"
 last_activity: 2026-11-12 -- Phase 06 execution started
 progress:
   total_phases: 6
@@ -180,6 +180,7 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-07: Phase 5 verification human_needed: 9/10 H-EV passed, H-EV7 not exercised, 0 failed; H-EV3 label «Все дни ▾» vs D-03 awaits the user
 - [Phase 05]: 05-07: MediaPlayer on TextureView kept (mp4/H.264 plays on MIUI), no Media3
 - [Phase 06]: 06-06: MIUI отменяет установку по USB (INSTALL_FAILED_USER_RESTRICTED для adb install, shell pm install и перетумблирования «Установка через USB»); release устанавливается пользователем с телефона из Загрузок, adb-пути не работают на этом Mi 9
+- [Phase 06]: 06-07: инжектированные тапы по ruler архива не доходят до seek-хендлера (0 BLOCK_SEEK; кнопки Пауза/Живой/звук/HD работают) — seek выполняет пользователь вручную; не дефект приложения
 
 ### Pending Todos
 
@@ -193,6 +194,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-12T18:56:23.126Z
-Stopped at: Completed 06-06-PLAN.md (H-R1 pass; release 1.0.0 installed by the user from the phone)
-Resume file: None
+Last session: 2026-11-12T20:45:42.624Z
+Stopped at: Paused mid 06-07-PLAN.md: H-R2..H-R8 done (H-R3 sound gap), H-R9 in progress («Повтор (3/5)» on YI Home Camera archive); H-R10..H-R12, H-R6/H-R7, H-R14 pending
+Resume file: .planning/phases/06-release-build/06-07-PROGRESS.md
