@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 05-07-PLAN.md (device verification recorded; phase 5 human_needed)
-last_updated: "2026-11-04T14:52:23.393Z"
-last_activity: 2026-11-04
+status: executing
+stopped_at: Completed 06-06-PLAN.md (H-R1 pass; release 1.0.0 installed by the user from the phone)
+last_updated: "2026-11-12T18:56:23.132Z"
+last_activity: 2026-11-12 -- Phase 06 execution started
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 62
-  completed_plans: 61
+  total_plans: 71
+  completed_plans: 68
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 5 — Лента событий
+**Current focus:** Phase 06 — release-build
 
 ## Current Position
 
-Phase: 6
-Plan: Not started
-Status: Verifying - 05-07 device verification recorded (H-EV 9 passed, H-EV7 not exercised, 0 failed; H-EV3 label vs D-03 awaits the user); phase 5 stays human_needed, not complete
-Last activity: 2026-11-04
+Phase: 06 (release-build) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 06
+Last activity: 2026-11-12 -- Phase 06 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -93,6 +93,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04 P12 | 25min | 2 tasks | 2 files |
 | Phase 04 P13 | ~1h | 3 tasks | 5 files |
 | Phase 05 P07 | device session + 20min | 3 tasks | 5 files |
+| Phase 06 P06 | 30 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -178,6 +179,7 @@ Recent decisions affecting current work:
 - [Phase 04]: 04-13: H-SD12 and H-SD14 partial (AuthFailed variant / natural end not reached on device); phase 4 stays human_needed
 - [Phase 05]: 05-07: Phase 5 verification human_needed: 9/10 H-EV passed, H-EV7 not exercised, 0 failed; H-EV3 label «Все дни ▾» vs D-03 awaits the user
 - [Phase 05]: 05-07: MediaPlayer on TextureView kept (mp4/H.264 plays on MIUI), no Media3
+- [Phase 06]: 06-06: MIUI отменяет установку по USB (INSTALL_FAILED_USER_RESTRICTED для adb install, shell pm install и перетумблирования «Установка через USB»); release устанавливается пользователем с телефона из Загрузок, adb-пути не работают на этом Mi 9
 
 ### Pending Todos
 
@@ -191,6 +193,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-04T10:38:59.968Z
-Stopped at: Completed 05-07-PLAN.md (device verification recorded; phase 5 human_needed)
+Last session: 2026-11-12T18:56:23.126Z
+Stopped at: Completed 06-06-PLAN.md (H-R1 pass; release 1.0.0 installed by the user from the phone)
 Resume file: None
