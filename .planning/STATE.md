@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: "Phase 6 completed (all 9 plans done). Next: audit milestone v1.0"
-last_updated: "2026-11-14T20:25:00.000Z"
-last_activity: 2026-11-14 -- Phase 6 completed (06-08 closed)
+status: ready_to_plan
+stopped_at: "Phase 7 added: Regression gap closure (TNP audio, TUTK SD archive, event SD smoothness). Ready to plan"
+last_updated: "2026-11-14T20:45:00.000Z"
+last_activity: 2026-11-14 -- Phase 7 added to milestone v1.0
 progress:
-  total_phases: 6
-  completed_phases: 5
+  total_phases: 7
+  completed_phases: 6
   total_plans: 71
   completed_plans: 69
   percent: 97
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 06 — release-build
+**Current focus:** Phase 07 — regression-fixes
 
 ## Current Position
 
-Phase: 06 (release-build) — COMPLETE
-Plan: 9 of 9
-Status: Phase 06 Complete
-Last activity: 2026-11-14 -- Phase 06 completed
+Phase: 07 (regression-fixes) — READY_TO_PLAN
+Plan: 0 of TBD
+Status: Planning Phase 07
+Last activity: 2026-11-14 -- Phase 07 added
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -196,5 +196,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-11-14T20:25:00.000Z
-Stopped at: Phase 6 completed (all 9 plans 06-00..06-08 done). Next: audit milestone v1.0
-Resume file: .planning/phases/06-release-build/06-08-SUMMARY.md
+Stopped at: Phase 7 added: Regression gap closure. Next: /gsd-plan-phase 7
+Resume file: .planning/v1.0-MILESTONE-AUDIT.md
