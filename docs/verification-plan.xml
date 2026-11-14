@@ -402,6 +402,7 @@
         <evidence-1>2026-10-10 plan 01-03: test-pre-commit.sh RESULT all 8 cases passed (exit 0)</evidence-1>
         <evidence-2>2026-10-11 plan 01-06: pre-commit --range 01-PHASE-BASE..HEAD exit 0 (covers commits of waves 1-2)</evidence-2>
         <evidence-3>2026-11-04 plan 06-00: keystore / signing-properties path rule and s4/s5 signing-password rules; test-pre-commit.sh RESULT all 13 cases passed (exit 0); installed hook equals the versioned hook</evidence-3>
+        <evidence-4>2026-11-14 plan 06-08: test-pre-commit.sh all 13 cases passed; pre-commit --range 06-PHASE-BASE..HEAD exit 0; git ls-files vendor / key patterns = 0</evidence-4>
       </gate-evidence>
       <autonomy-score commands="fast" scenarios="both" markers="observable" followup="present" rating="ready" />
     </V-M-REPO-HYGIENE>
@@ -440,6 +441,7 @@
       <gate-evidence>
         <evidence-1>2026-11-05 plan 06-02: full gate :app:testDebugUnitTest --rerun :app:assembleDebug :app:assembleRelease BUILD SUCCESSFUL (1102 tests, 0 failures, 1 skipped); check-release-apk.ps1 RESULT=PASS (verified v2 v3 signers=1, abis arm64-v8a armeabi-v7a, vendorLibs=8/8 otherLibs=0, versionName 1.0.0 versionCode 10000, debuggable=false), -CompareApk debug signerSame=false; missing signing file -> RELEASE_SIGNING_MISSING value-free, exit 1; assembleRelease --dry-run has no minifyReleaseWithR8</evidence-1>
         <evidence-2>2026-11-05 plan 06-03: clean-clone-build.ps1 RESULT=PASS on commit f75ec64 (trackedVendorFiles=0, build=OK, apkCheck=PASS, trackedChanged=0 untrackedNotIgnored=0, clone removed); git ls-files vendor / key patterns = 0; pre-commit --range over the phase exit 0; test-pre-commit.sh all 13 cases passed (06-RELEASE-BUILD.md)</evidence-2>
+        <evidence-3>2026-11-12..14 plan 06-06 / 06-07: H-R1 install on Xiaomi Mi 9: signerSame=false against debug, debug removed after user confirmation, release installed (versionName 1.0.0 versionCode 10000, signerSame=true RESULT=PASS, package not debuggable). Final regression H-R2..H-R14 executed (06-DEVICE-VERIFICATION.md).</evidence-3>
       </gate-evidence>
     </V-M-RELEASE-BUILD>
 
@@ -1772,7 +1774,11 @@
         <evidence-2>Pre-commit range scan over 02-PHASE-BASE..HEAD exits 0; hook self-test passes; no vendor binary tracked (see plan 02-12 Task 1 run)</evidence-2>
         <evidence-3>Device log redaction sweep (Phase 2): RealLogScanTest with -PredactionLogFile passes on the pulled diag_log.txt (+ .1) of the live-video session, executed not skipped (SEC-01); recorded in 02-DEVICE-VERIFICATION.md (pending, plan 02-12 Task 3)</evidence-3>
         <evidence-4>LIVE-01 / LIVE-02 / LIVE-03 mapped to PASS or FAIL in .planning/phases/02-p2p/02-DEVICE-VERIFICATION.md (pending)</evidence-4>
+        <evidence-5>2026-11 GSD Phase 6 release regression (06-DEVICE-VERIFICATION.md): LIVE-01 LAN both families verified (H-R3/H-R4, picture moves); LIVE-02 remote via hotspot verified (H-R6 Relay, H-R7 Relay); LIVE-03 codec verified (H-R5 H.264 hw Qualcomm; H.265 not exercised without camera); parallel use with official Yi Home verified (H-R11)</evidence-5>
       </required-evidence>
+      <notes>
+        <note-1>Open items: H.265 (not exercised, no camera), Wi-Fi to mobile data switch with logs (covered via hotspot only).</note-1>
+      </notes>
     </Gate-GSD-Phase-2>
 
     <Gate-GSD-Phase-3 PHASE="GSD 03-live-view (GRACE Phase-3 steps 3, 14, 15, 16)" STATUS="in-progress">
@@ -1786,9 +1792,11 @@
         <evidence-1>JVM suite + assembleDebug green; device gate pending H-L1..H-L9</evidence-1>
         <evidence-3>2026-10-23 plan 03-12 gate: :app:testDebugUnitTest :app:assembleDebug --rerun-tasks BUILD SUCCESSFUL (gradle exit=0) three consecutive times, each 53 suites, 686 tests, 0 failures, 1 skipped (RealLogScanTest without a log file); LiveSessionSupervisorTest 38, LiveViewModelTest 23, QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7, AdtsParserTest 13, AudioPipelineTest 12, AudioFrameQueueTest 5, SnapshotSaverTest 4, ZoomMathTest 6, VideoSizeTest 4, TnpCameraLinkTest 33, TutkCameraLinkTest 38, TutkShimContractTest 6, IoCtrlMessagesTest 6; redaction sweep (RedactionScannerTest 31 + the live / ui.live / p2p / AudioPipeline suites that assertClean, 307 tests) green</evidence-3>
         <evidence-2>Device checks H-L1..H-L9 recorded in .planning/phases/03-live-view/03-HUMAN-UAT.md (all pending; plan 03-13 on the phone). H-L3 and the TNP half of H-L4 need Phase 2 H1 first; H-L6 extends Phase 2 H6; H-L9 is the RealLogScanTest sweep on the pulled diag log (as Phase 2 H7)</evidence-2>
+        <evidence-4>2026-11 GSD Phase 6 release regression (06-DEVICE-VERIFICATION.md): LIVE-04 badge (LAN/Relay) verified; LIVE-07 relay-SD not exercised (kept HD on Relay); LIVE-10 parallel use and background/return verified (H-R11, H-R12); LIVE-11 15+ min continuous LAN viewing verified (H-R13); sound verified on TUTK (H-R4), TNP sound gap in H-R3</evidence-4>
       </required-evidence>
       <notes>
         <note-1>Nothing in this gate is device-verified yet. TNP behaviour (audio decrypt, 4881 in session, abilityRet) is JVM-only until Phase 2 H1 passes.</note-1>
+        <note-2>Open items: H-R3 TNP live sound gap (not audible on device), LIVE-07 relay-SD default (retained HD on Relay).</note-2>
       </notes>
     </Gate-GSD-Phase-3>
 
@@ -1803,10 +1811,12 @@
         <evidence-1>JVM gate: full unit suite + assembleDebug green (plan 04-08 run recorded in 04-08-SUMMARY.md)</evidence-1>
         <evidence-2>Device gate: H-SD1..H-SD10 in .planning/phases/04-sd-archive/04-HUMAN-UAT.md (plan 04-09 run 2026-10-31: H-SD6 passed, the other nine not exercised; see 04-DEVICE-VERIFICATION.md). SD-01..SD-04 need a camera with a microSD card that has recordings; H-SD6 is checkable on the TNP camera (no card, 04-PROBE.md)</evidence-2>
         <evidence-3>Gap closure 04-10..04-12 (device defects 1-4, W-1, W-2): JVM green (full suite 944 tests, 0 failures, 1 skipped); device re-check H-SD11..H-SD14 (plan 04-13)</evidence-3>
+        <evidence-4>2026-11 GSD Phase 6 release regression (06-DEVICE-VERIFICATION.md): H-R8 SD archive on TNP «Спальня» passed (day dialog, seek ±5 s, pause/continue/live); H-R9 SD archive on TUTK «YI Home Camera» failed («Не удалось получить список. Повторить»)</evidence-4>
       </required-evidence>
       <notes>
         <note-1>Nothing in this gate is device-verified yet beyond the 04-04 probe (TNP: 816 / 817 and 9031 / 9032 exchanges, no SD card; TUTK unreachable).</note-1>
         <note-2>2026-10-31 plan 04-09: only the no-card state (H-SD6) and the redaction sweep are device-verified; SD-01..SD-04 stay unverified until a camera with a microSD card that has recordings is available. Gate stays in-progress (phase human_needed).</note-2>
+        <note-3>Open items: H-R9 TUTK SD archive index list failure, calendar day selection without dots.</note-3>
       </notes>
     </Gate-GSD-Phase-4>
 
@@ -1821,6 +1831,7 @@
       <required-evidence>
         <evidence-1>JVM gate: full unit suite + assembleDebug green with --rerun (plan 05-06: 75 suites, 1089 tests, 0 failures, 1 skipped); ForbiddenEndpointsTest included</evidence-1>
         <evidence-2>Device gate: H-EV1..H-EV10 in .planning/phases/05-events-feed/05-HUMAN-UAT.md and 05-DEVICE-VERIFICATION.md (plan 05-07, Mi 9, 2026-11-04): 9 passed, H-EV7 not exercised (no event of a camera without SD), 0 failed; H-EV3 label «Все дни ▾» awaits the user's decision; H-EV4 and H-EV10 passed after fixes made in that session</evidence-2>
+        <evidence-3>2026-11 GSD Phase 6 release regression (06-DEVICE-VERIFICATION.md): H-R10 events feed on release passed (cards today/yesterday, camera chips, clip playback for both cameras, jump to SD archive; gap: slideshow playback 3-5s from events); H-EV7 not exercised (both cameras have SD)</evidence-3>
       </required-evidence>
       <device-checks>
         <H-EV1 requirement="EVT-01" status="passed">Tab «События» is third; events of all cameras with preview, camera name, time, grouped by day; count / newest time compared with Yi Home by eye</H-EV1>
@@ -1839,7 +1850,7 @@
       </notes>
     </Gate-GSD-Phase-5>
 
-    <Gate-GSD-Phase-6 PHASE="GSD 06-release-build (release build and final device regression)" STATUS="pending">
+    <Gate-GSD-Phase-6 PHASE="GSD 06-release-build (release build and final device regression)" STATUS="in-progress">
       <goal>Signed ARM release APK from a clean clone (REL-01); all v1 scenarios on the user's phone incl. remote and parallel use with the official app (REL-02); final redaction sweep of a real session.</goal>
       <commands>
         <command-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun :app:assembleDebug :app:assembleRelease</command-1>
@@ -1848,7 +1859,7 @@
         <command-4>sh tools/git-hooks/pre-commit --range $(cat .planning/phases/06-release-build/06-PHASE-BASE.txt)..HEAD</command-4>
         <command-5>sh tools/git-hooks/test-pre-commit.sh</command-5>
         <command-6>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogFile=&lt;scratchpad&gt;/diag-06.txt (device, debug session H-D1)</command-6>
-        <command-7>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogcatFile=&lt;scratchpad&gt;/logcat-release-N.txt (device, release logcat sweep H-R14; capture via adb logcat -d --uid=&lt;app uid&gt;)</command-7>
+        <command-7>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest --rerun --tests "com.yicamalt.test.RealLogScanTest" -PredactionLogcatFile=&lt;scratchpad&gt;/logcat-release.txt (device, release logcat sweep H-R14)</command-7>
       </commands>
       <required-evidence>
         <evidence-1>2026-11-05 plans 06-02 / 06-03 (06-RELEASE-BUILD.md): release APK signed v2/v3 with one signer, signerSame=false against the debug APK, ABIs arm64-v8a + armeabi-v7a only, vendorLibs=8/8 otherLibs=0, versionName 1.0.0 versionCode 10000, debuggable=false, no minifyReleaseWithR8, missing signing file -> RELEASE_SIGNING_MISSING value-free; checker RESULT=PASS</evidence-1>
@@ -1874,7 +1885,8 @@
         <H-R14 requirement="REL-02 SEC-01" status="failed">Release logcat sweep: grep [BLOCK_ = 0, RealLogScanTest -PredactionLogcatFile: 1 finding (regex:\b\d{10,}\b, tag iotc_sktaskmgr SELinux audit ioctl)</H-R14>
       </device-checks>
       <notes>
-        <note-1>Device checks added by plan 06-04 together with 06-HUMAN-UAT.md (same ids and titles).</note-1>
+        <note-1>2026-11-14: Plans 06-00..06-08 completed. REL-01 fully verified (signed release 1.0.0 built from clean clone).</note-1>
+        <note-2>Gate stays in-progress due to documented gaps: H-R3 (TNP live sound not audible), H-R9 (TUTK SD archive index list failed), H-R10 (slideshow playback in archive from events), H-R14 (SELinux audit log finding). Decision on closing milestone v1.0 with these gaps belongs to the user/milestone audit.</note-2>
       </notes>
     </Gate-GSD-Phase-6>
 
@@ -1895,6 +1907,9 @@
         <evidence-6>Trace-coverage check passes for every V-M-* entry</evidence-6>
         <evidence-7>Build produces signed APK/AAB</evidence-7>
       </required-evidence>
+      <notes>
+        <note-1>2026-11-14: evidence-7 signed APK met by GSD Phase 6 (release 1.0.0 signed APK, no AAB). Push notifications, onboarding, and UI polish remain open.</note-1>
+      </notes>
     </Gate-Phase-4>
   </PhaseGates>
 

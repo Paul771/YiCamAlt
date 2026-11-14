@@ -5,9 +5,9 @@
 ## 0. TL;DR
 
 - **Проект:** YiCamAlt — альтернативный Android-клиент камер Yi Home / Yi Dome без платной подписки (GRACE-планирование, Kotlin + Jetpack Compose).
-- **Фаза:** Phase-1 (Auth) — verified; Phase-2 (Camera Management) — in progress.
-- **Ближайшая задача (2026-09-29):** снять реальный запрос списка камер через эмулятор + mitmproxy с системным CA. Эндпоинт подписи найден зондом, но реальный endpoint домашнего списка камер не найден перебором.
-- **Если времени мало:** прочитать `docs/PROJECT_STATUS.md` (разделы 0 и 14), затем `docs/development-plan.xml` (Phase-2), затем `INSTRUCTIONS.md`.
+- **Статус:** GSD Фазы 1–6 реализованы; релизная сборка 1.0.0 (versionCode 10000) собрана, подписана и проверена на Xiaomi Mi 9 (H-R1..H-R14, 10 pass, 3 open gaps). Инструкция по сборке релиза: `docs/RELEASE.md`.
+- **Эмулятор:** не требуется (проверка выполняется на физическом устройстве по USB).
+- **Если времени мало:** прочитать `docs/PROJECT_STATUS.md` (разделы 0 и 14), затем `docs/RELEASE.md` и `.planning/phases/06-release-build/06-DEVICE-VERIFICATION.md`.
 
 ## 1. Получить репозиторий
 
@@ -127,7 +127,7 @@ git reset --hard origin/master
    ```powershell
    & "$env:JAVA_HOME\bin\java.exe" `
      -Djavax.net.ssl.trustStore="$env:USERPROFILE\Android\Sdk\cacerts.jks" `
-     -Djavax.net.ssl.trustStorePassword=changeit `
+     -Djavax.net.ssl.trustStorePassword="$TRUSTSTORE_PASS" `
      -Djavax.net.ssl.trustStoreType=JKS `
      -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <tasks>
    ```
@@ -135,7 +135,8 @@ git reset --hard origin/master
 4. **`adb` не в PATH.** Используйте полный путь: `$env:ANDROID_SDK_ROOT\platform-tools\adb.exe`.
 5. **Порт 8080 свободен** — иначе mitmproxy не стартует.
 6. **Python 3.11, не 3.13/3.14.** На 3.14 mitmproxy ломает TLS (`Recv failure: Connection was reset`).
-7. **Install the repo guard:** `powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-hooks.ps1` (blocks vendor binaries, captures and secret values from commits; SEC-03). Копирует `tools/git-hooks/pre-commit` в `.git/hooks/`, LFS-хуки не трогает. Самопроверка: `sh tools/git-hooks/test-pre-commit.sh` (8 строк `PASS`).
+7. **Install the repo guard:** `powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-hooks.ps1` (blocks vendor binaries, captures and secret values from commits; SEC-03). Копирует `tools/git-hooks/pre-commit` в `.git/hooks/`, LFS-хуки не трогает. Самопроверка: `sh tools/git-hooks/test-pre-commit.sh` (13 строк `PASS`).
+8. **Ключ подписи release:** на новой машине скопируйте из резервной копии оба файла (`yicamalt-release.p12` и `release-signing.properties`) в `%USERPROFILE%\.yicamalt\` (или укажите свой путь через Gradle-свойство `yicamaltSigningFile` в `%USERPROFILE%\.gradle\gradle.properties`); без ключа debug и тесты работают штатно, release-сборка падает с ошибкой `RELEASE_SIGNING_MISSING`. Подробнее: `docs/RELEASE.md`.
 
 ## 5. Куда писать результат
 

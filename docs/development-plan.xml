@@ -222,6 +222,7 @@
         <note-2>Release builds plant no Timber tree (YiCamAltApp): no diag_log and no app log lines; device log sweeps use the debug build, release uses a logcat capture (plan 06-04).</note-2>
         <note-3>Plan 06-02: release signing from the external properties file, version 1.0.0 / 10000, R8 off; check-release-apk.ps1 PASS (v2/v3, one signer, ARM ABIs only, vendor libs 8/8, not debuggable), signer differs from debug, missing key fails value-free before packaging.</note-3>
         <note-4>Plan 06-03: clean-clone-build.ps1 builds the signed release from a fresh clone in TEMP with only -PvendorApkDir, checks it, leaves no changed or untracked file and removes the clone; Gradle output of the clone is never printed.</note-4>
+        <note-5>Plan 06-06/06-07: release 1.0.0 installed on Xiaomi Mi 9; final regression H-R1..H-R14 executed (06-DEVICE-VERIFICATION.md); signer match and version 1.0.0 / 10000 confirmed on device.</note-5>
       </notes>
     </M-RELEASE-BUILD>
 
@@ -1709,6 +1710,7 @@
       <step-17 module="M-SD-ARCHIVE" status="implemented" verification="V-M-SD-ARCHIVE">SD card archive over the live session: status, index, timeline, seek / pause / live (GSD Phase 4)</step-17>
       <phase-note>2026-10-31: GSD Phase 4 (04-sd-archive) implemented, JVM-verified; device checks H-SD1..H-SD10 pending (04-HUMAN-UAT.md, plan 04-09). Plans 04-00..04-07, GRACE sync 04-08: new module M-SD-ARCHIVE (step 17, flow DF-SD-ARCHIVE); M-STREAM-CORE, M-TNP-LINK, M-TUTK-LINK, M-LIVE-SESSION, M-UI-LIVEVIEW, M-UI-LIVE-PROBE extended. Device probe 04-04: the TNP camera has no SD card, the TUTK camera was unreachable; SD-01..SD-04 need a microSD with recordings.</phase-note>
       <phase-note>2026-11-04: GSD Phase 5 (05-events-feed) implemented, JVM-verified; device checks H-EV1..H-EV10 pending (05-HUMAN-UAT.md, plan 05-07). Plans 05-00..05-05, GRACE sync 05-06: steps 4-6 rewritten and done (M-EVENT, M-EVENT-PLAYBACK, M-UI-EVENTS), step 7 superseded by the clip dialog; M-UI-LIVEVIEW (openAt), M-LOCAL-DB (schema v3), M-DEBUG-PROBE (AlertProbe), M-CAMERA-LIST (event wipe) extended; flows DF-EVENT-LIST, DF-PLAYBACK rewritten, DF-EVENT-SD-JUMP added. Device probe 05-PROBE.md: Gate CONTINUE.</phase-note>
+      <phase-note>2026-11-14: GSD Phase 6 (06-release-build) implemented; M-RELEASE-BUILD implemented (signed release 1.0.0, R8 off, external key, clean-clone check); final device regression H-R1..H-R14 + H-D1 (06-DEVICE-VERIFICATION.md): H-R1..2, 4..8, 10..13 passed, H-R3 (TNP live sound), H-R9 (TUTK SD archive list), H-R14 (SELinux audit finding) documented as gaps.</phase-note>
     </Phase-3>
 
     <Phase-4 name="Notifications &amp; Polish" status="pending">

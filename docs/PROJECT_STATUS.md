@@ -1,24 +1,39 @@
 # YiCamAlt — Текущее состояние проекта
 
-> Дата: 2026-10-31
+> Дата: 2026-11-14
 > Формат: Markdown-снимок состояния для быстрой ориентации.
 > Канонические GRACE-артефакты: `docs/*.xml` (requirements, technology, development-plan, verification-plan, knowledge-graph, operational-packets).
 
 ---
 
-## 0. Текущий фокус (2026-10-31)
+## 0. Текущий фокус (2026-11-14)
 
 План и статус передаются на другую машину **только через Git**. Точка входа для агента на новом компьютере: `HANDOFF.md` (bootstrap, список загрузок, проверки окружения) + этот файл.
 
 | Параметр | Значение |
 |---|---|
-| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 4 — ветка `gsd/phase-4-sd-archive` |
-| Текущий фокус | **GSD Phase 4 (04-sd-archive): implemented, device verification pending** — архив SD-карты на экране камеры реализован и проверен только на JVM (планы 04-00…04-07, GRACE-синхронизация 04-08); проверка на телефоне — план 04-09 по `04-HUMAN-UAT.md` (H-SD1…H-SD10, все pending) |
-| Планы GSD | `.planning/phases/04-sd-archive/` (текущая фаза); фаза 3 — `.planning/phases/03-live-view/` (`03-HUMAN-UAT.md`: 7 passed, 2 partial); фаза 2 — `.planning/phases/02-p2p/`; фаза 1 — `.planning/phases/01-secrets-camera-list/` |
-| Инструкция | `INSTRUCTIONS.md` — эмулятор, mitmproxy, CA, установка APK, диагностика |
-| Устройство | физический телефон Mi 9 по USB; эмулятор не нужен (VT-x выключен в BIOS, см. 0.2) |
-| Блокер | для проверки SD-01…SD-04 нужна камера с microSD-картой, на которой есть записи: в TNP-камере «Спальня» карты нет (tfstat=5), TUTK-камера на пробе 04-04 была недоступна |
-| Следующий шаг | вставить microSD в камеру и дать ей писать не меньше часа, затем план 04-09 на телефоне: H-SD1…H-SD10; H-SD6 («Нет SD-карты») можно проверить на TNP-камере уже сейчас |
+| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 6 — ветка `gsd/phase-6-release` |
+| Текущий статус | **GSD Phase 6 (06-release-build): implemented, regression verified with open caveats** — все v1-фичи реализованы; подписанный релизный APK 1.0.0 (versionCode 10000) собран из чистого клона (`tools/clean-clone-build.ps1`), проверен (`tools/check-release-apk.ps1`) и установлен на телефон Xiaomi Mi 9; финальная регрессия H-R1..H-R14 на устройстве выполнена (10 passed, 3 open gaps) |
+| Планы GSD | Фаза 6 — `.planning/phases/06-release-build/` (завершена); фаза 5 — `05-events-feed/`; фаза 4 — `04-sd-archive/`; фаза 3 — `03-live-view/`; фаза 2 — `02-p2p/`; фаза 1 — `01-secrets-camera-list/` |
+| Сборка релиза | Инструкция в `docs/RELEASE.md`. Ключ подписи хранится вне репозитория (в `%USERPROFILE%\.yicamalt\`), пароли в Git не попадают; резервная копия делается пользователем |
+| Устройство | Физический телефон Xiaomi Mi 9 по USB; эмулятор не нужен |
+| Открытые гэпы | 1) Звук в live на TNP «Спальня» (H-R3); 2) Индекс архива SD на TUTK «YI Home Camera» (H-R9); 3) Плавность SD-архива при переходе из событий (H-R10); 4) Выбор даты без точек в календаре архива (H-R8/9); 5) LIVE-07: SD по умолчанию на Relay (H-R6); 6) SELinux audit warning на ioctl в vendor TUTK thread (H-R14) |
+| Следующий шаг | Провести аудит верификации майлстоуна v1.0 (`/gsd:audit-milestone`) и принять решение по закрытию майлстоуна v1.0 с зафиксированными гэпами либо планированию точечных исправлений |
+
+### 0.9 GSD Phase 6: релизная сборка и финальная регрессия (2026-11-14)
+
+Подписанный релизный APK 1.0.0 (versionCode 10000, ARM64/ARMv7, R8 выключен по D-02) собирается одной командой:
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:assembleRelease`.
+Ключ PKCS#12 создаётся скриптом `tools/new-release-key.ps1` вне репозитория. Сборка валидируется чекером `tools/check-release-apk.ps1`
+(v2/v3 схемы подписи, один signer, 8/8 вендорских библиотек, versionCode 10000) и собирается из чистого клона в TEMP скриптом `tools/clean-clone-build.ps1`.
+Новый инструментальный модуль: **M-RELEASE-BUILD** (`tools/new-release-key.ps1`, `tools/check-release-apk.ps1`, `tools/clean-clone-build.ps1`, `docs/RELEASE.md`).
+
+Релизная сборка установлена на Xiaomi Mi 9 (H-R1). Проведена финальная регрессия v1-сценариев H-R2..H-R14:
+- Подтверждены: список камер (H-R2), live LAN TUTK со звуком (H-R4), аппаратные кодеки H.264 (H-R5), архив SD на TNP (H-R8), лента событий и клипы (H-R10), параллельный просмотр с официальным Yi Home (H-R11), фоновый режим и возврат (H-R12), 15+ минут непрерывного LAN-стрима (H-R13).
+- Удалённый просмотр проверен через мобильную точку доступа (hotspot): обе камеры («Спальня» TNP и «YI Home Camera» TUTK) успешно показывают видеопоток через Relay (H-R6, H-R7).
+- Logcat релизной сборки (7327 строк): 0 строк `[BLOCK_` (вызовы логирования отсутствуют); зафиксировано 1 системное предупреждение аудита SELinux на `ioctl` вендорной библиотеки TUTK (`iotc_sktaskmgr`).
+- Зафиксированы гэпы H-R3 (звук TNP), H-R9 (индекс архива TUTK) и косметика календаря/плавности.
+
 
 ### 0.8 GSD Phase 4: архив SD-карты (2026-10-31)
 
@@ -277,7 +292,7 @@ fb0332e  knowledge-graph sync
   `java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain <tasks>`
 - **AppLocker блокирует нативные `.exe` в user-writable путях** → только `C:\Windows` и `C:\Windows\Temp`; `C:\Program Files` не writable (нет админа).
 - **`C:\Windows\Temp` имеет жёсткие ACL** → ломает `toRealPath()` у javac; ACL нельзя менять.
-- **Axiom JDK `cacerts` неполный** → весь Java HTTPS требует кастомный truststore (Kaspersky MITM CA в `C:/Users/pvanyushkin/Android/Sdk/cacerts.jks`).
+- **Axiom JDK `cacerts` неполный** → весь Java HTTPS требует кастомный truststore (Kaspersky MITM CA в `$env:USERPROFILE/Android/Sdk/cacerts.jks`).
 - **Симлинки требуют админа; junction — нет** → junction для редиректа директорий.
 - **aapt2** должен физически лежать в `C:\Windows\Temp` (AppLocker) — берётся из Maven-артефакта AGP (Gradle cache), не из build-tools.
 - **HttpLoggingInterceptor** редактирует Authorization-заголовок в `██` (U+2588), не `<redacted>`.
@@ -285,16 +300,16 @@ fb0332e  knowledge-graph sync
 ### Рабочий вызов Gradle
 ```bash
 JAVA_HOME="C:/Program Files/Axiom/AxiomJDK-Pro-17-Full"
-java -Djavax.net.ssl.trustStore=C:/Users/pvanyushkin/Android/Sdk/cacerts.jks \
-     -Djavax.net.ssl.trustStorePassword=changeit \
+java -Djavax.net.ssl.trustStore=$USERPROFILE/Android/Sdk/cacerts.jks \
+     -Djavax.net.ssl.trustStorePassword="$TRUSTSTORE_PASS" \
      -Djavax.net.ssl.trustStoreType=JKS \
      -cp "gradle/wrapper/gradle-wrapper.jar" \
      org.gradle.wrapper.GradleWrapperMain <tasks>
 ```
-`GRADLE_USER_HOME=C:/Users/pvanyushkin/.gradle`
+`GRADLE_USER_HOME=$USERPROFILE/.gradle`
 
 ### SDK layout
-- Primary: `C:\Users\pvanyushkin\Android\Sdk` (platforms, platform-tools, cmdline-tools, licenses, cacerts.jks)
+- Primary: `%USERPROFILE%\Android\Sdk` (platforms, platform-tools, cmdline-tools, licenses, cacerts.jks)
 - `build-tools` junction → `C:\Windows\Temp\AndroidSdk\build-tools`
 - aapt2 junction: `C:\Windows\Temp\gradle\caches\transforms-3\...\aapt2-8.2.2-10154469-windows` → `C:\Windows\Temp\aapt2dir`
 
