@@ -201,10 +201,13 @@ Plans:
   3. При нажатии «Открыть запись на SD» из карточки события видеозапись воспроизводится плавно без слайд-шоу задержек в 3–5 секунд (H-R10 fix)
   4. Проверены косметические улучшения: дефолт SD на Relay (LIVE-07) и выбор дат в календаре SD
   5. Собрана обновлённая релизная сборка, проверена чекером, установлена на Mi 9; подтверждено исправление гэпов
-**Plans:** TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 07-00-PLAN.md — Исследование и фиксы гэпов (wave 1)
+- [ ] 07-01-PLAN.md — TNP Live Audio fix (AacDecoder AudioTrack routing/attributes, AudioPipeline decrypt verification, unit tests) (wave 1)
+- [ ] 07-02-PLAN.md — TUTK SD Archive Index & Calendar fix (792/793 exchange robustness, timeout, day picker date selection, unit tests) (wave 1)
+- [ ] 07-03-PLAN.md — Video FrameAssembler gap recovery & Event-to-SD smooth playback (resilient frame draining on packet drop, smooth openAt transition, Relay SD default, unit tests) (wave 2)
+- [ ] 07-04-PLAN.md — Version 1.0.1 bump, clean clone release build, check-release-apk, and device regression plan (H-R1..H-R14 re-check) (wave 3, checkpoint)
 
 ## Progress
 
@@ -219,4 +222,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
 | 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
-| 7. Устранение гэпов регрессии | 0/TBD | Planned | - |
+| 7. Устранение гэпов регрессии | 0/4 | Planned | - |

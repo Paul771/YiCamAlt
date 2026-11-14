@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: "Phase 7 added: Regression gap closure (TNP audio, TUTK SD archive, event SD smoothness). Ready to plan"
-last_updated: "2026-11-14T20:45:00.000Z"
-last_activity: 2026-11-14 -- Phase 7 added to milestone v1.0
+status: in_progress
+stopped_at: "Phase 7 planned: 4 executable plans created for regression gap closure (TNP audio, TUTK SD archive, event SD smoothness, release 1.0.1)"
+last_updated: "2026-11-14T21:05:00.000Z"
+last_activity: 2026-11-14 -- Phase 07 plans generated
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 71
-  completed_plans: 69
-  percent: 97
+  total_plans: 75
+  completed_plans: 71
+  percent: 95
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 
 ## Current Position
 
-Phase: 07 (regression-fixes) — READY_TO_PLAN
-Plan: 0 of TBD
-Status: Planning Phase 07
-Last activity: 2026-11-14 -- Phase 07 added
+Phase: 07 (regression-fixes) — READY_TO_EXECUTE
+Plan: 0 of 4
+Status: Plans generated (07-01..07-04)
+Last activity: 2026-11-14 -- Phase 07 planned (4 plans)
 
 Progress: [░░░░░░░░░░] 0%
 
