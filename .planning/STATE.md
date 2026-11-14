@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Paused mid 06-07-PLAN.md: H-R2..H-R8 done (H-R3 sound gap), H-R9 in progress («Повтор (3/5)» on YI Home Camera archive); H-R10..H-R12, H-R6/H-R7, H-R14 pending"
-last_updated: "2026-11-12T20:45:42.740Z"
-last_activity: 2026-11-12 -- Phase 06 execution started
+stopped_at: "Plan 06-07 completed (H-R2..H-R14 regression done); next: 06-08-PLAN.md"
+last_updated: "2026-11-14T19:58:00.000Z"
+last_activity: 2026-11-14 -- Plan 06-07 regression completed
 progress:
   total_phases: 6
   completed_phases: 4

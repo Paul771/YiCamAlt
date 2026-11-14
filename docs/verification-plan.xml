@@ -1853,25 +1853,25 @@
       <required-evidence>
         <evidence-1>2026-11-05 plans 06-02 / 06-03 (06-RELEASE-BUILD.md): release APK signed v2/v3 with one signer, signerSame=false against the debug APK, ABIs arm64-v8a + armeabi-v7a only, vendorLibs=8/8 otherLibs=0, versionName 1.0.0 versionCode 10000, debuggable=false, no minifyReleaseWithR8, missing signing file -> RELEASE_SIGNING_MISSING value-free; checker RESULT=PASS</evidence-1>
         <evidence-2>2026-11-05 plan 06-03: tools/clean-clone-build.ps1 RESULT=PASS on commit f75ec64 (trackedVendorFiles=0, build=OK, apkCheck=PASS, trackedChanged=0 untrackedNotIgnored=0, clone removed). Clean clone re-run for the installed APK: commit 664db41 RESULT=PASS (plan 06-04; full gate 1103 tests, 0 failures, 2 skipped; checker RESULT=PASS signerSame=false)</evidence-2>
-        <evidence-3>pending: device regression H-R1..H-R13</evidence-3>
-        <evidence-4>H-D1 partial (sweep passed over a real two-camera debug session: device-log test executed, 0 failures, forbidden paths 0, HTTP FAILED 0); pending: H-R14</evidence-4>
+        <evidence-3>device regression H-R1..H-R14 in 06-DEVICE-VERIFICATION.md: H-R1, H-R2, H-R4, H-R5, H-R6, H-R7, H-R8, H-R10, H-R11, H-R12, H-R13 passed; H-R3 failed (TNP sound gap); H-R9 failed (TUTK archive list); H-R14 failed (1 SELinux audit finding)</evidence-3>
+        <evidence-4>H-D1 partial (sweep passed over a real two-camera debug session: device-log test executed, 0 failures, forbidden paths 0, HTTP FAILED 0); H-R14 release logcat 0 [BLOCK_ lines, 1 finding</evidence-4>
       </required-evidence>
       <device-checks>
         <H-D1 requirement="REL-02 SEC-01" status="partial">Debug session with the diag log and RealLogScanTest (plan 06-05): LAN live both cameras, HD/SD, SD archive both, events clip + «Открыть запись на SD», Home and return; sweep tests=1 skipped=0 failures=0, forbidden paths 0, no HTTP FAILED line with an address</H-D1>
         <H-R1 requirement="REL-01 REL-02" status="passed">Release signer, debug removal and release install: signerSame=false, install -r refused, after the user's «да» debug removed and release installed, versionName 1.0.0 versionCode 10000</H-R1>
-        <H-R2 requirement="REL-02 CAM-01 CAM-02 CAM-03" status="pending">Login by the user and the camera list: both cameras with name, model and online status</H-R2>
-        <H-R3 requirement="REL-02 LIVE-01" status="pending">Live LAN «Спальня» (TNP): picture within 20 s, badge LAN, sound, HD/SD</H-R3>
-        <H-R4 requirement="REL-02 LIVE-01" status="pending">Live LAN «YI Home Camera» (TUTK): picture within 20 s, badge LAN, sound, HD/SD</H-R4>
-        <H-R5 requirement="REL-02 LIVE-03" status="pending">Codec and decoder (probe screen): codec= and decoder= hw per camera; H.265 only if a camera sends it, else «H.265: не проверено»</H-R5>
-        <H-R6 requirement="REL-02 LIVE-02 LIVE-04 LIVE-07" status="pending">Remote «Спальня» via the hotspot (badge, LIVE-07): P2P or Relay, never LAN; Relay -> SD right after connect; «Только relay» probe mode or verbatim error</H-R6>
-        <H-R7 requirement="REL-02 LIVE-02" status="pending">Remote «YI Home Camera» via the hotspot: P2P or Relay; same failure as 06-REMOTE-PRECHECK = known limitation (TUTK remote without relay), not a new defect</H-R7>
-        <H-R8 requirement="REL-02 SD-01 SD-03 SD-04" status="pending">SD archive «Спальня»: day dialog, timeline, seek within ~5 s of «Запись HH:mm:ss», pause / «Продолжить» / «Живой» without reconnect</H-R8>
-        <H-R9 requirement="REL-02 SD-01 SD-03 SD-04" status="pending">SD archive «YI Home Camera»: as H-R8</H-R9>
-        <H-R10 requirement="REL-02 EVT-01 EVT-03 EVT-04" status="pending">Events feed: previews, camera chips, clip plays, «Открыть запись на SD» opens the archive at the event moment</H-R10>
-        <H-R11 requirement="REL-02 LIVE-10" status="pending">Parallel use with the official Yi Home: both show video 2 min, no «Камера занята» / «Сессию закрыла камера», ours keeps playing after Yi Home closes; both cameras</H-R11>
-        <H-R12 requirement="REL-02 LIVE-10" status="pending">Background and return: Home and back within 5 min resumes; lock > 5 min -> «Не подключено», «Подключить» works</H-R12>
-        <H-R13 requirement="REL-02 LIVE-11" status="pending">15+ minutes of continuous LAN viewing: screenshots 0 / 5 / 10 / 15 min, overlay moves, no stop or reconnect</H-R13>
-        <H-R14 requirement="REL-02 SEC-01" status="pending">Release logcat sweep: grep [BLOCK_ = 0, RealLogScanTest -PredactionLogcatFile logcat test passed (or skipped as empty, recorded), findings by rule name only</H-R14>
+        <H-R2 requirement="REL-02 CAM-01 CAM-02 CAM-03" status="passed">Login by the user and the camera list: both cameras with name, model and online status</H-R2>
+        <H-R3 requirement="REL-02 LIVE-01" status="failed">Live LAN «Спальня» (TNP): picture within 20 s, badge LAN, sound gap (not heard), HD/SD</H-R3>
+        <H-R4 requirement="REL-02 LIVE-01" status="passed">Live LAN «YI Home Camera» (TUTK): picture within 20 s, badge LAN, sound heard, HD/SD</H-R4>
+        <H-R5 requirement="REL-02 LIVE-03" status="passed">Codec and decoder (probe screen): codec=H264 decoder=hw per camera; H.265: не проверено, нет камеры с H.265; аппаратный HEVC-декодер на телефоне есть</H-R5>
+        <H-R6 requirement="REL-02 LIVE-02 LIVE-04 LIVE-07" status="passed">Remote «Спальня» via the hotspot (badge, LIVE-07): Relay badge, quality HD (LIVE-07 relay-SD not exercised / remained HD)</H-R6>
+        <H-R7 requirement="REL-02 LIVE-02" status="passed">Remote «YI Home Camera» via the hotspot: Relay badge, video moves</H-R7>
+        <H-R8 requirement="REL-02 SD-01 SD-03 SD-04" status="passed">SD archive «Спальня»: day dialog, timeline, seek within ~5 s of «Запись HH:mm:ss», pause / «Продолжить» / «Живой» without reconnect</H-R8>
+        <H-R9 requirement="REL-02 SD-01 SD-03 SD-04" status="failed">SD archive «YI Home Camera»: «Не удалось получить список. Повторить» (P2P index list failed)</H-R9>
+        <H-R10 requirement="REL-02 EVT-01 EVT-03 EVT-04" status="passed">Events feed: previews, camera chips, clip plays, «Открыть запись на SD» opens the archive at the event moment; gap: slideshow playback from events</H-R10>
+        <H-R11 requirement="REL-02 LIVE-10" status="passed">Parallel use with the official Yi Home: both show video 2 min, no «Камера занята» / «Сессию закрыла камера», ours keeps playing after Yi Home closes; both cameras</H-R11>
+        <H-R12 requirement="REL-02 LIVE-10" status="passed">Background and return: Home and back within 5 min resumes; lock > 5 min -> «Не подключено», «Подключить» works</H-R12>
+        <H-R13 requirement="REL-02 LIVE-11" status="passed">15+ minutes of continuous LAN viewing: screenshots 0 / 5 / 10 / 15 min, overlay moves, no stop or reconnect</H-R13>
+        <H-R14 requirement="REL-02 SEC-01" status="failed">Release logcat sweep: grep [BLOCK_ = 0, RealLogScanTest -PredactionLogcatFile: 1 finding (regex:\b\d{10,}\b, tag iotc_sktaskmgr SELinux audit ioctl)</H-R14>
       </device-checks>
       <notes>
         <note-1>Device checks added by plan 06-04 together with 06-HUMAN-UAT.md (same ids and titles).</note-1>
