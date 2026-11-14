@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinator.kt
-// VERSION: 0.5.0
+// VERSION: 0.5.1
 // START_MODULE_CONTRACT
 //   PURPOSE: One screen state for the SD archive under the live view: card status, recorded days, the selected day's
 //     timeline and playback (SD-01..SD-05; D-01, D-02, D-04..D-07). Live video keeps running under every state.
@@ -61,7 +61,8 @@ import java.util.Locale
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.0 - GSD plan 05-05: openAt(targetMs) - one-shot jump to an event moment. Queued until the
+//   LAST_CHANGE: v0.5.1 - GSD plan 07-02: allow selecting any past day up to today (gate is day.isAfter(today)).
+//   PREVIOUS: v0.5.0 - GSD plan 05-05: openAt(targetMs) - one-shot jump to an event moment. Queued until the
 //     index is known (resolved after every load and on the call): today / recorded day -> selectDay + seek(target +
 //     EVENT_SD_PREROLL_MS = 0) outside the lock via seekNow (seek's refresh-first rules apply); other day -> hint «Нет
 //     записи в это время» in Live, today's panel kept; NO_CARD / CARD_ERROR -> dropped; LIST_FAILED -> kept for a
@@ -325,7 +326,7 @@ class ArchiveCoordinator(
         synchronized(lock) {
             if (!active()) return
             cancelOpenAt()
-            if (day != today() && day !in recordedDays) return
+            if (day.isAfter(today())) return
             selectedDay = day
             refreshDayPanel()
             publish()

@@ -1,5 +1,5 @@
 // FILE: ArchivePanel.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Archive part of the camera screen under the video (SD-01..SD-05; D-01, D-02, D-03, D-07): day button,
 //     pause / continue and «Живой» buttons, the timeline ruler or the D-07 state text, and the day dialog.
@@ -62,7 +62,8 @@ import java.time.ZoneId
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 05-04: day picker overload reused by the events tab (D-03); the ArchiveUi version
+//   LAST_CHANGE: v0.3.1 - GSD plan 07-02: verified all past days up to today are clickable via CalendarGrid enablement.
+//   PREV_CHANGE: v0.3.0 - GSD plan 05-04: day picker overload reused by the events tab (D-03); the ArchiveUi version
 //     delegates with (today, selectedDay, recordedDays), no visual or behaviour change for the archive.
 //   PREV_CHANGE: v0.2.0 - GSD plan 04-11: ruler follows ui.rulerMs (live wall time / archive position); IDLE empty
 //     state, spinner only for LOADING.

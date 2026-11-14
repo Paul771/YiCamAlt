@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinatorTest.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive screen state (SD-01..SD-05; D-01, D-02, D-04..D-07) in virtual time.
 //   SCOPE: IDLE before the first Live, spinner only while a fetch is in flight on a healthy link, D-07 status / list states with retry, day selection and labels, days
@@ -64,7 +64,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 05-05: BLOCK_OPEN_AT_TESTS - openAt queued until the first full load, at once
+//   LAST_CHANGE: v0.5.1 - GSD plan 07-02: updated selectDay tests to verify all past days are selectable and future days ignored.
+//   PREVIOUS: v0.4.0 - GSD plan 05-05: BLOCK_OPEN_AT_TESTS - openAt queued until the first full load, at once
 //     after it, today via seek's refresh-first path, past day without recordings (hint), no card (dropped), list
 //     failed (kept until a successful retry), hidden, user cancel (seek / selectDay / goLive), at most once, preroll 0.
 //   PREVIOUS: v0.3.0 - GSD plan 04-12 (W-1): BLOCK_REFRESH_TESTS (epoch / periodic refresh, unhealthy / past
@@ -359,17 +360,31 @@ class ArchiveCoordinatorTest {
 
     // START_BLOCK_DAY_TESTS
     @Test
-    fun `selectDay labels and ignores days without recordings`() = runTest {
+    fun `selectDay labels any past day and ignores future days`() = runTest {
         val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG, OLD_SEG)))
         r.coord.selectDay(LocalDate.of(2026, 10, 29))
         assertEquals("Вчера ▾", r.ui.dayLabel)
         assertEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay)
         assertEquals(listOf(Segment(utc("2026-10-29T10:00:00Z"), utc("2026-10-29T11:00:00Z"))), r.ui.segments)
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+
+        // Past day with recordings
         r.coord.selectDay(LocalDate.of(2026, 10, 28))
         assertEquals("28 октября ▾", r.ui.dayLabel)
-        val before = r.ui
+        assertEquals(ArchivePanel.TIMELINE, r.ui.panel)
+
+        // Past day WITHOUT recordings: now enabled and selectable!
         r.coord.selectDay(LocalDate.of(2026, 10, 20))
-        assertEquals(before, r.ui)
+        assertEquals("20 октября ▾", r.ui.dayLabel)
+        assertEquals(LocalDate.of(2026, 10, 20), r.ui.selectedDay)
+        assertEquals(emptyList<Segment>(), r.ui.segments)
+        assertEquals(ArchivePanel.NO_RECORDINGS, r.ui.panel)
+
+        // Future day: ignored
+        val future = today.plusDays(1)
+        r.coord.selectDay(future)
+        assertEquals(LocalDate.of(2026, 10, 20), r.ui.selectedDay)
+
         r.coord.selectDay(today)
         assertEquals("Сегодня ▾", r.ui.dayLabel)
         r.coord.close()

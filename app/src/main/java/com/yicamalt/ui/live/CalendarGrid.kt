@@ -1,8 +1,8 @@
 // FILE: CalendarGrid.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
-//   PURPOSE: Pure month grid for the archive day dialog (SD-02, D-02): recorded days marked and tappable, other days
-//     disabled, today always tappable so the user can come back to the default day.
+//   PURPOSE: Pure month grid for the archive day dialog (SD-02, D-02): recorded days marked with a dot, all days
+//     up to today enabled and tappable, future days disabled.
 //   SCOPE: 42-cell Monday-first month, contiguous navigable month range (earliest recorded month .. latest of
 //     recorded / today), Russian month title and weekday headers.
 //   DEPENDS: java.time
@@ -23,7 +23,8 @@ import java.util.Locale
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - GSD plan 05-04: month(selected) is nullable (events tab with no day selected highlights
+//   LAST_CHANGE: v0.1.2 - GSD plan 07-02: allow selecting any past day up to today (enabled = !date.isAfter(today)).
+//   PREV_CHANGE: v0.1.1 - GSD plan 05-04: month(selected) is nullable (events tab with no day selected highlights
 //     no cell); archive callers unchanged.
 //   PREV_CHANGE: v0.1.0 - GSD plan 04-07 GREEN: month grid. enabled = recorded || today.
 //   PREVIOUS: v0.0.1 - GSD plan 04-07 RED: signatures only.
@@ -52,7 +53,7 @@ object CalendarGrid {
         for (d in 1..month.lengthOfMonth()) {
             val date = month.atDay(d)
             val marked = date in recorded
-            out += DayCell(date, enabled = marked || date == today, marked = marked, isToday = date == today, selected = date == selected)
+            out += DayCell(date, enabled = !date.isAfter(today), marked = marked, isToday = date == today, selected = date == selected)
         }
         while (out.size < CELLS) out += EMPTY
         return out

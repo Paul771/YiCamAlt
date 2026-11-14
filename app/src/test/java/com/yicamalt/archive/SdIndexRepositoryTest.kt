@@ -1,5 +1,5 @@
 // FILE: SdIndexRepositoryTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for SD status and index fetch over ArchiveLinkPort.
 //   SCOPE: 816 / 817 status incl. timeout and refused send; TNP 9031 / 9032 index (ok, empty, malformed, timeout,
@@ -38,7 +38,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-03: research Pattern 3 / 6 fetch rules and D-07 error results.
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-02: add test for TUTK page exceeding 1024 bytes (SD-01).
+//   PREVIOUS: v0.1.0 - GSD plan 04-03: research Pattern 3 / 6 fetch rules and D-07 error results.
 // END_CHANGE_SUMMARY
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -218,6 +219,26 @@ class SdIndexRepositoryTest {
     fun `TUTK send refused is NotReady`() = runTest {
         val port = tutkPort().apply { sendResult = false }
         assertEquals(IndexResult.NotReady, repo(port).fetchIndex(now))
+    }
+
+    @Test
+    fun `TUTK large page exceeding 1024 bytes is parsed and accumulated`() = runTest {
+        val largeEntries = (0 until 100).map { i ->
+            val min = (i % 60).toString().padStart(2, '0')
+            val hour = ((i / 60) % 24).toString().padStart(2, '0')
+            t("2026-10-30T${hour}:${min}:00Z") to 30
+        }
+        val port = tutkPort()
+        port.onSend = { type, _ ->
+            if (type == 792) {
+                val pageData = SdFixtures.tutkPage(100, 0, true, largeEntries)
+                assertTrue(pageData.size > 1024, "page size was ${pageData.size}")
+                port.reply(793, pageData)
+            }
+        }
+        val result = repo(port).fetchIndex(now)
+        assertTrue(result is IndexResult.Ok, "$result")
+        assertEquals(100, (result as IndexResult.Ok).segments.size)
     }
     // END_BLOCK_TUTK_INDEX_TESTS
 

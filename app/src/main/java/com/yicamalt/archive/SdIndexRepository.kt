@@ -1,5 +1,5 @@
 // FILE: SdIndexRepository.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Fetch the SD card status (816 / 817) and the recording index (9031 / 9032 TNP, 792 / 793 TUTK) over
 //            ArchiveLinkPort as typed results.
@@ -27,7 +27,8 @@ import java.time.ZoneId
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-03: research Patterns 3 / 6.
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-02: log warning on malformed 793 index page for diagnostics (SD-01).
+//   PREVIOUS: v0.1.0 - GSD plan 04-03: research Patterns 3 / 6.
 // END_CHANGE_SUMMARY
 
 class SdIndexRepository(
@@ -94,6 +95,7 @@ class SdIndexRepository(
                     val page = SdArchiveCodec.parseTutkIndexPage(reply.payload)
                     if (page == null) {
                         rejected++
+                        Timber.w("[Archive][index] malformed 793 page bytes=%d", reply.payload.size)
                         continue
                     }
                     pages++

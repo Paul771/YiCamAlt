@@ -1,5 +1,5 @@
 // FILE: TutkCameraLink.kt
-// VERSION: 0.4.0
+// VERSION: 0.4.1
 // START_MODULE_CONTRACT
 //   PURPOSE: One TUTK IOTC/AV session per camera behind the shared CameraLink port, vendor call order.
 //   SCOPE: TutkCameraLink (IOTC_Get_SessionID -> IOTC_Connect_ByUID_Parallel with the cloud uid -> Session_Check
@@ -68,7 +68,7 @@ import javax.inject.Singleton
 //   TutkCameraLink.Timeouts - connectMs 30000, firstFrameMs 20000, clientStartS 15, noDataSleepMs 30,
 //     maxNoDataPolls 300, joinMs 2000, pollMs 20, ioJoinMarginMs 200, audioNoDataSleepMs 120, ioCtrlPollMs 50,
 //     txPollMs 50.
-//   TutkCameraLink.AUDIO_BUF_SIZE / IOCTRL_BUF_SIZE / FRAME_INFO_SIZE - 1024, 1024, 24.
+//   TutkCameraLink.AUDIO_BUF_SIZE / IOCTRL_BUF_SIZE / FRAME_INFO_SIZE - 1024, 8192, 24.
 //   TutkCameraLink.AUDIO_END_CODES / IOCTRL_END_CODES - codes that end only the audio / IOCTRL loops.
 //   TutkCameraLink.modeOf - vendor Session_Check mode 0 P2P, 1 RELAY, 2 LAN, else UNKNOWN.
 //   TutkCameraLink.AV_CHANNEL / FRAME_BUF_SIZE / LARGE_FRAME_BUF_SIZE / NONCE_LEN / PLAIN_USER - 0, 300000, 1000000,
@@ -78,7 +78,9 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 04-02: generic IOCTRL send via tx after the start command, non-4882 replies on
+//   LAST_CHANGE: v0.4.1 - GSD plan 07-02: expand IOCTRL_BUF_SIZE from 1024 to 8192 bytes so large 793 index pages
+//     with many entries are not truncated (SD-01, H-R9).
+//   PREVIOUS: v0.4.0 - GSD plan 04-02: generic IOCTRL send via tx after the start command, non-4882 replies on
 //     ioCtrlReplies (793 pages, 817), one link-wide useCount (start 1, then 2, 3, ... for requestResolution and
 //     nextUseCount), StreamMode: -20012 limit only in LIVE (vendor stops its reader during pause); outside LIVE the
 //     supervisor's mode-aware stall watchdog (04-06) is the only no-data limit.
@@ -840,7 +842,7 @@ internal class TutkCameraLink(
         )
 
         const val AUDIO_BUF_SIZE = 1024
-        const val IOCTRL_BUF_SIZE = 1024
+        const val IOCTRL_BUF_SIZE = 8192
         const val FRAME_INFO_SIZE = 24
         private val IO_THREADS = listOf("rx", "rxa", "rxc", "tx")
 

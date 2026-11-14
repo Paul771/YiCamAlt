@@ -1,5 +1,5 @@
 // FILE: CalendarGridTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the archive day dialog month grid (SD-02, D-02).
 //   SCOPE: 42-cell Monday-first grid, enabled / marked / today / selected flags, navigable months, Russian texts.
@@ -23,7 +23,8 @@ import java.time.YearMonth
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-07: calendar grid vectors.
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-02: updated tests to assert all past days up to today are enabled and future days disabled.
+//   PREVIOUS: v0.1.0 - GSD plan 04-07: calendar grid vectors.
 // END_CHANGE_SUMMARY
 
 class CalendarGridTest {
@@ -46,15 +47,18 @@ class CalendarGridTest {
     }
 
     @Test
-    fun `recorded days are marked and enabled, others disabled`() {
+    fun `recorded days are marked, past days are enabled, future days disabled`() {
         val rec = LocalDate.of(2026, 10, 28)
         val cells = CalendarGrid.month(october, today, setOf(rec), today)
         val recorded = cellOf(cells, rec)
         assertTrue(recorded.marked)
         assertTrue(recorded.enabled)
-        val empty = cellOf(cells, LocalDate.of(2026, 10, 27))
-        assertFalse(empty.marked)
-        assertFalse(empty.enabled)
+        val pastEmpty = cellOf(cells, LocalDate.of(2026, 10, 27))
+        assertFalse(pastEmpty.marked)
+        assertTrue(pastEmpty.enabled)
+        val future = cellOf(cells, LocalDate.of(2026, 10, 31))
+        assertFalse(future.marked)
+        assertFalse(future.enabled)
     }
 
     @Test
