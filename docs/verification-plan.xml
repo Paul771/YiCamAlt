@@ -1890,6 +1890,22 @@
       </notes>
     </Gate-GSD-Phase-6>
 
+    <Gate-GSD-Phase-7 PHASE="GSD 07-regression-fixes (TNP audio, TUTK SD index, smooth playback, release 1.0.1)" STATUS="in-progress">
+      <goal>Resolve the 3 functional gaps (LIVE-06, SD-01, EVT-04) and minor caveats (LIVE-07, calendar) from v1.0 regression audit; produce signed release APK 1.0.1 from a clean clone and verify on Xiaomi Mi 9 device.</goal>
+      <commands>
+        <command-1>powershell -NoProfile -ExecutionPolicy Bypass -File tools/clean-clone-build.ps1</command-1>
+        <command-2>powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-release-apk.ps1</command-2>
+        <command-3>powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest</command-3>
+        <command-4>sh tools/git-hooks/pre-commit --range $(cat .planning/phases/07-regression-fixes/07-PHASE-BASE.txt)..HEAD</command-4>
+      </commands>
+      <required-evidence>
+        <evidence-1>Plan 07-01: AacDecoder AudioAttributes.CONTENT_TYPE_MUSIC + writePcm tracking fixes LIVE-06 (H-R3); AudioPipeline verified; unit tests pass</evidence-1>
+        <evidence-2>Plan 07-02: TutkCameraLink IOCTRL_BUF_SIZE = 8192 B fixes SD-01 (H-R9); CalendarGrid and ArchiveCoordinator enable any day &lt;= today; unit tests pass</evidence-2>
+        <evidence-3>Plan 07-03: FrameAssembler GAP_TOLERANCE = 3 fast-forward + PlaybackController resetPipeline() on seek fixes EVT-04 (H-R10); QualityController enforces SD on Relay (LIVE-07); unit tests pass</evidence-3>
+        <evidence-4>Plan 07-04: Clean-clone release build produces signed release APK 1.0.1 (versionCode 10001); tools/check-release-apk.ps1 RESULT=PASS; on-device regression verified</evidence-4>
+      </required-evidence>
+    </Gate-GSD-Phase-7>
+
     <Gate-Phase-4 PHASE="Phase-4">
       <goal>All features polished, push notifications working, UX complete, ready for release build.</goal>
       <commands>

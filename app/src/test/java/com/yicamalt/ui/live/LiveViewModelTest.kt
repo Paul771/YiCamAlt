@@ -90,7 +90,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 05-05: openAt queued right after open fires once after the archive load; hidden
+//   LAST_CHANGE: v0.3.1 - GSD plan 07-04: update day actions test to verify future days are ignored and past days selectable.
+//   PREVIOUS: v0.3.0 - GSD plan 05-05: openAt queued right after open fires once after the archive load; hidden
 //     archive -> Toast «Архив SD на этой камере недоступен».
 //   PREVIOUS: v0.2.1 - GSD plan 04-11: the archive state starts IDLE (no spinner before a fetch).
 //   EARLIER: v0.2.0 - GSD plan 04-06: archive state, forced mute, quality hidden in archive, background marker
@@ -766,7 +767,13 @@ class LiveViewModelTest {
         assertTrue(v.archive.value.daysDialogOpen)
         v.archiveCloseDays()
         assertFalse(v.archive.value.daysDialogOpen)
+        // Future day is ignored
+        v.archiveSelectDay(LocalDate.of(2026, 11, 1))
+        assertEquals(LocalDate.of(2026, 10, 30), v.archive.value.selectedDay)
+        // Past day is selectable
         v.archiveSelectDay(LocalDate.of(2026, 10, 1))
+        assertEquals(LocalDate.of(2026, 10, 1), v.archive.value.selectedDay)
+        v.archiveSelectDay(LocalDate.of(2026, 10, 30))
         assertEquals(LocalDate.of(2026, 10, 30), v.archive.value.selectedDay)
         v.archiveRetry()
         runCurrent()

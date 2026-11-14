@@ -12,13 +12,23 @@
 
 | Параметр | Значение |
 |---|---|
-| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 6 — ветка `gsd/phase-6-release` |
-| Текущий статус | **GSD Phase 6 (06-release-build): implemented, regression verified with open caveats** — все v1-фичи реализованы; подписанный релизный APK 1.0.0 (versionCode 10000) собран из чистого клона (`tools/clean-clone-build.ps1`), проверен (`tools/check-release-apk.ps1`) и установлен на телефон Xiaomi Mi 9; финальная регрессия H-R1..H-R14 на устройстве выполнена (10 passed, 3 open gaps) |
-| Планы GSD | Фаза 6 — `.planning/phases/06-release-build/` (завершена); фаза 5 — `05-events-feed/`; фаза 4 — `04-sd-archive/`; фаза 3 — `03-live-view/`; фаза 2 — `02-p2p/`; фаза 1 — `01-secrets-camera-list/` |
+| Репозиторий | `https://github.com/Paul771/YiCamAlt`, ветка `master`, Git LFS для `_apk/`; работа фазы 7 — ветка `gsd/phase-7-fixes` |
+| Текущий статус | **GSD Phase 7 (07-regression-fixes): implemented, ready for release build 1.0.1 & device verification** — устранены все 3 функциональных гэпа (H-R3 звук TNP, H-R9 индекс архива TUTK, H-R10 плавность архива из событий), разрешён выбор дат в календаре, проверен дефолт SD на Relay; versionCode 10001, versionName 1.0.1 |
+| Планы GSD | Фаза 7 — `.planning/phases/07-regression-fixes/`; фаза 6 — `06-release-build/`; фаза 5 — `05-events-feed/`; фаза 4 — `04-sd-archive/`; фаза 3 — `03-live-view/`; фаза 2 — `02-p2p/`; фаза 1 — `01-secrets-camera-list/` |
 | Сборка релиза | Инструкция в `docs/RELEASE.md`. Ключ подписи хранится вне репозитория (в `%USERPROFILE%\.yicamalt\`), пароли в Git не попадают; резервная копия делается пользователем |
 | Устройство | Физический телефон Xiaomi Mi 9 по USB; эмулятор не нужен |
-| Открытые гэпы | 1) Звук в live на TNP «Спальня» (H-R3); 2) Индекс архива SD на TUTK «YI Home Camera» (H-R9); 3) Плавность SD-архива при переходе из событий (H-R10); 4) Выбор даты без точек в календаре архива (H-R8/9); 5) LIVE-07: SD по умолчанию на Relay (H-R6); 6) SELinux audit warning на ioctl в vendor TUTK thread (H-R14) |
-| Следующий шаг | Провести аудит верификации майлстоуна v1.0 (`/gsd:audit-milestone`) и принять решение по закрытию майлстоуна v1.0 с зафиксированными гэпами либо планированию точечных исправлений |
+| Закрытые гэпы | 1) Звук в live на TNP «Спальня» (H-R3); 2) Индекс архива SD на TUTK «YI Home Camera» (H-R9); 3) Плавность SD-архива при переходе из событий (H-R10); 4) Выбор любой прошедшей даты в календаре архива (H-R8/9); 5) LIVE-07: SD по умолчанию на Relay (H-R6) |
+| Следующий шаг | Собрать релизный APK 1.0.1 из чистого клона (`tools/clean-clone-build.ps1`), проверить чекером (`tools/check-release-apk.ps1`), установить на Xiaomi Mi 9 и выполнить верификацию |
+
+### 0.10 GSD Phase 7: регрессионные исправления и релиз 1.0.1 (2026-11-14)
+
+Устранены 3 функциональных гэпа и сопутствующие замечания по результатам регрессии майлстоуна v1.0:
+1. **Звук live на TNP («Спальня», H-R3 / LIVE-06):** в `AacDecoder.kt` тип содержимого `AudioTrack` изменён на `AudioAttributes.CONTENT_TYPE_MUSIC` (ранее `CONTENT_TYPE_SPEECH`), что обошло платформенный дефект MIUI на Xiaomi Mi 9, направлявший mono-звук в разговорный динамик earpiece. Добавлен учёт счётчиков `pcmBytesWritten` и `pcmBytesDropped`.
+2. **Индекс архива SD на TUTK («YI Home Camera», H-R9 / SD-01):** в `TutkCameraLink.kt` размер буфера `IOCTRL_BUF_SIZE` увеличен с 1024 до 8192 байт. Ответы 793 с большим количеством 12-байтных интервалов больше не усекаются, исключена ошибка `AV_ER_BUFTOOSMALL` и сбой `LIST_FAILED`.
+3. **Плавность архива из событий (H-R10 / EVT-04):** в `FrameAssembler.kt` реализован алгоритм `recoverGap()` (`GAP_TOLERANCE = 3`, `MAX_SKIP_GAP = 30`). При потере P-кадра в UDP-потоке сборщик больше не замирает на 3–5 секунд до ключевого кадра, а сразу пропускает потерянный кадр и выдаёт готовую цепочку кадров в декодер. В `PlaybackController.kt` добавлен сброс видеотракта `port.resetPipeline()` при перемотке и переходе по `openAt()`.
+4. **Выбор даты в календаре (H-R8/9):** в `CalendarGrid.kt` свойство `DayCell.enabled` установлено в `!date.isAfter(today)`, в `ArchiveCoordinator.selectDay` разрешён выбор любой прошедшей даты до сегодняшней, что позволяет просматривать архивы за вчера и ранее даже при отсутствии предварительных точек.
+5. **Relay SD default (LIVE-07):** подтверждено тестами и реализацией, что при подключении через Relay качество по умолчанию выбирается как SD.
+6. **Версия 1.0.1:** в `app/build.gradle.kts` установлены `versionCode = 10001` и `versionName = "1.0.1"`.
 
 ### 0.9 GSD Phase 6: релизная сборка и финальная регрессия (2026-11-14)
 

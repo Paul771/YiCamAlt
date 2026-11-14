@@ -37,8 +37,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // versionCode = major*10000 + minor*100 + patch; only ever increases (GSD Phase 6, D-02)
-        versionCode = 10000
-        versionName = "1.0.0"
+        versionCode = 10001
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         // Vendor P2P libraries exist only for these two ABIs (GSD Phase 2, M-P2P-NATIVE).

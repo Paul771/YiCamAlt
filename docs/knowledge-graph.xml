@@ -637,6 +637,7 @@
       <change-summary phase="02-p2p" plan="02-review" verification="jvm-passed">2026-10-16 Phase 2 review fixes: FrameAssembler v0.2.0 (HIGH-1, overtaking P frames kept), IoCtrlMessages v0.2.0 (LOW-11 kick reason payload[0], MED-3 Unknown authResult not fatal), CameraLink.kt v0.2.0 (P2pCredentialsSource.refreshCredentials). FrameAssemblerTest 13, IoCtrlMessagesTest 5.</change-summary>
       <change-summary phase="03-live-view" plan="03-00/03-01" verification="jvm-passed">2026-10-23: CameraLink.setAudioSink / requestResolution / capabilities (default bodies), AudioCodec / AudioUnit / AudioUnitSink, LinkCapabilities, IoCtrlMessages.setResolution(bigEndian) + AUDIO_STOP; AdtsParser (AdtsParserTest 13) and AudioPipeline (AudioPipelineTest 12). Real camera audio format: H-L2 / H-L3 pending.</change-summary>
       <change-summary phase="04-sd-archive" plan="04-00/04-05" verification="jvm-passed">2026-10-30: CameraLink archive members with default bodies (sendIoCtrl, ioCtrlReplies, nextUseCount, transportBigEndian, setStreamMode); LinkIoCtrlReply, StreamMode, FrameObservation; FrameAssembler / FramePipeline expectGeneration (useCount low-byte gate, BLOCK_GENERATION_GATE); TnpCodec CH_RECORD_I / CH_RECORD_P / CH_NEW_RECORD (4 / 5 / 7). TnpCodecTest 12, FrameAssemblerTest 19, FramePipelineTest 11.</change-summary>
+      <change-summary phase="07-regression-fixes" plan="07-03" verification="jvm-passed">2026-11-14: FrameAssembler gap recovery (recoverGap) drops missing P packets after GAP_TOLERANCE (3) consecutive frames within MAX_SKIP_GAP (30), draining pipeline to eliminate SD archive slideshow stutter (EVT-04); FrameAssemblerTest 21.</change-summary>
     </M-STREAM-CORE>
 
     <M-MEDIA-RENDER NAME="VideoDecoder" TYPE="UI_SUPPORT" STATUS="implemented">
@@ -772,6 +773,7 @@
       <change-summary phase="03-live-view" plan="03-12" verification="jvm-passed">2026-10-23 GRACE sync: STATUS implemented (JVM-verified: LiveSessionSupervisorTest 38, QualityControllerTest 17, ResumePolicyTest 8, NetStateTrackerTest 6, DefaultMediaSessionTest 7). Device checks H-L4, H-L5, H-L6 pending (03-HUMAN-UAT.md).</change-summary>
       <change-summary phase="04-sd-archive" plan="04-05/04-06" verification="jvm-passed">2026-10-31: MediaSession.expectGeneration / lastFrame (DefaultMediaSession); supervisor v0.3.0 setStreamMode (BLOCK_STREAM_MODE; stall 10 s LIVE / 35 s ARCHIVE / off PAUSED, from max(last frame growth, last mode switch)), liveEpoch, ioCtrlReplies, HD/SD only in LIVE, archivePort -> SupervisorArchivePort (ArchiveLinkPort incl. framesIn() and linkHealthy()). LiveSessionSupervisorTest 47, DefaultMediaSessionTest 12. Device H-SD3 / H-SD5 / H-SD10 pending.</change-summary>
       <change-summary phase="04-sd-archive" plan="04-10" verification="jvm-passed">2026-10-31 gap closure W-2: ARCHIVE stall-closed links keep the attempt counter (BLOCK_STALL keepsAttempt=); archiveStallCount() via SupervisorArchivePort. LiveSessionSupervisorTest 51. Device H-SD10 / H-SD14 pending.</change-summary>
+      <change-summary phase="07-regression-fixes" plan="07-03" verification="jvm-passed">2026-11-14: MediaSession / SupervisorArchivePort resetPipeline hook to flush decoder buffers and re-arm keyframe gate on seek/goLive; QualityController SD default on Relay modes (LIVE-07); DefaultMediaSessionTest 14, PlaybackControllerTest 37, QualityControllerTest 18.</change-summary>
     </M-LIVE-SESSION>
 
     <M-MEDIA-AUDIO NAME="AacDecoder" TYPE="UI_SUPPORT" STATUS="implemented">
@@ -788,6 +790,7 @@
       <tests>app/src/test/java/com/yicamalt/media/AudioFrameQueueTest.kt</tests>
       <change-summary phase="03-live-view" plan="03-00" verification="planned">2026-10-22: planned module.</change-summary>
       <change-summary phase="03-live-view" plan="03-07" verification="unit">2026-10-23: AudioFrameQueue (drop-oldest, capacity 6, JVM-tested) and AacDecoder (AacFrameSink; MediaCodec audio/mp4a-latm async on "media-audio", AudioTrack from the output format, WRITE_NON_BLOCKING, AudioOutStatus Idle/Playing/Failed, idempotent bounded release). Device proof in H-L2/H-L3.</change-summary>
+      <change-summary phase="07-regression-fixes" plan="07-01" verification="jvm-passed">2026-11-14: AacDecoder AudioTrack configured with USAGE_MEDIA and CONTENT_TYPE_MUSIC to fix MIUI mono earpiece routing bug on Xiaomi Mi 9 (LIVE-06 / H-R3); track pcmBytesWritten/Dropped; AudioPipeline mono AES-ECB unmute test; AudioPipelineTest 13.</change-summary>
     </M-MEDIA-AUDIO>
 
     <M-MEDIA-SNAPSHOT NAME="SnapshotStore" TYPE="UI_SUPPORT" STATUS="implemented">
@@ -845,6 +848,7 @@
       <change-summary phase="04-sd-archive" plan="04-01" verification="jvm">2026-10-30: stub; byte layer only.</change-summary>
       <change-summary phase="04-sd-archive" plan="04-01..04-07" verification="jvm">2026-10-31 GRACE sync (04-08): STATUS implemented. Codec + wire time (04-01), types / timeline / commands / index repository / ArchiveLinkPort (04-03), PlaybackController and ArchiveLinkPort.framesIn() (04-05), production port SupervisorArchivePort (04-06), UI (04-06 / 04-07). JVM: SdArchiveCodecTest 21, SdTimeTest 10, SdTimelineTest 18, SdStatusTest 7, PlaybackCommandsTest 10, SdIndexRepositoryTest 17, PlaybackControllerTest 28. Device probe 04-04: TNP camera has no SD card (tfstat 5), TUTK camera unreachable; H-SD1..H-SD10 pending.</change-summary>
       <change-summary phase="04-sd-archive" plan="04-10" verification="jvm-passed">2026-10-31 gap closure W-2: ArchiveLinkPort.archiveStallCount(); PlaybackController past-end ENDED and silent re-seek cap -&gt; PauseReason.SILENT (BLOCK_SILENT_RESEEK). PlaybackControllerTest 36. Device H-SD14 pending.</change-summary>
+      <change-summary phase="07-regression-fixes" plan="07-02" verification="jvm-passed">2026-11-14: TUTK IOCTRL_BUF_SIZE expanded to 8192 B to prevent truncation of multi-hour 793 index replies (SD-01); CalendarGrid and ArchiveCoordinator permit selection of any past date up to today (H-R8/9); SdIndexRepositoryTest 18, CalendarGridTest 7, ArchiveCoordinatorTest 29.</change-summary>
     </M-SD-ARCHIVE>
 
     <!-- CrossLinks: module dependencies -->

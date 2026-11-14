@@ -80,7 +80,8 @@ import java.util.concurrent.atomic.AtomicLong
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 04-02: archive port on TUTK (generic IOCTRL, reply flow, shared useCount,
+//   LAST_CHANGE: v0.4.1 - GSD plan 07-04: awaitState for Closed in deferred registry release test.
+//   PREVIOUS: v0.4.0 - GSD plan 04-02: archive port on TUTK (generic IOCTRL, reply flow, shared useCount,
 //     stream mode suspending the -20012 limit).
 //   PREVIOUS: v0.3.0 - GSD plan 03-04: TUTK audio reader, IOCTRL reader, in-session 4881 and extended teardown.
 //   PREVIOUS: v0.2.0 - Phase 2 review: vendor fatal read codes and -20001 buffer growth (MED-5), late
@@ -579,7 +580,7 @@ class TutkCameraLinkTest {
         link.start(RecordingSink())
         awaitTrue { fake.callCount("connectByUid") == 1 }
         link.close()
-        assertEquals(LinkState.Closed("user"), link.state.value)
+        assertEquals(LinkState.Closed("user"), awaitState(link) { it is LinkState.Closed })
         Thread.sleep(100)
         assertEquals(0, closedCount.get())
         gate.countDown()
