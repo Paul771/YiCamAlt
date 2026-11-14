@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Plan 06-07 completed (H-R2..H-R14 regression done); next: 06-08-PLAN.md"
-last_updated: "2026-11-14T19:58:00.000Z"
-last_activity: 2026-11-14 -- Plan 06-07 regression completed
+status: completed
+stopped_at: "Phase 6 completed (all 9 plans done). Next: audit milestone v1.0"
+last_updated: "2026-11-14T20:25:00.000Z"
+last_activity: 2026-11-14 -- Phase 6 completed (06-08 closed)
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 71
-  completed_plans: 68
-  percent: 0
+  completed_plans: 69
+  percent: 97
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 
 ## Current Position
 
-Phase: 06 (release-build) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 06
-Last activity: 2026-11-12 -- Phase 06 execution started
+Phase: 06 (release-build) — COMPLETE
+Plan: 9 of 9
+Status: Phase 06 Complete
+Last activity: 2026-11-14 -- Phase 06 completed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -181,6 +181,7 @@ Recent decisions affecting current work:
 - [Phase 05]: 05-07: MediaPlayer on TextureView kept (mp4/H.264 plays on MIUI), no Media3
 - [Phase 06]: 06-06: MIUI отменяет установку по USB (INSTALL_FAILED_USER_RESTRICTED для adb install, shell pm install и перетумблирования «Установка через USB»); release устанавливается пользователем с телефона из Загрузок, adb-пути не работают на этом Mi 9
 - [Phase 06]: 06-07: инжектированные тапы по ruler архива не доходят до seek-хендлера (0 BLOCK_SEEK; кнопки Пауза/Живой/звук/HD работают) — seek выполняет пользователь вручную; не дефект приложения
+- [Phase 06]: 06-08: Phase 6 GRACE records closed, status and handoff updated; milestone v1.0 ready for audit
 
 ### Pending Todos
 
@@ -194,6 +195,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-11-12T20:45:42.624Z
-Stopped at: Paused mid 06-07-PLAN.md: H-R2..H-R8 done (H-R3 sound gap), H-R9 in progress («Повтор (3/5)» on YI Home Camera archive); H-R10..H-R12, H-R6/H-R7, H-R14 pending
-Resume file: .planning/phases/06-release-build/06-07-PROGRESS.md
+Last session: 2026-11-14T20:25:00.000Z
+Stopped at: Phase 6 completed (all 9 plans 06-00..06-08 done). Next: audit milestone v1.0
+Resume file: .planning/phases/06-release-build/06-08-SUMMARY.md

@@ -18,8 +18,10 @@
  (completed 2026-10-30)
 - [x] **Phase 4: Архив SD-карты** - Индекс дней, 24-часовая шкала, воспроизведение и перемотка через ту же P2P-сессию (all 10 plans done; device verification partial, human_needed: no SD card)
  (completed 2026-10-31)
-- [x] **Phase 5: Лента событий** - Реальный эндпоинт алертов, превью и 6-секундные клипы, фильтры, офлайн-кэш, переход к записи SD (completed 2026-11-04)
-- [ ] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
+- [x] **Phase 5: Лента событий** - Реальный эндпоинт алертов, превью и 6-секундные клипы, фильтры, офлайн-кэш, переход к записи SD
+ (completed 2026-11-04)
+- [x] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
+ (completed 2026-11-14)
 
 ## Phase Details
 
@@ -174,18 +176,18 @@ Plans:
   1. Из чистого клона с локальным APK Yi Home собирается подписанный APK для arm64-v8a / armeabi-v7a; вендорские .so извлекаются при сборке и не лежат в репозитории
   2. На телефоне пользователя пройдены все v1-сценарии: список камер, live-view в LAN и удалённо, H.264/H.265, архив SD, лента событий — в том числе при одновременно открытом официальном приложении
   3. Финальный прогон `RedactionScanner` по логам реальной сессии не находит секретов; по итогам проверки GRACE `docs/verification-plan.xml` отражает пройденные гейты
-**Plans:** 9 plans
+**Plans:** 9/9 plans complete
 
 Plans:
-- [ ] 06-00-PLAN.md — Wave 1: GRACE-контракт M-RELEASE-BUILD и скелет гейта Phase 6; pre-commit и .gitignore не пропускают ключи подписи и пароли (REL-01)
-- [ ] 06-01-PLAN.md — Скрипт создания release-ключа вне репозитория (tools/new-release-key.ps1), docs/RELEASE.md с резервной копией ключа; ключ создан на этой машине (wave 2)
-- [ ] 06-02-PLAN.md — Подпись release из внешнего файла свойств, версия 1.0.0 / 10000, R8 выключен, tools/check-release-apk.ps1 (подпись, ABI, хеши .so, debuggable) (wave 3)
-- [ ] 06-03-PLAN.md — Сборка из чистого клона во временной папке (tools/clean-clone-build.ps1), проверки SEC-03, отчёт 06-RELEASE-BUILD.md (wave 4)
-- [ ] 06-04-PLAN.md — Опциональный скан logcat в RealLogScanTest, 06-HUMAN-UAT.md (H-D1, H-R1..H-R14), GRACE-запись REL-01, полный прогон (wave 5)
-- [ ] 06-05-PLAN.md — Финальный скан RedactionScanner по логу реальной сессии на debug-сборке до её удаления (H-D1) (wave 6, checkpoint)
-- [ ] 06-06-PLAN.md — Установка release на Mi 9: проверка разных подписей, удаление debug только после ответа «да» (H-R1) (wave 7, checkpoint)
-- [ ] 06-07-PLAN.md — Финальный regression на release: LAN оба семейства, кодек, архив SD, события, параллельно с Yi Home, фон, 15+ мин, удалённо через раздачу интернета, скан logcat (wave 8, checkpoint)
-- [ ] 06-08-PLAN.md — Закрытие документов: статусы гейтов GRACE по итогам, PROJECT_STATUS, HANDOFF, финальные проверки репозитория (wave 9)
+- [x] 06-00-PLAN.md — Wave 1: GRACE-контракт M-RELEASE-BUILD и скелет гейта Phase 6; pre-commit и .gitignore не пропускают ключи подписи и пароли (REL-01)
+- [x] 06-01-PLAN.md — Скрипт создания release-ключа вне репозитория (tools/new-release-key.ps1), docs/RELEASE.md с резервной копией ключа; ключ создан на этой машине (wave 2)
+- [x] 06-02-PLAN.md — Подпись release из внешнего файла свойств, версия 1.0.0 / 10000, R8 выключен, tools/check-release-apk.ps1 (подпись, ABI, хеши .so, debuggable) (wave 3)
+- [x] 06-03-PLAN.md — Сборка из чистого клона во временной папке (tools/clean-clone-build.ps1), проверки SEC-03, отчёт 06-RELEASE-BUILD.md (wave 4)
+- [x] 06-04-PLAN.md — Опциональный скан logcat в RealLogScanTest, 06-HUMAN-UAT.md (H-D1, H-R1..H-R14), GRACE-запись REL-01, полный прогон (wave 5)
+- [x] 06-05-PLAN.md — Финальный скан RedactionScanner по логу реальной сессии на debug-сборке до её удаления (H-D1) (wave 6, checkpoint)
+- [x] 06-06-PLAN.md — Установка release на Mi 9: проверка разных подписей, удаление debug только после ответа «да» (H-R1) (wave 7, checkpoint)
+- [x] 06-07-PLAN.md — Финальный regression на release: LAN оба семейства, кодек, архив SD, события, параллельно с Yi Home, фон, 15+ мин, удалённо через раздачу интернета, скан logcat (wave 8, checkpoint)
+- [x] 06-08-PLAN.md — Закрытие документов: статусы гейтов GRACE по итогам, PROJECT_STATUS, HANDOFF, финальные проверки репозитория (wave 9)
 
 ## Progress
 
@@ -199,4 +201,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
 | 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
-| 6. Релизная сборка и проверка на телефоне | 0/9 | Planned | - |
+| 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
