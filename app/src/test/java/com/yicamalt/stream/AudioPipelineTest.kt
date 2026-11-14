@@ -1,5 +1,5 @@
 // FILE: AudioPipelineTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the audio front end: decrypt rule, mute gate (D-05), availability (D-07), stats.
 //   SCOPE: synthetic ADTS units, AES-ECB full-block encryption with password + "0", fake clock.
@@ -31,7 +31,7 @@ import javax.crypto.spec.SecretKeySpec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-01: synthetic vectors only (password is a synthetic test literal).
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-01: added test for TNP encrypted mono audio unit delivery and unmute behavior.
 // END_CHANGE_SUMMARY
 
 class AudioPipelineTest {
@@ -242,5 +242,37 @@ class AudioPipelineTest {
         } finally {
             recorder.unplant()
         }
+    }
+
+    @Test
+    fun `tnp encrypted mono unit preserves stats when muted and delivers immediately upon unmute`() {
+        val plain = adts(payloadLen = 25, freqIndex = 8, channels = 1) // 16000 Hz, mono
+        val enc = encryptFullBlocks(plain, pw)
+        val sink = Captured()
+        val p = AudioPipeline(pw, sink, clock)
+        assertTrue(p.muted)
+
+        // Deliver while muted
+        p.onAudioUnit(unit(enc, encrypted = true))
+        val statsMuted = p.stats()
+        assertEquals(1, statsMuted.unitsIn)
+        assertEquals(1, statsMuted.framesOk)
+        assertEquals(0, statsMuted.badUnits)
+        assertEquals(true, statsMuted.decryptOk)
+        assertEquals(16000, statsMuted.sampleRate)
+        assertEquals(1, statsMuted.channels)
+        assertEquals(0, sink.frames.size)
+
+        // Unmute and deliver next encrypted unit
+        p.muted = false
+        p.onAudioUnit(unit(enc, encrypted = true))
+        assertEquals(1, sink.frames.size)
+        val (cfg, raw, _) = sink.frames[0]
+        assertEquals(16000, cfg.sampleRate)
+        assertEquals(1, cfg.channels)
+        assertArrayEquals(plain.copyOfRange(7, plain.size), raw)
+        assertEquals(2, p.stats().unitsIn)
+        assertEquals(2, p.stats().framesOk)
+        assertEquals(true, p.stats().decryptOk)
     }
 }

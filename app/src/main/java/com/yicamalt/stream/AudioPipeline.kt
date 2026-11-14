@@ -1,5 +1,5 @@
 // FILE: AudioPipeline.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Turn transport AudioUnits into raw AAC frames + csd-0 for the decoder (LIVE-06).
 //   SCOPE: TNP audio decrypt (every full 16-byte block), ADTS walk, mute gate, availability, value-free stats.
@@ -22,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-01 from 03-RESEARCH.md Pattern 3.
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-01: verified TNP mono audio decryption and stats tracking for LIVE-06.
 //     INVARIANT: muted by default (D-05); units are always counted, frames reach the sink only when unmuted.
 //     INVARIANT: fail-open decrypt: no password or a key length outside 16/24/32 uses the payload as is.
 //     INVARIANT: the unit payload is never modified (decrypt works on a copy); nothing is dropped here.

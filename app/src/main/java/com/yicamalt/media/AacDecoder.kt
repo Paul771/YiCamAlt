@@ -1,5 +1,5 @@
 // FILE: AacDecoder.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Play live AAC audio: platform MediaCodec (audio/mp4a-latm, async) decodes raw AAC access units to PCM,
 //     AudioTrack (configured from the decoder OUTPUT format) plays it.
@@ -41,9 +41,9 @@ import java.util.concurrent.TimeUnit
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-07: created. Unmute creates an AacDecoder, mute releases it (local mute, D-05).
-//     INVARIANT: no vendor decoder and no manual resampling; AudioTrack rate/channels come from the codec output
-//     format. Logs carry mime, rate, channels, codec name, counts and error class only; never audio bytes.
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-01: fix LIVE-06 (H-R3) by configuring AudioTrack with CONTENT_TYPE_MUSIC
+//     instead of CONTENT_TYPE_SPEECH to prevent MIUI mono loudspeaker-to-earpiece routing bug; track pcmBytesWritten
+//     and pcmBytesDropped.
 // END_CHANGE_SUMMARY
 
 sealed interface AudioOutStatus {
@@ -75,6 +75,8 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
     private var track: AudioTrack? = null
     private var pending: AudioUnit? = null
     private val freeInputs = ArrayDeque<Int>()
+    @Volatile private var pcmBytesWritten: Long = 0L
+    @Volatile private var pcmBytesDropped: Long = 0L
 
     // START_CONTRACT: onAacFrame
     //   PURPOSE: Accept one raw AAC access unit (no ADTS header) with its stream config.
@@ -120,7 +122,10 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
             handler = null
         }
         if (_status.value !is AudioOutStatus.Failed) _status.value = AudioOutStatus.Idle
-        Timber.i("[Media][audio][BLOCK_AUDIO_RELEASE] dropped=%d", queue.dropped)
+        Timber.i(
+            "[Media][audio][BLOCK_AUDIO_RELEASE] dropped=%d pcmWritten=%d pcmDropped=%d",
+            queue.dropped, pcmBytesWritten, pcmBytesDropped,
+        )
         // END_BLOCK_AUDIO_RELEASE
     }
 
@@ -233,7 +238,7 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build(),
                 )
                 .setAudioFormat(
@@ -266,7 +271,18 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
                 out.position(info.offset)
                 out.limit(info.offset + info.size)
                 // Non-blocking: a full track drops the rest of this buffer instead of stalling the codec.
-                t.write(out, info.size, AudioTrack.WRITE_NON_BLOCKING)
+                val written = t.write(out, info.size, AudioTrack.WRITE_NON_BLOCKING)
+                if (written < 0) {
+                    Timber.w("[Media][audio][writePcm] code=%d result=error", written)
+                    pcmBytesDropped += info.size
+                    fail("audiotrack-$written")
+                } else {
+                    pcmBytesWritten += written
+                    val unwritten = info.size - written
+                    if (unwritten > 0) {
+                        pcmBytesDropped += unwritten
+                    }
+                }
             }
         }
         mc.releaseOutputBuffer(index, false)
@@ -326,7 +342,10 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
             runCatching { c.release() }
         }
         releaseTrack()
-        Timber.d("[Media][audio][releaseCodecAndTrack] why=%s", why)
+        Timber.d(
+            "[Media][audio][releaseCodecAndTrack] why=%s pcmWritten=%d pcmDropped=%d",
+            why, pcmBytesWritten, pcmBytesDropped,
+        )
     }
 
     private fun releaseTrack() {
