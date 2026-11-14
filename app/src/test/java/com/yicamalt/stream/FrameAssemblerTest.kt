@@ -1,5 +1,5 @@
 // FILE: FrameAssemblerTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the keyframe gate, P-frame reorder and useCount generation filter.
 //   SCOPE: P before I (waits, overtaking P drained after the I), in-order and out-of-order P, duplicates, u16 wrap, MAX_PENDING overflow, generations, reset.
@@ -21,7 +21,8 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2):
+//   LAST_CHANGE: v0.4.0 - GSD plan 07-03: test gap recovery after GAP_TOLERANCE and reordering without drops.
+//   PREVIOUS: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2):
 //     other generations dropped, gate change disarms and clears pending, low-byte wrap, null gate, reset keeps gate.
 //   PREVIOUS: v0.2.0 - Phase 2 review HIGH-1: P frames that overtake their I frame (separate ch2 / ch3
 //     readers) are kept and drained after the I; stale pending (seq <= I, u16 order, other generation) is dropped
@@ -150,17 +151,54 @@ class FrameAssemblerTest {
     }
 
     @Test
-    fun `gap that never fills is bounded by MAX_PENDING dropping the oldest`() {
+    fun `gap recovery skips missing P-frame after GAP_TOLERANCE and drains pending frames`() {
         val a = FrameAssembler()
-        a.offer(i(10))
-        for (s in 12 until 12 + FrameAssembler.MAX_PENDING) assertTrue(a.offer(p(s)).isEmpty())
+        assertEquals(listOf("I10"), labels(a.offer(i(10))))
+        // P11 is lost; P12, P13 wait within tolerance
+        assertTrue(a.offer(p(12)).isEmpty())
+        assertEquals(1, a.pending)
+        assertTrue(a.offer(p(13)).isEmpty())
+        assertEquals(2, a.pending)
+        assertEquals(0, a.dropped)
+
+        // P14 arrives: tolerance reached (3 frames), skips missing P11 and drains P12, P13, P14
+        val emitted = a.offer(p(14))
+        assertEquals(listOf("P12", "P13", "P14"), labels(emitted))
+        assertEquals(0, a.pending)
+        assertEquals(1, a.dropped) // P11 counted as dropped
+
+        // Next in-order frame continues smoothly
+        assertEquals(listOf("P15"), labels(a.offer(p(15))))
+        assertEquals(0, a.pending)
+        assertEquals(1, a.dropped)
+    }
+
+    @Test
+    fun `reordered P frames within tolerance are emitted in order without loss`() {
+        val a = FrameAssembler()
+        assertEquals(listOf("I10"), labels(a.offer(i(10))))
+        // P13 arrives before P12 and P11
+        assertTrue(a.offer(p(13)).isEmpty())
+        assertEquals(1, a.pending)
+        // P12 arrives next
+        assertTrue(a.offer(p(12)).isEmpty())
+        assertEquals(2, a.pending)
+        // P11 arrives within tolerance: all 3 drain in sequential order
+        val emitted = a.offer(p(11))
+        assertEquals(listOf("P11", "P12", "P13"), labels(emitted))
+        assertEquals(0, a.pending)
+        assertEquals(0, a.dropped)
+    }
+
+    @Test
+    fun `pending before first I is bounded by MAX_PENDING dropping the oldest`() {
+        val a = FrameAssembler()
+        for (s in 1..FrameAssembler.MAX_PENDING) assertTrue(a.offer(p(s)).isEmpty())
         assertEquals(100, a.pending)
         assertEquals(0, a.dropped)
-        assertTrue(a.offer(p(112)).isEmpty())
+        assertTrue(a.offer(p(101)).isEmpty())
         assertEquals(100, a.pending)
         assertEquals(1, a.dropped)
-        // P12 was the oldest and is gone: P11 releases nothing after itself.
-        assertEquals(listOf("P11"), labels(a.offer(p(11))))
     }
 
     @Test

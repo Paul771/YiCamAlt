@@ -1,5 +1,5 @@
 // FILE: QualityControllerTest.kt
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the HD/SD policy (LIVE-07, D-06, D-07).
 //   SCOPE: target per link mode and manual, observed by width, per-link auto request, request success rules,
@@ -24,7 +24,8 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 03-05: quality policy vectors.
+//   LAST_CHANGE: v0.1.1 - GSD plan 07-03: test auto request on relay switching HD to SD (LIVE-07).
+//   PREVIOUS: v0.1.0 - GSD plan 03-05: quality policy vectors.
 // END_CHANGE_SUMMARY
 
 class QualityControllerTest {
@@ -197,5 +198,15 @@ class QualityControllerTest {
         q.onUnsupported()
         assertFalse(q.setManual(Quality.SD))
         assertNull(q.state.manual)
+    }
+
+    @Test
+    fun `auto request on relay switches HD to SD`() {
+        val q = QualityController()
+        q.observe(hd())
+        assertTrue(q.needsAutoRequest(LinkMode.RELAY))
+        assertEquals(Quality.SD, q.target(LinkMode.RELAY))
+        q.beginRequest(Quality.SD, useCount = 2, nowMs = 100)
+        assertFalse(q.needsAutoRequest(LinkMode.RELAY))
     }
 }

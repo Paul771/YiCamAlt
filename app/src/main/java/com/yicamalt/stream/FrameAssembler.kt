@@ -1,8 +1,8 @@
 // FILE: FrameAssembler.kt
-// VERSION: 0.3.0
+// VERSION: 0.4.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Order transport video units for the decoder: keyframe gate, P-frame sequence reorder, generation filter.
-//   SCOPE: u16 sequence arithmetic, bounded pending buffer (MAX_PENDING), useCount generation, counters.
+//   SCOPE: u16 sequence arithmetic, bounded pending buffer (MAX_PENDING), gap recovery (GAP_TOLERANCE), useCount generation, counters.
 //   DEPENDS: StreamTypes (VideoUnit, FrameInfo)
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE
 //   ROLE: RUNTIME
@@ -12,11 +12,13 @@ package com.yicamalt.stream
 
 // START_MODULE_MAP
 //   FrameAssembler - class: offer(unit) -> List<VideoUnit> emitted in order, expectGeneration(useCount) gate,
-//     reset(), emitted, dropped, pending, MAX_PENDING (100 units).
+//     reset(), emitted, dropped, pending, MAX_PENDING (100 units), GAP_TOLERANCE (3 units).
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2).
+//   LAST_CHANGE: v0.4.0 - GSD plan 07-03: resilient gap recovery after GAP_TOLERANCE (3 frames) to prevent 3-5 s
+//     slideshow playback stutter on dropped P-frames (EVT-04, H-R10).
+//   PREVIOUS: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2).
 //     expectGeneration(uc): units whose useCount low byte differs are dropped before ordering (robust to the
 //     255 -> 0 wrap); setting it drops pending of other generations and disarms when the armed generation differs.
 //     null = no gate (Phase 3 behaviour). reset() keeps the gate: decoder resets do not change the generation.
@@ -37,6 +39,8 @@ class FrameAssembler {
 
     companion object {
         const val MAX_PENDING = 100
+        const val GAP_TOLERANCE = 3
+        const val MAX_SKIP_GAP = 30
         private const val SEQ_MASK = 0xFFFF
         private const val HALF_RANGE = 0x8000
     }
@@ -96,9 +100,47 @@ class FrameAssembler {
             dropped++
             return emptyList()
         }
-        if (distance > 1) return enqueue(seq, unit)
+        if (distance > 1) {
+            enqueue(seq, unit)
+            if (pendingBySeq.size >= GAP_TOLERANCE) {
+                return recoverGap()
+            }
+            return emptyList()
+        }
         return drainFrom(unit)
         // END_BLOCK_ASSEMBLE_FRAMES
+    }
+
+    private fun recoverGap(): List<VideoUnit> {
+        var earliest: VideoUnit? = null
+        var minDistance = HALF_RANGE
+        for (u in pendingBySeq.values) {
+            if (u.info.useCount != generation) continue
+            val d = (u.info.seq - lastSeq) and SEQ_MASK
+            if (d in 1 until minDistance && d <= MAX_SKIP_GAP) {
+                if (consecutiveCount(u.info.seq and SEQ_MASK) >= GAP_TOLERANCE) {
+                    minDistance = d
+                    earliest = u
+                }
+            }
+        }
+        val target = earliest ?: return emptyList()
+        val gap = minDistance - 1
+        if (gap > 0) dropped += gap
+        pendingBySeq.remove(target.info.seq and SEQ_MASK)
+        return drainFrom(target)
+    }
+
+    private fun consecutiveCount(startSeq: Int): Int {
+        var count = 0
+        var s = startSeq
+        while (true) {
+            val u = pendingBySeq[s] ?: break
+            if (u.info.useCount != generation) break
+            count++
+            s = (s + 1) and SEQ_MASK
+        }
+        return count
     }
 
     // Emits [unit] (the new decode point) and every consecutive pending unit of the same generation after it.

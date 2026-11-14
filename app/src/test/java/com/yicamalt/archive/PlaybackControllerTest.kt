@@ -1,5 +1,5 @@
 // FILE: PlaybackControllerTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive playback state machine (SD-03, SD-04; decisions D-04, D-05).
 //   SCOPE: seek / snap / live / no recording / not ready, start timeout (only while units arrive), pause, resume,
@@ -47,7 +47,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2b): silent re-seek cap to Paused(SILENT), network drops never count,
+//   LAST_CHANGE: v0.3.1 - GSD plan 07-03: assert resetPipeline event on seek (EVT-04).
+//   PREVIOUS: v0.3.0 - GSD plan 04-10 (W-2b): silent re-seek cap to Paused(SILENT), network drops never count,
 //     new position / resume reset the count.
 //   PREVIOUS: v0.2.0 - GSD plan 04-10 (W-2a): ENDED past the last known end, before the 35 s stall.
 //   PREVIOUS: v0.1.0 - GSD plan 04-05: playback state machine contract (RED first).
@@ -111,7 +112,7 @@ class PlaybackControllerTest {
         assertEquals(3, port.expected)
         assertEquals(StreamMode.ARCHIVE, port.modes.last())
         assertEquals(seekCmds(3, "2026-10-30T10:15:00Z"), port.sent)
-        assertEquals(listOf("gate:3", "mode:ARCHIVE", "send:9030"), port.events)
+        assertEquals(listOf("resetPipeline", "gate:3", "mode:ARCHIVE", "send:9030"), port.events)
         controller.close()
     }
 

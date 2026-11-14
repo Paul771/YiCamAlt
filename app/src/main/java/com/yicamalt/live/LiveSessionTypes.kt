@@ -1,5 +1,5 @@
 // FILE: LiveSessionTypes.kt
-// VERSION: 0.2.0
+// VERSION: 0.2.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Contract-first port types of the Phase 3 live session (supervisor state, quality, network, media session).
 //   SCOPE: NetState / NetworkMonitor, Quality / QualityState, ErrorClass, KeyFrameObservation, MediaSession /
@@ -36,7 +36,8 @@ import kotlinx.coroutines.flow.StateFlow
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-05: MediaSession.expectGeneration / lastFrame with default bodies (archive
+//   LAST_CHANGE: v0.2.1 - GSD plan 07-03: MediaSession declares resetPipeline() for clean decoder re-sync on seek (EVT-04).
+//   PREVIOUS: v0.2.0 - GSD plan 04-05: MediaSession.expectGeneration / lastFrame with default bodies (archive
 //     generation gate and cursor source); existing fakes compile unchanged.
 //   PREVIOUS: v0.1.0 - GSD plan 03-00: contract-first port types for Phase 3 (interface-first for plans 03-01..03-13).
 //     Doc comments use // only (no block comments). INVARIANT: every toString() is value-free (no ids, no secrets).
@@ -88,6 +89,9 @@ interface MediaSession {
 
     // Last unit that passed the gate; null before the first one (or right after expectGeneration). Default: null.
     fun lastFrame(): FrameObservation? = null
+
+    // Reset video pipeline on seek / decoder reset
+    fun resetPipeline() {}
 }
 
 fun interface MediaSessionFactory {

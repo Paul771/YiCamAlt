@@ -87,6 +87,12 @@ class FakeArchivePort(
         if (unitsFlowing) units++
         return units
     }
+    var resetPipelineCalls = 0
+    override fun resetPipeline() {
+        resetPipelineCalls++
+        events += "resetPipeline"
+    }
+
     override fun setStreamMode(mode: StreamMode) {
         modes += mode
         events += "mode:$mode"

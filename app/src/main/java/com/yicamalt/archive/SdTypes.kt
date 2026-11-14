@@ -1,5 +1,5 @@
 // FILE: SdTypes.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Value types and the session port of the SD card archive.
 //   SCOPE: Segment, SdStatus, IndexResult, SeekTarget, ArchiveLinkPort (narrow view of the live session),
@@ -31,7 +31,8 @@ import kotlinx.coroutines.flow.StateFlow
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-10: archiveStallCount() for the silent re-seek cap (W-2).
+//   LAST_CHANGE: v0.3.1 - GSD plan 07-03: ArchiveLinkPort declares resetPipeline() for clean decoder re-sync on seek (EVT-04).
+//   PREVIOUS: v0.3.0 - GSD plan 04-10: archiveStallCount() for the silent re-seek cap (W-2).
 //   PREVIOUS: v0.2.0 - GSD plan 04-05 (checker addendum 1): ArchiveLinkPort.framesIn() so the playback start
 //     timeout counts only while units of any generation keep arriving (no units = supervisor stall / reconnect).
 //   PREVIOUS: v0.1.0 - GSD plan 04-03: archive types and port contract (research Patterns 3-6).
@@ -78,6 +79,7 @@ interface ArchiveLinkPort {
     fun setStreamMode(mode: StreamMode)
     // Links closed by the supervisor's ARCHIVE-mode stall watchdog so far (monotonic); 0 = unknown / never.
     fun archiveStallCount(): Int = 0
+    fun resetPipeline() {}
 }
 
 object ArchiveSupport {

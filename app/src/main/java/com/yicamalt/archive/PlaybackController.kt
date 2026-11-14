@@ -1,5 +1,5 @@
 // FILE: PlaybackController.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Archive playback state machine over ArchiveLinkPort: seek, pause, resume, back to live, segment
 //            boundaries, end of recording, reconnect and background (SD-03, SD-04; decisions D-04, D-05).
@@ -37,7 +37,8 @@ import java.time.ZoneId
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - GSD plan 04-10 (W-2b): a reconnect whose previous link was closed by the ARCHIVE stall
+//   LAST_CHANGE: v0.3.1 - GSD plan 07-03: trigger port.resetPipeline() on seek/startAt and goLive to cleanly re-arm keyframe gate (EVT-04).
+//   PREVIOUS: v0.3.0 - GSD plan 04-10 (W-2b): a reconnect whose previous link was closed by the ARCHIVE stall
 //     (port.archiveStallCount grew since the last sent seek) at the same position (+-2 s) counts as a silent
 //     re-seek; at 2 the controller goes Paused(SILENT) with live video instead of re-seeking; network drops never
 //     count; user seek / resume / goLive / pause reset the count.
@@ -289,6 +290,7 @@ class PlaybackController(
             setState(PlaybackState.Failed(at, FailReason.NOT_READY), "$reason-not-ready")
             return
         }
+        port.resetPipeline()
         port.expectGeneration(uc)
         port.setStreamMode(StreamMode.ARCHIVE)
         for (cmd in PlaybackCommands.seek(port.transport, port.encrypted, uc, port.liveResolution(), SdTime.toWire(at, wireZone))) {
@@ -309,12 +311,14 @@ class PlaybackController(
         timersFrozen = false
         val uc = if (port.linkHealthy()) port.nextUseCount() else null
         if (uc == null) {
+            port.resetPipeline()
             port.expectGeneration(null)
             port.setStreamMode(StreamMode.LIVE)
             pendingLiveUc = null
             setState(PlaybackState.Live, "live-no-send")
             return
         }
+        port.resetPipeline()
         port.expectGeneration(uc)
         port.setStreamMode(StreamMode.LIVE)
         for (cmd in PlaybackCommands.live(port.transport, port.encrypted, uc, port.liveResolution())) {

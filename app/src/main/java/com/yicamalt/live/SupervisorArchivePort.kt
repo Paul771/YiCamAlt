@@ -1,5 +1,5 @@
 // FILE: SupervisorArchivePort.kt
-// VERSION: 0.2.0
+// VERSION: 0.2.1
 // START_MODULE_CONTRACT
 //   PURPOSE: ArchiveLinkPort over the live session supervisor: the archive talks to whatever link is Live now.
 //   SCOPE: delegation only (transport order, liveEpoch, replies, send, useCount, gate, frame observation, units,
@@ -24,7 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-10: archiveStallCount() delegates to the supervisor's ARCHIVE stall count (W-2).
+//   LAST_CHANGE: v0.2.1 - GSD plan 07-03: resetPipeline() delegates to supervisor media session (EVT-04).
+//   PREVIOUS: v0.2.0 - GSD plan 04-10: archiveStallCount() delegates to the supervisor's ARCHIVE stall count (W-2).
 //   PREVIOUS: v0.1.0 - GSD plan 04-06: delegation to the supervisor's live link and media session. Without a live
 //     link: send false, useCount null, health false; without a session: no gate, no frame, 0 units.
 // END_CHANGE_SUMMARY
@@ -50,4 +51,7 @@ class SupervisorArchivePort internal constructor(
     override fun framesIn(): Long = supervisor.sessionOrNull()?.framesIn() ?: 0L
     override fun setStreamMode(mode: StreamMode) = supervisor.setStreamMode(mode)
     override fun archiveStallCount(): Int = supervisor.archiveStallCount()
+    override fun resetPipeline() {
+        supervisor.sessionOrNull()?.resetPipeline()
+    }
 }

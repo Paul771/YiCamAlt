@@ -1,5 +1,5 @@
 // FILE: DefaultMediaSession.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Production MediaSession of one link attempt: FramePipeline + AudioPipeline + key-frame tee.
 //   SCOPE: videoSink (key-frame observation, then FramePipeline), audioSink (AudioPipeline only), mute gate,
@@ -138,7 +138,7 @@ class DefaultMediaSession(
     }
 
     // Owner hook for VideoDecoder.resetEvents: re-arm the key-frame gate and drop the cached csd.
-    fun resetPipeline() {
+    override fun resetPipeline() {
         if (!released) pipeline.reset()
     }
 
