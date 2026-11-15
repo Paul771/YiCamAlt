@@ -96,7 +96,12 @@ class EventMediaFiles(
             if (dir.name < cutoffDay) {
                 dir.listFiles()?.forEach { if (it.isFile && it.delete()) deleted++ }
             }
-            if (dir.list()?.isEmpty() == true) dir.delete()
+            if (dir.list()?.isEmpty() == true) {
+                if (!dir.delete()) {
+                    System.gc()
+                    dir.delete()
+                }
+            }
         }
         return deleted
         // END_BLOCK_PURGE_THUMBS

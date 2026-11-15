@@ -1,5 +1,5 @@
 // FILE: FrameAssembler.kt
-// VERSION: 0.4.0
+// VERSION: 0.5.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Order transport video units for the decoder: keyframe gate, P-frame sequence reorder, generation filter.
 //   SCOPE: u16 sequence arithmetic, bounded pending buffer (MAX_PENDING), gap recovery (GAP_TOLERANCE), useCount generation, counters.
@@ -16,7 +16,8 @@ package com.yicamalt.stream
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.0 - GSD plan 07-03: resilient gap recovery after GAP_TOLERANCE (3 frames) to prevent 3-5 s
+//   LAST_CHANGE: v0.5.0 - robust gap recovery: immediately bridge gaps to earliest pending frame once GAP_TOLERANCE reached without requiring 3 consecutive frames, avoiding slideshow stutter on multiple packet drops (H-R10).
+//   PREVIOUS: v0.4.0 - GSD plan 07-03: resilient gap recovery after GAP_TOLERANCE (3 frames) to prevent 3-5 s
 //     slideshow playback stutter on dropped P-frames (EVT-04, H-R10).
 //   PREVIOUS: v0.3.0 - GSD plan 04-05: useCount equality gate for archive seeks / go-live (Pitfall 2).
 //     expectGeneration(uc): units whose useCount low byte differs are dropped before ordering (robust to the

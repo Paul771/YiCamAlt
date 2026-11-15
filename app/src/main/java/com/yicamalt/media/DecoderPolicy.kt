@@ -1,5 +1,5 @@
 // FILE: DecoderPolicy.kt
-// VERSION: 0.2.0
+// VERSION: 0.3.0
 // START_MODULE_CONTRACT
 //   PURPOSE: Pure decision rules of the video decoder, testable on the JVM without MediaCodec.
 //   SCOPE: bounded input queue with key-frame gate, codec-error streak counter, csd mapping per codec,
@@ -16,7 +16,7 @@ import com.yicamalt.stream.VideoCodec
 
 // START_MODULE_MAP
 //   OfferResult - ACCEPTED | DROPPED_NO_KEY | ACCEPTED_DROPPED_OLDEST (reset) | HELD_TRIMMED | DROPPED_HOLD_FULL.
-//   FrameQueue(capacity = 8, holdCapacity = 48) - thread-safe FIFO behind a key-frame gate; codecRunning=false holds
+//   FrameQueue(capacity = 48, holdCapacity = 96) - thread-safe FIFO behind a key-frame gate; codecRunning=false holds
 //     up to holdCapacity frames trimmed to the latest key frame (no reset); codecRunning=true overflow drops the
 //     oldest and closes the gate (reset).
 //   ResetCounter(max = 3) - codec-error streak; exhausted after max errors without a render in between.
@@ -26,7 +26,8 @@ import com.yicamalt.stream.VideoCodec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - device fix: every TUTK/TNP start logged reason=queue-overflow resets=1 before
+//   LAST_CHANGE: v0.3.0 - increase default queue capacity to 48 (hold 96) to absorb UDP frame bursts during SD archive playback and prevent false queue-overflow resets (H-R10).
+//   PREVIOUS: v0.2.0 - device fix: every TUTK/TNP start logged reason=queue-overflow resets=1 before
 //     BLOCK_CREATE_DECODER. Root cause: the decoder thread is blocked inside MediaCodec create/configure/start
 //     while the network keeps offering; the 8-slot queue overflowed and the running-codec overflow rule closed the
 //     gate and reset the pipeline although no codec existed. FrameQueue now has a hold mode (codecRunning=false):
@@ -42,13 +43,13 @@ enum class OfferResult { ACCEPTED, DROPPED_NO_KEY, ACCEPTED_DROPPED_OLDEST, HELD
 
 // START_CONTRACT: FrameQueue
 //   PURPOSE: Bounded FIFO between the frame pipeline and MediaCodec input buffers.
-//   INPUTS: { capacity: Int - max queued frames while a codec runs (default 8);
-//     holdCapacity: Int - max frames held while no codec runs yet (default 48, >= capacity) }
+//   INPUTS: { capacity: Int - max queued frames while a codec runs (default 48);
+//     holdCapacity: Int - max frames held while no codec runs yet (default 96, >= capacity) }
 //   OUTPUTS: { offer -> OfferResult; poll -> oldest frame or null }
 //   SIDE_EFFECTS: none (in-memory)
 //   LINKS: M-MEDIA-RENDER
 // END_CONTRACT: FrameQueue
-class FrameQueue(private val capacity: Int = 8, private val holdCapacity: Int = 48) {
+class FrameQueue(private val capacity: Int = 48, private val holdCapacity: Int = 96) {
     init {
         require(capacity > 0) { "capacity must be > 0" }
         require(holdCapacity >= capacity) { "holdCapacity must be >= capacity" }

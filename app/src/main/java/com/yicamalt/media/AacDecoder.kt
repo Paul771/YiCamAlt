@@ -1,7 +1,7 @@
 // FILE: AacDecoder.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
-//   PURPOSE: Play live AAC audio: platform MediaCodec (audio/mp4a-latm, async) decodes raw AAC access units to PCM,
+//   PURPOSE: Play live AAC audio: platform MediaCodec (audio/mp4a-latm, async) decodes ADTS AAC access units to PCM,
 //     AudioTrack (configured from the decoder OUTPUT format) plays it.
 //   SCOPE: lazy media-audio HandlerThread, codec creation on the first frame and re-creation on an AacConfig change,
 //     bounded drop-oldest input queue (AudioFrameQueue), AudioTrack (re)creation on onOutputFormatChanged,
@@ -41,7 +41,8 @@ import java.util.concurrent.TimeUnit
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - GSD plan 07-01: fix LIVE-06 (H-R3) by configuring AudioTrack with CONTENT_TYPE_MUSIC
+//   LAST_CHANGE: v0.1.2 - configure MediaCodec with KEY_IS_ADTS=1 for native ADTS decoding, removing silence substitution on Android 10+ (H-R3).
+//   PREVIOUS: v0.1.1 - GSD plan 07-01: fix LIVE-06 (H-R3) by configuring AudioTrack with CONTENT_TYPE_MUSIC
 //     instead of CONTENT_TYPE_SPEECH to prevent MIUI mono loudspeaker-to-earpiece routing bug; track pcmBytesWritten
 //     and pcmBytesDropped.
 // END_CHANGE_SUMMARY
@@ -79,8 +80,8 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
     @Volatile private var pcmBytesDropped: Long = 0L
 
     // START_CONTRACT: onAacFrame
-    //   PURPOSE: Accept one raw AAC access unit (no ADTS header) with its stream config.
-    //   INPUTS: { config: AacConfig - object type / rate / channels / csd-0; frame: ByteArray - raw AAC AU;
+    //   PURPOSE: Accept one ADTS AAC access unit with its stream config.
+    //   INPUTS: { config: AacConfig - object type / rate / channels / csd-0; frame: ByteArray - ADTS AAC frame;
     //     ptsUs: Long - presentation time }
     //   OUTPUTS: { Unit - never blocks the caller }
     //   SIDE_EFFECTS: starts the media-audio thread on first use; queue offer (oldest dropped beyond capacity);
@@ -179,8 +180,7 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
         var created: MediaCodec? = null
         try {
             val format = MediaFormat.createAudioFormat(MIME_AAC, config.sampleRate, config.channels)
-            format.setByteBuffer("csd-0", ByteBuffer.wrap(config.csd0))
-            format.setInteger(MediaFormat.KEY_IS_ADTS, 0)
+            format.setInteger(MediaFormat.KEY_IS_ADTS, 1)
             val c = MediaCodec.createDecoderByType(MIME_AAC)
             created = c
             // Callback before configure so the codec runs in async mode on the audio thread.

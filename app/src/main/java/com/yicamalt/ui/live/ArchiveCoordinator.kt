@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinator.kt
-// VERSION: 0.5.1
+// VERSION: 0.5.2
 // START_MODULE_CONTRACT
 //   PURPOSE: One screen state for the SD archive under the live view: card status, recorded days, the selected day's
 //     timeline and playback (SD-01..SD-05; D-01, D-02, D-04..D-07). Live video keeps running under every state.
@@ -61,7 +61,8 @@ import java.util.Locale
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.1 - GSD plan 07-02: allow selecting any past day up to today (gate is day.isAfter(today)).
+//   LAST_CHANGE: v0.5.2 - auto-seek to earliest recorded segment when selecting a past day or in archive mode (H-R9).
+//   PREVIOUS: v0.5.1 - GSD plan 07-02: allow selecting any past day up to today (gate is day.isAfter(today)).
 //   PREVIOUS: v0.5.0 - GSD plan 05-05: openAt(targetMs) - one-shot jump to an event moment. Queued until the
 //     index is known (resolved after every load and on the call): today / recorded day -> selectDay + seek(target +
 //     EVENT_SD_PREROLL_MS = 0) outside the lock via seekNow (seek's refresh-first rules apply); other day -> hint «Нет
@@ -319,18 +320,22 @@ class ArchiveCoordinator(
     //   PURPOSE: Show another day's timeline; only today or a day with recordings.
     //   INPUTS: { day: LocalDate }
     //   OUTPUTS: none
-    //   SIDE_EFFECTS: ui update
+    //   SIDE_EFFECTS: ui update; auto-seeks to the first recorded segment of the day when selecting a past day or when in archive playback.
     //   LINKS: D-02, SdTimeline.segmentsForDay
     // END_CONTRACT: selectDay
     fun selectDay(day: LocalDate) {
+        val targetMs: Long?
         synchronized(lock) {
             if (!active()) return
             cancelOpenAt()
             if (day.isAfter(today())) return
             selectedDay = day
             refreshDayPanel()
+            val segs = SdTimeline.segmentsForDay(all, day, zone)
+            targetMs = if (day != today() || controller.state.value != PlaybackState.Live) segs.firstOrNull()?.startMs else null
             publish()
         }
+        targetMs?.let { seekNow(it) }
     }
 
     // START_CONTRACT: seek

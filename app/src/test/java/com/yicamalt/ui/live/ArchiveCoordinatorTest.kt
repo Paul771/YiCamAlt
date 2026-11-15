@@ -1,5 +1,5 @@
 // FILE: ArchiveCoordinatorTest.kt
-// VERSION: 0.5.1
+// VERSION: 0.5.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract of the archive screen state (SD-01..SD-05; D-01, D-02, D-04..D-07) in virtual time.
 //   SCOPE: IDLE before the first Live, spinner only while a fetch is in flight on a healthy link, D-07 status / list states with retry, day selection and labels, days
@@ -64,7 +64,8 @@ import java.time.ZoneOffset
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.1 - GSD plan 07-02: updated selectDay tests to verify all past days are selectable and future days ignored.
+//   LAST_CHANGE: v0.5.2 - test auto-seek to earliest segment on past day selection (H-R9).
+//   PREVIOUS: v0.5.1 - GSD plan 07-02: updated selectDay tests to verify all past days are selectable and future days ignored.
 //   PREVIOUS: v0.4.0 - GSD plan 05-05: BLOCK_OPEN_AT_TESTS - openAt queued until the first full load, at once
 //     after it, today via seek's refresh-first path, past day without recordings (hint), no card (dropped), list
 //     failed (kept until a successful retry), hidden, user cancel (seek / selectDay / goLive), at most once, preroll 0.
@@ -901,12 +902,23 @@ class ArchiveCoordinatorTest {
     }
 
     @Test
-    fun `in Live with a past day selected the ruler has no live position`() = runTest {
+    fun `in Live with a past day without recordings selected the ruler has no live position`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        r.coord.selectDay(LocalDate.of(2026, 10, 20))
+        step(1_000)
+        assertEquals(LocalDate.of(2026, 10, 20), r.ui.selectedDay)
+        assertNull(r.ui.rulerMs)
+        r.coord.close()
+    }
+
+    @Test
+    fun `selectDay on a recorded day auto-seeks to the first segment start`() = runTest {
         val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
         r.coord.selectDay(LocalDate.of(2026, 10, 29))
-        step(1_000)
+        runCurrent()
         assertEquals(LocalDate.of(2026, 10, 29), r.ui.selectedDay)
-        assertNull(r.ui.rulerMs)
+        assertEquals(utc("2026-10-29T10:00:00Z"), r.ui.rulerMs)
+        assertEquals(utc("2026-10-29T10:00:00Z"), (r.controller.state.value as PlaybackState.Starting).atMs)
         r.coord.close()
     }
 

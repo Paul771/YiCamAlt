@@ -1,7 +1,7 @@
 // FILE: AudioPipeline.kt
-// VERSION: 0.1.1
+// VERSION: 0.1.2
 // START_MODULE_CONTRACT
-//   PURPOSE: Turn transport AudioUnits into raw AAC frames + csd-0 for the decoder (LIVE-06).
+//   PURPOSE: Turn transport AudioUnits into ADTS AAC frames for the decoder (LIVE-06).
 //   SCOPE: TNP audio decrypt (every full 16-byte block), ADTS walk, mute gate, availability, value-free stats.
 //   DEPENDS: StreamTypes, AdtsParser, JDK javax.crypto, Timber
 //   LINKS: M-STREAM-CORE, V-M-STREAM-CORE
@@ -22,7 +22,8 @@ import javax.crypto.spec.SecretKeySpec
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.1 - GSD plan 07-01: verified TNP mono audio decryption and stats tracking for LIVE-06.
+//   LAST_CHANGE: v0.1.2 - deliver complete ADTS frames to the sink so MediaCodec decodes with native KEY_IS_ADTS=1.
+//   PREVIOUS: v0.1.1 - GSD plan 07-01: verified TNP mono audio decryption and stats tracking for LIVE-06.
 //     INVARIANT: muted by default (D-05); units are always counted, frames reach the sink only when unmuted.
 //     INVARIANT: fail-open decrypt: no password or a key length outside 16/24/32 uses the payload as is.
 //     INVARIANT: the unit payload is never modified (decrypt works on a copy); nothing is dropped here.
@@ -126,8 +127,8 @@ class AudioPipeline(
             }
             // END_BLOCK_AUDIO_FIRST
             if (!muted) {
-                val raw = data.copyOfRange(off + f.headerLen, off + f.frameLen)
-                out.onAacFrame(cfg, raw, nextPtsUs())
+                val adtsFrame = data.copyOfRange(off, off + f.frameLen)
+                out.onAacFrame(cfg, adtsFrame, nextPtsUs())
             }
             off += f.frameLen
         }
