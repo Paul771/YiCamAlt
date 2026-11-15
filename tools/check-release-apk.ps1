@@ -21,7 +21,8 @@
 # END_MODULE_MAP
 #
 # START_CHANGE_SUMMARY
-#   LAST_CHANGE: [v1.0.0 - initial APK checker, GSD Phase 6 plan 06-02, decisions D-01/D-02]
+#   LAST_CHANGE: [v1.0.1 - auto-detect expected version from app/build.gradle.kts with 1.0.1 fallback, GSD Phase 7 plan 07-04]
+#   PREVIOUS: [v1.0.0 - initial APK checker, GSD Phase 6 plan 06-02, decisions D-01/D-02]
 # END_CHANGE_SUMMARY
 #
 # USAGE:
@@ -38,14 +39,31 @@ param(
     [string]$Apk = 'app/build/outputs/apk/release/app-release.apk',
     [string]$CompareApk = '',
     [switch]$ExpectSameSigner,
-    [string]$ExpectVersionName = '1.0.0',
-    [string]$ExpectVersionCode = '10000',
+    [string]$ExpectVersionName = '',
+    [string]$ExpectVersionCode = '',
     [switch]$SkipVersion
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $script:Failures = 0
+
+if (-not $ExpectVersionName -or -not $ExpectVersionCode) {
+    $gradleKts = Join-Path $RepoRoot 'app\build.gradle.kts'
+    if (Test-Path -LiteralPath $gradleKts) {
+        $content = Get-Content -LiteralPath $gradleKts
+        if (-not $ExpectVersionCode) {
+            $codeLine = $content | Where-Object { $_ -match '^\s*versionCode\s*=\s*(\d+)' } | Select-Object -First 1
+            if ($codeLine -and $codeLine -match 'versionCode\s*=\s*(\d+)') { $ExpectVersionCode = $Matches[1] }
+        }
+        if (-not $ExpectVersionName) {
+            $nameLine = $content | Where-Object { $_ -match '^\s*versionName\s*=\s*"([^"]+)"' } | Select-Object -First 1
+            if ($nameLine -and $nameLine -match 'versionName\s*=\s*"([^"]+)"') { $ExpectVersionName = $Matches[1] }
+        }
+    }
+}
+if (-not $ExpectVersionName) { $ExpectVersionName = '1.0.1' }
+if (-not $ExpectVersionCode) { $ExpectVersionCode = '10001' }
 
 function Write-Line([string]$Block, [string]$Text) {
     Write-Output "[ReleaseBuild][checkReleaseApk][$Block] $Text"
