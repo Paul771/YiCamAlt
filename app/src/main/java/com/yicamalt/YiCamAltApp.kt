@@ -29,10 +29,11 @@ import java.util.Locale
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - SEC-02: diagnostic log is internal-only (filesDir/diag_log.txt, 1 MiB
+//   LAST_CHANGE: v0.3.0 - plant redacted DebugTree unconditionally to allow release device diagnostics via logcat.
+//   PREVIOUS: v0.2.0 - SEC-02: diagnostic log is internal-only (filesDir/diag_log.txt, 1 MiB
 //     rotation); external auth_log.txt planting removed and legacy copies purged on start.
 //     Pull with: adb exec-out run-as com.yicamalt cat files/diag_log.txt
-//   PREV_CHANGE: v0.1.1 - FileLogTree wrote to BOTH internal filesDir and external files dir
+//   PREVIOUS: v0.1.1 - FileLogTree wrote to BOTH internal filesDir and external files dir
 //     (MTP-readable without root); reverted by v0.2.0 because it leaked credentials once.
 // END_CHANGE_SUMMARY
 
@@ -41,11 +42,11 @@ class YiCamAltApp : Application() {
     override fun onCreate() {
         super.onCreate()
         // START_BLOCK_INIT_APP
+        Timber.plant(object : Timber.DebugTree() {
+            override fun createStackElementTag(element: StackTraceElement): String =
+                "YiCamAlt/${super.createStackElementTag(element)}"
+        })
         if (BuildConfig.DEBUG) {
-            Timber.plant(object : Timber.DebugTree() {
-                override fun createStackElementTag(element: StackTraceElement): String =
-                    "YiCamAlt/${super.createStackElementTag(element)}"
-            })
             // Internal-only diagnostic log (SEC-02). Never plant a tree on external storage:
             // it is MTP-readable without root and leaked a password once (PROJECT_STATUS 14).
             Timber.plant(FileLogTree(DiagnosticLog.internalFile(filesDir)))

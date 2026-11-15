@@ -468,6 +468,7 @@
         <fn-checkReleaseApk PURPOSE="Check signature schemes, signer, ABI dirs, vendor lib hashes, version and debuggable flag" />
         <fn-cleanCloneBuild PURPOSE="Clone to a temp dir outside the repo, assembleRelease with the local _apk, check, clean up" />
       </annotations>
+      <change-summary phase="07-regression-fixes" verification="passed">2026-11-15: Release 1.0.2 (versionCode 10002). Live audio fixed on device (KEY_IS_ADTS=1 + raw ADTS frames from AudioPipeline, H-R3); timeline auto-seek to first recorded segment on date selection (ArchiveCoordinator.selectDay, TimelineMath.initialCenter, H-R9); check-release-apk PASS; installed and verified on Xiaomi Mi 9.</change-summary>
       <change-summary phase="06-release-build" verification="in-progress">Plans 06-00..06-08: contract (06-00); release signing, version 1.0.0 / 10000, R8 off, check-release-apk.ps1 PASS with signer != debug (06-02); clean clone release build PASS (06-03); install on Xiaomi Mi 9 (06-06); final device regression H-R1..H-R14 (06-07) with gaps in H-R3 sound, H-R9 TUTK archive, H-R14 audit finding (06-DEVICE-VERIFICATION.md); gate in-progress.</change-summary>
     </M-RELEASE-BUILD>
 

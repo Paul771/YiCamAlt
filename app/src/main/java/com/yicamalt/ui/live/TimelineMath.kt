@@ -26,7 +26,8 @@ import kotlin.math.roundToLong
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.1.0 - GSD plan 04-07 GREEN: ruler math. Ticks are dayStart + k * step (so DST-free local hours
+//   LAST_CHANGE: v0.2.0 - auto-center on first segment start when day has recordings, avoiding manual ruler search (H-R9).
+//   PREVIOUS: v0.1.0 - GSD plan 04-07 GREEN: ruler math. Ticks are dayStart + k * step (so DST-free local hours
 //     for whole-hour zones); a pure pinch zoom never seeks (startCenter == endCenter).
 //   PREVIOUS: v0.0.1 - GSD plan 04-07 RED: signatures only.
 // END_CHANGE_SUMMARY
@@ -141,14 +142,15 @@ object TimelineMath {
     // START_CONTRACT: initialCenter
     //   PURPOSE: Where the ruler opens for a day.
     //   INPUTS: { today: Boolean - day is today; nowMs: Long; dayStartMs, dayEndMs: Long; daySegments: List<Segment> }
-    //   OUTPUTS: { Long - today: now capped to the day; past day: last segment end, or noon without segments }
+    //   OUTPUTS: { Long - day with segments: first segment start; today without segments: now capped to the day; past day: noon }
     //   SIDE_EFFECTS: none
     //   LINKS: D-03
     // END_CONTRACT: initialCenter
     fun initialCenter(today: Boolean, nowMs: Long, dayStartMs: Long, dayEndMs: Long, daySegments: List<Segment>): Long {
+        val first = daySegments.firstOrNull()?.startMs
+        if (first != null) return first.coerceIn(dayStartMs, dayEndMs)
         if (today) return nowMs.coerceIn(dayStartMs, dayEndMs)
-        val last = daySegments.maxOfOrNull { it.endMs }
-        return (last ?: (dayStartMs + 12 * HOUR)).coerceIn(dayStartMs, dayEndMs)
+        return (dayStartMs + 12 * HOUR).coerceIn(dayStartMs, dayEndMs)
     }
 
     // START_CONTRACT: shouldSeekAfterGesture

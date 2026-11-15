@@ -61,7 +61,8 @@ import java.util.Locale
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.5.2 - auto-seek to earliest recorded segment when selecting a past day or in archive mode (H-R9).
+//   LAST_CHANGE: v0.5.3 - auto-seek to earliest recorded segment on selecting any day with recordings (H-R9).
+//   PREVIOUS: v0.5.2 - auto-seek to earliest recorded segment when selecting a past day or in archive mode (H-R9).
 //   PREVIOUS: v0.5.1 - GSD plan 07-02: allow selecting any past day up to today (gate is day.isAfter(today)).
 //   PREVIOUS: v0.5.0 - GSD plan 05-05: openAt(targetMs) - one-shot jump to an event moment. Queued until the
 //     index is known (resolved after every load and on the call): today / recorded day -> selectDay + seek(target +
@@ -320,7 +321,7 @@ class ArchiveCoordinator(
     //   PURPOSE: Show another day's timeline; only today or a day with recordings.
     //   INPUTS: { day: LocalDate }
     //   OUTPUTS: none
-    //   SIDE_EFFECTS: ui update; auto-seeks to the first recorded segment of the day when selecting a past day or when in archive playback.
+    //   SIDE_EFFECTS: ui update; auto-seeks to the first recorded segment of the day (if any).
     //   LINKS: D-02, SdTimeline.segmentsForDay
     // END_CONTRACT: selectDay
     fun selectDay(day: LocalDate) {
@@ -332,7 +333,7 @@ class ArchiveCoordinator(
             selectedDay = day
             refreshDayPanel()
             val segs = SdTimeline.segmentsForDay(all, day, zone)
-            targetMs = if (day != today() || controller.state.value != PlaybackState.Live) segs.firstOrNull()?.startMs else null
+            targetMs = segs.firstOrNull()?.startMs
             publish()
         }
         targetMs?.let { seekNow(it) }

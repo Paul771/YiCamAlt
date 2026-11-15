@@ -18,6 +18,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.MediaCodec
+import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
@@ -180,7 +181,9 @@ class AacDecoder(private val queueCapacity: Int = AudioFrameQueue.DEFAULT_CAPACI
         var created: MediaCodec? = null
         try {
             val format = MediaFormat.createAudioFormat(MIME_AAC, config.sampleRate, config.channels)
-            format.setInteger(MediaFormat.KEY_IS_ADTS, 1)
+            format.setByteBuffer("csd-0", ByteBuffer.wrap(config.csd0))
+            format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            format.setInteger(MediaFormat.KEY_IS_ADTS, 0)
             val c = MediaCodec.createDecoderByType(MIME_AAC)
             created = c
             // Callback before configure so the codec runs in async mode on the audio thread.

@@ -116,9 +116,10 @@ class TimelineMathTest {
     }
 
     @Test
-    fun `initialCenter for a past day is the last segment end or noon`() {
+    fun `initialCenter for a day with recordings is the first segment start`() {
         val segs = listOf(Segment(at(8), at(9)), Segment(at(17), at(18, 30)))
-        assertEquals(at(18, 30), TimelineMath.initialCenter(false, at(23) + 24 * hour, dayStart, dayEnd, segs))
+        assertEquals(at(8), TimelineMath.initialCenter(false, at(23) + 24 * hour, dayStart, dayEnd, segs))
+        assertEquals(at(8), TimelineMath.initialCenter(true, at(15), dayStart, dayEnd, segs))
         assertEquals(dayStart + 12 * hour, TimelineMath.initialCenter(false, at(23) + 24 * hour, dayStart, dayEnd, emptyList()))
     }
 

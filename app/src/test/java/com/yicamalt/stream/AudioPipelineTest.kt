@@ -104,8 +104,8 @@ class AudioPipelineTest {
         assertEquals(1, cfg.channels)
         assertEquals(2, cfg.objectType)
         assertArrayEquals(byteArrayOf(0x14, 0x08), cfg.csd0)
-        assertArrayEquals(adts(20), sink.frames[0].second)
-        assertEquals(7 + 12, sink.frames[1].second.size)
+        assertArrayEquals(adts(20).copyOfRange(7, 27), sink.frames[0].second)
+        assertEquals(12, sink.frames[1].second.size)
         assertTrue(sink.frames[0].third < sink.frames[1].third)
         assertTrue(sink.frames[1].third < sink.frames[2].third)
         assertEquals(16000, p.stats().sampleRate)
@@ -136,7 +136,7 @@ class AudioPipelineTest {
         val u = unit(enc, encrypted = true)
         p.onAudioUnit(u)
         assertEquals(1, sink.frames.size)
-        assertArrayEquals(plain, sink.frames[0].second)
+        assertArrayEquals(plain.copyOfRange(7, 37), sink.frames[0].second)
         assertEquals(true, p.stats().decryptOk)
         assertArrayEquals(encryptFullBlocks(plain, pw), u.payload) // the unit payload is not modified
     }
@@ -271,7 +271,7 @@ class AudioPipelineTest {
         val (cfg, raw, _) = sink.frames[0]
         assertEquals(16000, cfg.sampleRate)
         assertEquals(1, cfg.channels)
-        assertArrayEquals(plain, raw)
+        assertArrayEquals(plain.copyOfRange(7, plain.size), raw)
         assertEquals(2, p.stats().unitsIn)
         assertEquals(2, p.stats().framesOk)
         assertEquals(true, p.stats().decryptOk)

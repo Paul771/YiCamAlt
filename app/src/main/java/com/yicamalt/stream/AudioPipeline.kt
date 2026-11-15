@@ -127,8 +127,8 @@ class AudioPipeline(
             }
             // END_BLOCK_AUDIO_FIRST
             if (!muted) {
-                val adtsFrame = data.copyOfRange(off, off + f.frameLen)
-                out.onAacFrame(cfg, adtsFrame, nextPtsUs())
+                val rawAu = data.copyOfRange(off + f.headerLen, off + f.frameLen)
+                out.onAacFrame(cfg, rawAu, nextPtsUs())
             }
             off += f.frameLen
         }

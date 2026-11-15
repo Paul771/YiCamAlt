@@ -923,6 +923,17 @@ class ArchiveCoordinatorTest {
     }
 
     @Test
+    fun `selectDay on today with recordings auto-seeks to the first segment start`() = runTest {
+        val r = rig(script = Script(entries = listOf(TODAY_SEG, YESTERDAY_SEG)))
+        r.coord.selectDay(today)
+        runCurrent()
+        assertEquals(today, r.ui.selectedDay)
+        assertEquals(utc("2026-10-30T06:00:00Z"), r.ui.rulerMs)
+        assertEquals(utc("2026-10-30T06:00:00Z"), (r.controller.state.value as PlaybackState.Starting).atMs)
+        r.coord.close()
+    }
+
+    @Test
     fun `in archive rulerMs equals the playback position`() = runTest {
         val r = rig()
         r.coord.seek(utc("2026-10-30T06:15:00Z"))

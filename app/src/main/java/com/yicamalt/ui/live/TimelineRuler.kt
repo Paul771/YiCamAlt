@@ -50,7 +50,8 @@ import java.time.format.DateTimeFormatter
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.2.0 - GSD plan 04-11: contract only - cursorMs is now fed from ArchiveUi.rulerMs (live wall time
+//   LAST_CHANGE: v0.3.0 - key centerMs on (dayStartMs, initialCenterMs) so ruler centers immediately when day segments update (H-R9).
+//   PREVIOUS: v0.2.0 - GSD plan 04-11: contract only - cursorMs is now fed from ArchiveUi.rulerMs (live wall time
 //     in Live for today, archive position in the archive); code unchanged.
 //   PREVIOUS: v0.1.0 - GSD plan 04-07: created. Centre state is keyed on the day; while a finger is down the
 //     playback cursor does not move the ruler; a pure pinch never seeks (TimelineMath release rule).
@@ -79,7 +80,7 @@ fun TimelineRuler(
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var centerMs by remember(dayStartMs) { mutableLongStateOf(initialCenterMs.coerceIn(dayStartMs, dayEndMs)) }
+    var centerMs by remember(dayStartMs, initialCenterMs) { mutableLongStateOf(initialCenterMs.coerceIn(dayStartMs, dayEndMs)) }
     var spanMs by remember { mutableLongStateOf(TimelineMath.DEFAULT_SPAN_MS) }
     var dragging by remember { mutableStateOf(false) }
     val currentOnSeek by rememberUpdatedState(onSeek)
