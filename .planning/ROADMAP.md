@@ -223,3 +223,35 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
 | 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
 | 7. Устранение гэпов регрессии | 0/4 | Planned | - |
+
+## Backlog
+
+### Phase 999.1: Follow-up — Phase 2 incomplete plans (BACKLOG)
+
+**Goal:** Close the execution record for Phase 2 plans that ran without a SUMMARY.md
+**Source phase:** 2 (`.planning/phases/02-p2p`)
+**Deferred at:** 2026-11-18 during `/gsd-progress --next` advancement to Phase 07
+**Decision:** user chose [C] Continue and defer to backlog
+**Plans:**
+
+- [ ] 02-12: device verification of native P2P live (ran; no `02-12-SUMMARY.md`)
+
+**Outstanding:** `02-HUMAN-UAT.md` is `status: partial` with 6 `[pending]` items;
+`02-VERIFICATION.md` is `human_needed`. The plan is `autonomous: false` and needs a real phone
+(TNP camera on a real device, home Wi-Fi, relay-only, mobile-data repeat, parallel use with the
+official app, log pull + redaction sweep). Nothing here can be completed from the harness.
+
+### Phase 999.2: Follow-up — Phase 7 incomplete plans (BACKLOG)
+
+**Goal:** Close the execution record for Phase 7 plans that ran without a SUMMARY.md
+**Source phase:** 7 (`.planning/phases/07-regression-fixes`)
+**Deferred at:** 2026-11-18 during `/gsd-progress --next` advancement
+**Decision:** user chose [C] Continue and defer to backlog
+**Plans:**
+
+- [ ] 07-04: version 1.0.1 bump, clean-clone release build, device regression re-check (ran; no `07-04-SUMMARY.md`)
+
+**Outstanding:** uncommitted local work in `app/src/main/java/com/yicamalt/media/DecoderPolicy.kt`,
+`VideoDecoder.kt`, `p2p/tutk/TutkCameraLink.kt` and their tests (frame queue 48→128, hold 96→256,
+H-R10). This is user work-in-progress and must not be swept into a GSD commit; commit or revert it
+explicitly before closing this item.
