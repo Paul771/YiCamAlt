@@ -7,6 +7,8 @@ local.properties
 captures/
 .cxx
 .venv/
+# GSD runtime lock: holds a PID and session id, machine/session-local by design
+.planning/milestone.lock
 
 # Vendor binaries and reverse-engineering output: local only, never in this public repo
 _apk/

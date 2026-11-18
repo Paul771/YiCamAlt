@@ -1,0 +1,48 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.0",
+  "phases": [
+    {
+      "number": "1",
+      "name": "Секреты и реальный список камер",
+      "status": "pending"
+    },
+    {
+      "number": "2",
+      "name": "Нативный P2P и первый кадр",
+      "status": "in_progress"
+    },
+    {
+      "number": "3",
+      "name": "Полноценный live-view",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Архив SD-карты",
+      "status": "complete"
+    },
+    {
+      "number": "5",
+      "name": "Лента событий",
+      "status": "complete"
+    },
+    {
+      "number": "6",
+      "name": "Релизная сборка и проверка на телефоне",
+      "status": "complete"
+    },
+    {
+      "number": "7",
+      "name": "Устранение гэпов регрессии",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 07 of 7 · executing"
+  },
+  "updated_at": "2026-11-18T18:20:30.185Z"
+}
