@@ -1,5 +1,5 @@
 // FILE: VideoDecoder.kt
-// VERSION: 0.3.1
+// VERSION: 0.3.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Render a DecodableFrame stream (H.264 / H.265) to a Surface with MediaCodec in async mode.
 //   SCOPE: decoder creation on the first key frame (csd from that frame), input feeding from the FrameQueue,
@@ -46,7 +46,8 @@ import java.util.concurrent.TimeUnit
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.1 - increase QUEUE_CAPACITY to 48 and HOLD_CAPACITY to 96 to prevent queue-overflow resets during SD playback bursts (H-R10).
+//   LAST_CHANGE: v0.3.2 - increase QUEUE_CAPACITY to 128 and HOLD_CAPACITY to 256 to absorb large SD archive playback frame bursts (H-R10).
+//   PREVIOUS: v0.3.1 - increase QUEUE_CAPACITY to 48 and HOLD_CAPACITY to 96 to prevent queue-overflow resets during SD playback bursts (H-R10).
 //   PREVIOUS: v0.3.0 - GSD plan 03-08: videoSize from onOutputFormatChanged (crop-aware) for the live screen
 //     aspect ratio; seeded from the key frame size at codec creation (BLOCK_FORMAT_CHANGED). No other behaviour change.
 //   PREVIOUS: v0.2.0 - device fix: no spurious reason=queue-overflow reset at stream start. The FrameQueue is
@@ -510,9 +511,9 @@ class VideoDecoder(
     }
 
     private companion object {
-        const val QUEUE_CAPACITY = 48
+        const val QUEUE_CAPACITY = 128
         // Frames held while the codec is created (about 2.4 s at 20 fps covers the startup burst + one GOP).
-        const val HOLD_CAPACITY = 96
+        const val HOLD_CAPACITY = 256
         const val MAX_CODEC_ERRORS = 3
         const val DEFAULT_WIDTH = 1920
         const val DEFAULT_HEIGHT = 1080

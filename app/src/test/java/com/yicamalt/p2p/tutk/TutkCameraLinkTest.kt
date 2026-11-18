@@ -1,5 +1,5 @@
 // FILE: TutkCameraLinkTest.kt
-// VERSION: 0.4.0
+// VERSION: 0.4.2
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for TutkCameraLink and TutkLinkFactory over FakeTutkNative: vendor call order,
 //     nonce + HMAC auth, start command, LE frame heads, mode mapping, failure codes, frame drop rule, no-data bound,
@@ -62,7 +62,7 @@ import java.util.concurrent.atomic.AtomicLong
 //   order + auth tests - call order, cloud uid, 15-char nonce user + HMAC pass, admin, 8190 / 511 with LE useCount.
 //   mode tests - 0 P2P, 1 RELAY, 2 LAN (lan true).
 //   failure tests - sessionId / connect / check / clientStart -20009 / sendIoCtrl, -20015 mid-stream, 300 x -20012.
-//   drop rule - -20013 / -20014 drop until the next key frame, state stays Streaming.
+//   drop rule - -20013 / -20014 count dropped and keep reading, state stays Streaming.
 //   cancellation - close during connect / clientStart / streaming, idempotent close, start after close.
 //   timers - connect 30 s and first frame 20 s on an injected clock.
 //   factory tests - transport / credential refusals, runtime unavailable / failed, ALREADY_OPEN, reopen.
@@ -80,7 +80,8 @@ import java.util.concurrent.atomic.AtomicLong
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.1 - GSD plan 07-04: awaitState for Closed in deferred registry release test.
+//   LAST_CHANGE: v0.4.2 - update drop rule test: -20013 / -20014 increment dropped and sleep without dropping subsequent P-frames (H-R10).
+//   PREVIOUS: v0.4.1 - GSD plan 07-04: awaitState for Closed in deferred registry release test.
 //   PREVIOUS: v0.4.0 - GSD plan 04-02: archive port on TUTK (generic IOCTRL, reply flow, shared useCount,
 //     stream mode suspending the -20012 limit).
 //   PREVIOUS: v0.3.0 - GSD plan 03-04: TUTK audio reader, IOCTRL reader, in-session 4881 and extended teardown.
@@ -354,7 +355,7 @@ class TutkCameraLinkTest {
 
     // START_BLOCK_DROP_RULE_TESTS
     @Test
-    fun `lost and incomplete frames drop until the next key frame while streaming`() {
+    fun `lost and incomplete frames increment dropped count but deliver intact subsequent frames`() {
         val fake = fake()
         fake.recvQueue += frame(seq = 1, key = true)
         fake.recvQueue += code(TutkCodes.AV_LOSED_THIS_FRAME)
@@ -368,9 +369,9 @@ class TutkCameraLinkTest {
         val link = newLink(fake)
         val sink = RecordingSink()
         link.start(sink)
-        awaitTrue(what = { sink.units.map { it.info.seq }.toString() }) { sink.units.size >= 4 }
+        awaitTrue(what = { sink.units.map { it.info.seq }.toString() }) { sink.units.size >= 7 }
         Thread.sleep(50)
-        assertEquals(listOf(1, 4, 5, 7), sink.units.map { it.info.seq })
+        assertEquals(listOf(1, 2, 3, 4, 5, 6, 7), sink.units.map { it.info.seq })
         assertTrue(link.state.value is LinkState.Streaming, link.state.value.toString())
         assertEquals(1, fake.callCount("connectByUid"))
     }

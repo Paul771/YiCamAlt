@@ -1,5 +1,5 @@
 // FILE: TutkCameraLink.kt
-// VERSION: 0.4.1
+// VERSION: 0.4.2
 // START_MODULE_CONTRACT
 //   PURPOSE: One TUTK IOTC/AV session per camera behind the shared CameraLink port, vendor call order.
 //   SCOPE: TutkCameraLink (IOTC_Get_SessionID -> IOTC_Connect_ByUID_Parallel with the cloud uid -> Session_Check
@@ -78,7 +78,8 @@ import javax.inject.Singleton
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.4.1 - GSD plan 07-02: expand IOCTRL_BUF_SIZE from 1024 to 8192 bytes so large 793 index pages
+//   LAST_CHANGE: v0.4.2 - do not drop subsequent P-frames on AV_INCOMPLETE_FRAME (-20013) or AV_LOSED_THIS_FRAME (-20014); increment dropped and pause 30ms matching vendor TutkCamera, letting FrameAssembler handle sequence gaps to fix 2-second archive slideshow stutter (H-R10).
+//   PREVIOUS: v0.4.1 - GSD plan 07-02: expand IOCTRL_BUF_SIZE from 1024 to 8192 bytes so large 793 index pages
 //     with many entries are not truncated (SD-01, H-R9).
 //   PREVIOUS: v0.4.0 - GSD plan 04-02: generic IOCTRL send via tx after the start command, non-4882 replies on
 //     ioCtrlReplies (793 pages, 817), one link-wide useCount (start 1, then 2, 3, ... for requestResolution and
@@ -104,7 +105,7 @@ import javax.inject.Singleton
 //       (bounded by noDataSleepMs + ioJoinMarginMs).
 //     INVARIANTS: one connectByUid per start(), no reconnect and no retry inside the link (the single automatic retry
 //       on WRONG_PASSWORD lives in LiveProbeViewModel); -20012 polls sleep noDataSleepMs and end the session as
-//       TIMEOUT(-20012) after maxNoDataPolls in a row; -20013 / -20014 drop frames until the next key frame without
+//       TIMEOUT(-20012) after maxNoDataPolls in a row; -20013 / -20014 count dropped and sleep noDataSleepMs without
 //       leaving Streaming; every native call runs on a named thread of this link (tutk-<n>-connect | -rx | -tx | -rxc | -rxa | -close);
 //       the cloud uid, password, nonce and HMAC never reach logs, LinkError, LinkInfo or toString; cam=<n> is a
 //       per-process counter. LinkOptions.forceRelay has no IOTC equivalent and is ignored.
@@ -547,8 +548,8 @@ internal class TutkCameraLink(
     //   INPUTS: none
     //   OUTPUTS: { Unit - > 0: one VideoUnit (FrameInfo parsed little-endian) to the sink; -20012: sleep
     //     noDataSleepMs, in StreamMode.LIVE after maxNoDataPolls in a row Failed(TIMEOUT, -20012) (ARCHIVE / PAUSED:
-    //     never, the counter stays 0); -20013 / -20014: drop frames until the
-    //     next key frame; -20001: buffer enlarged once to LARGE_FRAME_BUF_SIZE, drop to the next key frame;
+    //     never, the counter stays 0); -20013 / -20014: count dropped, sleep noDataSleepMs, continue reading (vendor
+    //     TutkCamera); -20001: buffer enlarged once to LARGE_FRAME_BUF_SIZE, drop to the next key frame;
     //     FATAL_READ_CODES: Failed(classify(code)) (e.g. -20015 REMOTE_CLOSED), no reconnect; any other negative code:
     //     logged once per code, sleep noDataSleepMs, keep reading (maxNoDataPolls in a row -> Failed(classify(code)));
     //     stopping / released AV channel: quiet exit }
@@ -598,8 +599,8 @@ internal class TutkCameraLink(
                 }
                 r.code == TutkCodes.AV_INCOMPLETE_FRAME || r.code == TutkCodes.AV_LOSED_THIS_FRAME -> {
                     noData = 0
-                    dropping = true
                     dropped.incrementAndGet()
+                    if (!pause()) break
                 }
                 r.code in FATAL_READ_CODES -> {
                     exit = EXIT_ERROR

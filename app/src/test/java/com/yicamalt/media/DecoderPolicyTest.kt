@@ -1,5 +1,5 @@
 // FILE: DecoderPolicyTest.kt
-// VERSION: 0.3.0
+// VERSION: 0.3.1
 // START_MODULE_CONTRACT
 //   PURPOSE: Executable contract for the pure decoder rules (queue + key gate, reset streak, csd, pts, status texts).
 //   SCOPE: FrameQueue gate/overflow/FIFO/clear, ResetCounter, CsdBuilder AVC/HEVC/empty, PtsGuard, DecoderStatus texts.
@@ -29,7 +29,8 @@ import org.junit.jupiter.api.Test
 // END_MODULE_MAP
 
 // START_CHANGE_SUMMARY
-//   LAST_CHANGE: v0.3.0 - test default FrameQueue capacity 48 and holdCapacity 96.
+//   LAST_CHANGE: v0.3.1 - test default FrameQueue capacity 128 and holdCapacity 256.
+//   PREVIOUS: v0.3.0 - test default FrameQueue capacity 48 and holdCapacity 96.
 //   PREVIOUS: v0.2.0 - device fix: startup-hold scenarios (queue-overflow reset before BLOCK_CREATE_DECODER);
 //     the running-overflow test now sets codecRunning=true explicitly.
 //   PREVIOUS: v0.1.0 - GSD plan 02-08: created with DecoderPolicy.
@@ -79,16 +80,16 @@ class DecoderPolicyTest {
     }
 
     @Test
-    fun `default queue capacity is 48 holding bursts without reset`() {
+    fun `default queue capacity is 128 holding bursts without reset`() {
         val q = FrameQueue()
         q.codecRunning = true
         assertEquals(OfferResult.ACCEPTED, q.offer(frame(true, pts = 0)))
-        for (i in 1..47) assertEquals(OfferResult.ACCEPTED, q.offer(frame(false, pts = i.toLong())))
-        assertEquals(48, q.size)
+        for (i in 1..127) assertEquals(OfferResult.ACCEPTED, q.offer(frame(false, pts = i.toLong())))
+        assertEquals(128, q.size)
         assertFalse(q.needsKeyFrame)
-        // 49th frame overflows
-        assertEquals(OfferResult.ACCEPTED_DROPPED_OLDEST, q.offer(frame(false, pts = 48)))
-        assertEquals(48, q.size)
+        // 129th frame overflows
+        assertEquals(OfferResult.ACCEPTED_DROPPED_OLDEST, q.offer(frame(false, pts = 128)))
+        assertEquals(128, q.size)
         assertTrue(q.needsKeyFrame)
     }
 
