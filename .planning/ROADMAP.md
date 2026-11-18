@@ -207,7 +207,7 @@ Plans:
 - [ ] 07-01-PLAN.md — TNP Live Audio fix (AacDecoder AudioTrack routing/attributes, AudioPipeline decrypt verification, unit tests) (wave 1)
 - [ ] 07-02-PLAN.md — TUTK SD Archive Index & Calendar fix (792/793 exchange robustness, timeout, day picker date selection, unit tests) (wave 1)
 - [ ] 07-03-PLAN.md — Video FrameAssembler gap recovery & Event-to-SD smooth playback (resilient frame draining on packet drop, smooth openAt transition, Relay SD default, unit tests) (wave 2)
-- [ ] 07-04-PLAN.md — Version 1.0.1 bump, clean clone release build, check-release-apk, and device regression plan (H-R1..H-R14 re-check) (wave 3, checkpoint)
+- [x] 07-04-PLAN.md - Version 1.0.1 bump, clean clone release build, check-release-apk, and device regression plan (H-R1..H-R14 re-check) (wave 3, checkpoint) — SUMMARY written with `status: halted`; Task 3 is a blocking human checkpoint, 6 device criteria still pending
 
 ## Progress
 
@@ -222,7 +222,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
 | 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
-| 7. Устранение гэпов регрессии | 0/4 | Planned | - |
+| 7. Устранение гэпов регрессии | 4/4 | Halted at human gate | - |
 
 ## Backlog
 
