@@ -9,6 +9,7 @@
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
@@ -22,23 +23,27 @@
  (completed 2026-11-04)
 - [x] **Phase 6: Релизная сборка и проверка на телефоне** - Подписанный ARM-APK, проверка всех v1-сценариев на реальном устройстве
  (completed 2026-11-14)
-- [ ] **Phase 7: Устранение гэпов регрессии** - Звук в Live на TNP, архив SD на TUTK, плавность перехода из событий в архив, повторная проверка на Mi 9
+- [x] **Phase 7: Устранение гэпов регрессии** - Звук в Live на TNP, архив SD на TUTK, плавность перехода из событий в архив, повторная проверка на Mi 9 (completed 2026-11-19)
 
 ## Phase Details
 
 ### Phase 1: Секреты и реальный список камер
+
 **Goal**: После логина пользователь видит свои реальные камеры, а приложение знает P2P-реквизиты и транспорт каждой из них, не допуская утечки секретов в логи и Git
 **Depends on**: Nothing (first phase; логин и HMAC-подпись уже подтверждены)
 **Requirements**: SEC-01, SEC-02, SEC-03, SEC-04, CAM-01, CAM-02, CAM-03, CAM-04, CAM-05
 **Success Criteria** (what must be TRUE):
+
   1. Пользователь логинится и видит список своих камер (свои и расшаренные) с названием, моделью и статусом онлайн/офлайн, без ручного выбора сервера gw-us / gw-eu / gw-sg
   2. При отсутствии камер или ошибке сервера пользователь видит понятное состояние («нет камер» / «ошибка сервера» / «повторить»); pull-to-refresh обновляет список, а при повторном запуске кэшированный список показывается сразу
   3. Для каждой камеры известен транспорт (TNP / TUTK) и получены P2P-реквизиты (p2pid, пароль, InitString, License через `/v4/tnp/device_info`); реквизиты лежат только в памяти / EncryptedSharedPreferences, не в открытом Room
   4. Расширенный `RedactionScanner` на реалистичных фикстурах не находит в логах hmac, токены, пароли, License, InitString, DID/p2pid, nonce и серийники; диагностический лог пишется во внутреннее хранилище
   5. `.gitignore` и проверка перед коммитом не пропускают APK, .so, декомпилированный код и flow-файлы захвата
+
 **Plans:** 13 plans
 
 Plans:
+
 - [x] 01-00-PLAN.md — Wave 0: починка tools/gradle.ps1, компилируемая базовая линия, GRACE-контракты новых модулей (planned)
 - [x] 01-01-PLAN.md — Редакция логов: RedactionScanner + фикстуры, shape-only LogRedactor, BASIC-логгер HttpClientModule (wave 1)
 - [x] 01-02-PLAN.md — Диагностический лог только во внутреннем хранилище; серийники/uid/epoch убраны из логов (wave 1)
@@ -52,25 +57,31 @@ Plans:
 - [x] 01-09-PLAN.md — CameraRegistry: источники по пробе, shared, регион, P2P-реквизиты, кэш (wave 5)
 - [x] 01-10-PLAN.md — UI списка камер: состояния, pull-to-refresh, кэш при старте (wave 6)
 - [x] 01-11-PLAN.md — Синхронизация GRACE и финальная проверка на телефоне (wave 7, checkpoint)
+
 **UI hint**: yes
 **Notes**:
+
   - Первая задача — одна проба-матрица на устройстве (`/v4/devices/list`, `/v5/devices/list`, `/v5/deviceshare/*` на трёх регионах + `/v4/tnp/device_info`), логирующая только статус/код/длину/имена полей; дальше — по дереву решений из research/SUMMARY.md.
   - Захват трафика (apk-mitm + mitmproxy) становится критическим путём только если все пробы пусты; иначе он переносится в Phase 5 как поиск API событий.
   - Попутный техдолг: пересоздание `YiCloudAuthApi` после смены base URL, единый HMAC-подписчик, лог device_id в `CameraDao.insertCamera`.
 
 ### Phase 2: Нативный P2P и первый кадр
+
 **Goal**: Пользователь открывает камеру и видит живое видео (H.264/H.265) через вендорский TNP-транспорт — и в своей Wi-Fi сети, и через мобильный интернет
 **Depends on**: Phase 1 (нужны транспорт и P2P-реквизиты камер)
 **Requirements**: LIVE-01, LIVE-02, LIVE-03
 **Success Criteria** (what must be TRUE):
+
   1. Сборка извлекает `libPPPP_API.so` (и TUTK-библиотеки) из локального APK с SHA-256 манифестом; на arm64-телефоне проверка `PPPP_GetAPIVersion` проходит, и ни один вендорский бинарник не попадает в Git
   2. Пользователь в той же Wi-Fi сети, что и камера, открывает камеру и видит движущееся видео
   3. Пользователь на мобильном интернете (Wi-Fi выключен) открывает ту же камеру и видит видео через P2P или relay; режим соединения виден в отладочной информации
   4. Камера с H.265 показывает видео так же, как камера с H.264 (или явно сообщает об отсутствии аппаратного декодера)
   5. Чистое Kotlin-ядро (`YiP2pAuth`, `TnpCodec`, `IFrameDecryptor`, `NalUtils`) покрыто JVM-тестами на эталонных векторах; устаревшие контракты `M-STREAM-LIVE` / `M-STREAM-DECODE` заменены в GRACE-документах
+
 **Plans:** 6/13 plans executed
 
 Plans:
+
 - [x] 02-00-PLAN.md — Wave 0: базовая линия, контракты портов (CameraLink, PpppNative, StreamTypes), FakePpppNative, формы секретов в RedactionScanner, GRACE-узлы (M-STREAM-LIVE/DECODE → superseded)
 - [x] 02-01-PLAN.md — Вендорское правило транспорта: /v4/tnp/device_info для каждой камеры, TNP по форме DID, иначе по регистру uid; P2pCredentialsSource (wave 1)
 - [x] 02-02-PLAN.md — Gradle-извлечение вендорских .so из локального APK + SHA-256 манифест, abiFilters, R8 keep, HANDOFF (wave 1)
@@ -84,22 +95,27 @@ Plans:
 - [x] 02-10-PLAN.md — 2B часть A: гейт; при TUTK-камере — TUTK-шим, TutkNative, TutkRuntime, иначе задокументированный пропуск (wave 5)
 - [x] 02-11-PLAN.md — 2B часть B: TutkCameraLink + диспетчер фабрик по транспорту, или пропуск (wave 6)
 - [ ] 02-12-PLAN.md — Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, передача сессии официальному приложению (wave 7, checkpoint)
+
 **Research**: done — `.planning/phases/02-p2p/02-RESEARCH.md`
 **UI hint**: yes
 
 ### Phase 3: Полноценный live-view
+
 **Goal**: Живое видео ведёт себя как в нормальном приложении: видно состояние связи, само восстанавливается, управляется звуком, качеством, снимком и жестами, не держит камеру в фоне
 **Depends on**: Phase 2
 **Requirements**: LIVE-04, LIVE-05, LIVE-06, LIVE-07, LIVE-08, LIVE-09, LIVE-10, LIVE-11
 **Success Criteria** (what must be TRUE):
+
   1. Пользователь видит состояние соединения (подключение / LAN / P2P / relay / офлайн / ошибка авторизации); после кратковременного обрыва сети видео возвращается само, с ограниченным backoff, без нажатий
   2. Пользователь включает и выключает звук (по умолчанию выключен) и переключает HD/SD (на relay по умолчанию SD)
   3. Пользователь сохраняет снимок кадра в галерею, разворачивает видео на весь экран и масштабирует его жестом
   4. При уходе с экрана или сворачивании приложения поток останавливается; на камеру открыта одна P2P-сессия, и официальное приложение продолжает показывать видео параллельно
   5. Пользователь смотрит видео дольше официального лимита превью, без рекламы и прерываний
+
 **Plans:** 14/14 plans complete
 
 Plans:
+
 - [x] 03-00-PLAN.md — Wave 0: порт-типы (AudioUnit, CameraLink.setAudioSink/requestResolution/capabilities, SupervisorState, MediaSession, NetworkMonitor), configChanges + WRITE_EXTERNAL_STORAGE max 28, GRACE-узлы (wave 1)
 - [x] 03-01-PLAN.md — TDD: AdtsParser + AudioPipeline (расшифровка TNP-аудио, mute, доступность звука) (wave 2)
 - [x] 03-02-PLAN.md — TNP: ch1-аудио в AudioUnitSink, requestResolution через txQueue, abilityRet 4882 (wave 2)
@@ -114,20 +130,25 @@ Plans:
 - [x] 03-11-PLAN.md — LiveViewScreen на TextureView, полный экран, жесты; тап → live, long-press → отладочный экран (wave 5)
 - [x] 03-12-PLAN.md — Синхронизация GRACE, тройной прогон тестов, 03-HUMAN-UAT.md (wave 6)
 - [x] 03-13-PLAN.md — Проверка на телефоне H-L1..H-L9 (wave 7, checkpoint)
+
 **Research**: done — `.planning/phases/03-live-view/03-RESEARCH.md`
 **UI hint**: yes
 
 ### Phase 4: Архив SD-карты
+
 **Goal**: Пользователь находит и смотрит записи с SD-карты камеры за любой день через ту же P2P-сессию
 **Depends on**: Phase 3 (общая P2P-сессия и пайплайн декодирования)
 **Requirements**: SD-01, SD-02, SD-03, SD-04, SD-05
 **Success Criteria** (what must be TRUE):
+
   1. Пользователь выбирает день в календаре, где отмечены дни с записями на SD-карте
   2. Пользователь видит 24-часовую шкалу выбранного дня с записанными отрезками, запускает воспроизведение с выбранного момента и перематывает по шкале
   3. Пользователь ставит паузу, продолжает и одним действием возвращается к живому видео
   4. Если SD-карты нет или за день нет записей, пользователь видит понятное состояние, а не пустую шкалу или зависание
+
 **Plans**: 14 plans (10 executed + 4 gap closure)
 Plans:
+
 - [x] 04-00-PLAN.md — CameraLink archive port (sendIoCtrl, replies, useCount, stream mode) + TNP ch4/5/7, generic IOCTRL
 - [x] 04-01-PLAN.md — SdArchiveCodec + SdTime: byte-exact archive payloads/parsers, UTC wire time (TDD)
 - [x] 04-02-PLAN.md — TUTK link: generic IOCTRL, 793 replies, shared useCount, -20012 limit only in LIVE
@@ -142,22 +163,27 @@ Plans:
 - [ ] 04-11-PLAN.md — Gaps (device 1, 2): ruler follows live time after «Живой» (rulerMs), spinner only while a fetch is in flight (IDLE)
 - [ ] 04-12-PLAN.md — Gap W-1: index refresh on reconnect / every 60 s / before seeks (pending seek ≤3 s), SILENT hint
 - [ ] 04-13-PLAN.md — GRACE docs sync, full gate, device re-check of defects 1-4 (H-SD11..H-SD14)
+
 **Research**: needs `/gsd:research-phase` (HIGH) — недокументированные IOCTRL-пакеты SD-воспроизведения (9030, ch4/5), формат индекса дней/отрезков
 **UI hint**: yes
 
 ### Phase 5: Лента событий
+
 **Goal**: Пользователь видит события движения по всем камерам с превью, смотрит бесплатные клипы и переходит к полной записи на SD, а аккаунт не рискует из-за частых запросов
 **Depends on**: Phase 1 (список камер). Может идти параллельно с Phases 2–4; EVT-04 (переход к SD) замыкается после Phase 4
 **Requirements**: EVT-01, EVT-02, EVT-03, EVT-04, EVT-05, EVT-06
 **Success Criteria** (what must be TRUE):
+
   1. Пользователь видит ленту событий движения по всем камерам с превью-картинкой и временем, и фильтрует её по камере и по дню
   2. Пользователь открывает 6-секундный бесплатный клип события, и он воспроизводится
   3. Из события пользователь одним действием открывает запись SD-карты этой камеры в момент события
   4. Без сети ранее загруженные события и превью видны из локального кэша
   5. На переднем плане лента опрашивает сервер не чаще раза в 5 минут; эндпоинты оплаты/подписок и `/v5/alert/push_prop` не вызываются
+
 **Plans:** 8/8 plans complete
 
 Plans:
+
 - [ ] 05-00-PLAN.md — Wave 1: MediaCrypto + AlertWire (TDD), debug-проба `/v2/alert/list` + одно превью + один клип из Настроек, запуск пользователем на Mi 9 (checkpoint)
 - [ ] 05-01-PLAN.md — 05-PROBE.md (D-PROBE-1..8, гейт продолжения) + реальный слой `v2/alert/list`: AlertListApi, AlertMapper, ForbiddenEndpointsTest; старый клиент событий удалён (wave 2)
 - [ ] 05-02-PLAN.md — Room v3 кэш событий, очистка при выходе, AlertSyncService: 5-минутный гейт в app_meta, ≤10 страниц, один запрос, очистка 30 дней, ключи медиа только в памяти (wave 3)
@@ -166,20 +192,25 @@ Plans:
 - [ ] 05-05-PLAN.md — Диалог клипа (MediaPlayer на TextureView) и «Открыть запись на SD»: LiveViewScreen(initialArchiveMs) → ArchiveCoordinator.openAt (wave 6)
 - [ ] 05-06-PLAN.md — Синхронизация GRACE (development-plan, verification-plan, knowledge-graph), 05-HUMAN-UAT.md (H-EV1..H-EV10), полный прогон (wave 7)
 - [ ] 05-07-PLAN.md — Проверка на телефоне Mi 9: H-EV1..H-EV10, 05-DEVICE-VERIFICATION.md (wave 8, checkpoint)
+
 **Research**: done — `.planning/phases/05-events-feed/05-RESEARCH.md` (лента = `GET /v2/alert/list`; захват apk-mitm + mitmproxy только запасной путь, если проба вернёт не 20000 или пустой список)
 **UI hint**: yes
 
 ### Phase 6: Релизная сборка и проверка на телефоне
+
 **Goal**: У пользователя на телефоне стоит подписанный APK, в котором все v1-сценарии подтверждены на реальных камерах
 **Depends on**: Phase 4, Phase 5
 **Requirements**: REL-01, REL-02
 **Success Criteria** (what must be TRUE):
+
   1. Из чистого клона с локальным APK Yi Home собирается подписанный APK для arm64-v8a / armeabi-v7a; вендорские .so извлекаются при сборке и не лежат в репозитории
   2. На телефоне пользователя пройдены все v1-сценарии: список камер, live-view в LAN и удалённо, H.264/H.265, архив SD, лента событий — в том числе при одновременно открытом официальном приложении
   3. Финальный прогон `RedactionScanner` по логам реальной сессии не находит секретов; по итогам проверки GRACE `docs/verification-plan.xml` отражает пройденные гейты
+
 **Plans:** 9/9 plans complete
 
 Plans:
+
 - [x] 06-00-PLAN.md — Wave 1: GRACE-контракт M-RELEASE-BUILD и скелет гейта Phase 6; pre-commit и .gitignore не пропускают ключи подписи и пароли (REL-01)
 - [x] 06-01-PLAN.md — Скрипт создания release-ключа вне репозитория (tools/new-release-key.ps1), docs/RELEASE.md с резервной копией ключа; ключ создан на этой машине (wave 2)
 - [x] 06-02-PLAN.md — Подпись release из внешнего файла свойств, версия 1.0.0 / 10000, R8 выключен, tools/check-release-apk.ps1 (подпись, ABI, хеши .so, debuggable) (wave 3)
@@ -190,23 +221,26 @@ Plans:
 - [x] 06-07-PLAN.md — Финальный regression на release: LAN оба семейства, кодек, архив SD, события, параллельно с Yi Home, фон, 15+ мин, удалённо через раздачу интернета, скан logcat (wave 8, checkpoint)
 - [x] 06-08-PLAN.md — Закрытие документов: статусы гейтов GRACE по итогам, PROJECT_STATUS, HANDOFF, финальные проверки репозитория (wave 9)
 
-
 ### Phase 7: Устранение гэпов регрессии
+
 **Goal**: Устранить выявленные при финальной регрессии дефекты (звук TNP, чтение индекса архива TUTK, буферизация архива при внешнем переходе из событий) и подтвердить их исправление на телефоне
 **Depends on**: Phase 6
 **Requirements**: LIVE-06, LIVE-07, SD-01, EVT-04, REL-02
 **Success Criteria** (what must be TRUE):
+
   1. При включении звука в live на камере TNP («Спальня») звук с микрофона камеры отчётливо слышен на телефоне (H-R3 fix)
   2. На камере TUTK («YI Home Camera») при открытии архива SD успешно загружается список дней и шкала записей, воспроизведение работает (H-R9 fix)
   3. При нажатии «Открыть запись на SD» из карточки события видеозапись воспроизводится плавно без слайд-шоу задержек в 3–5 секунд (H-R10 fix)
   4. Проверены косметические улучшения: дефолт SD на Relay (LIVE-07) и выбор дат в календаре SD
   5. Собрана обновлённая релизная сборка, проверена чекером, установлена на Mi 9; подтверждено исправление гэпов
-**Plans:** 4 plans
+
+**Plans:** 4/4 plans complete
 
 Plans:
-- [ ] 07-01-PLAN.md — TNP Live Audio fix (AacDecoder AudioTrack routing/attributes, AudioPipeline decrypt verification, unit tests) (wave 1)
-- [ ] 07-02-PLAN.md — TUTK SD Archive Index & Calendar fix (792/793 exchange robustness, timeout, day picker date selection, unit tests) (wave 1)
-- [ ] 07-03-PLAN.md — Video FrameAssembler gap recovery & Event-to-SD smooth playback (resilient frame draining on packet drop, smooth openAt transition, Relay SD default, unit tests) (wave 2)
+
+- [x] 07-01-PLAN.md — TNP Live Audio fix (AacDecoder AudioTrack routing/attributes, AudioPipeline decrypt verification, unit tests) (wave 1)
+- [x] 07-02-PLAN.md — TUTK SD Archive Index & Calendar fix (792/793 exchange robustness, timeout, day picker date selection, unit tests) (wave 1)
+- [x] 07-03-PLAN.md — Video FrameAssembler gap recovery & Event-to-SD smooth playback (resilient frame draining on packet drop, smooth openAt transition, Relay SD default, unit tests) (wave 2)
 - [x] 07-04-PLAN.md - Version 1.0.1 bump, clean clone release build, check-release-apk, and device regression plan (H-R1..H-R14 re-check) (wave 3, checkpoint) — SUMMARY written with `status: halted`; Task 3 is a blocking human checkpoint, 6 device criteria still pending
 
 ## Progress
@@ -222,7 +256,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
 | 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
-| 7. Устранение гэпов регрессии | 4/4 | Halted at human gate | - |
+| 7. Устранение гэпов регрессии | 4/4 | Complete    | 2026-11-19 |
 
 ## Backlog
 
