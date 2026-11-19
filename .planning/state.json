@@ -6,12 +6,12 @@
     {
       "number": "1",
       "name": "Секреты и реальный список камер",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "2",
       "name": "Нативный P2P и первый кадр",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "3",
@@ -41,8 +41,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 1)",
-    "reason": "Phase 1 of 7 — needs a plan"
+    "label": "Advance to the next step (plan phase 03)",
+    "reason": "Phase 03 of 7 — needs a plan"
   },
-  "updated_at": "2026-11-19T17:14:09.181Z"
+  "updated_at": "2026-11-19T18:32:24.334Z"
 }
