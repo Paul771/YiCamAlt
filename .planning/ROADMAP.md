@@ -94,7 +94,7 @@ Plans:
 - [x] 02-09-PLAN.md — Отладочный экран live из списка камер: режим, кодек, декодер, fps, decryptOk (wave 4)
 - [x] 02-10-PLAN.md — 2B часть A: гейт; при TUTK-камере — TUTK-шим, TutkNative, TutkRuntime, иначе задокументированный пропуск (wave 5)
 - [x] 02-11-PLAN.md — 2B часть B: TutkCameraLink + диспетчер фабрик по транспорту, или пропуск (wave 6)
-- [ ] 02-12-PLAN.md — Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, передача сессии официальному приложению (wave 7, checkpoint)
+- [x] 02-12-PLAN.md - Синхронизация GRACE и проверка на телефоне: Wi-Fi, мобильная сеть, H.264/H.265, передача сессии официальному приложению (wave 7, checkpoint)
 
 **Research**: done — `.planning/phases/02-p2p/02-RESEARCH.md`
 **UI hint**: yes
@@ -251,7 +251,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Секреты и реальный список камер | 13/13 | Complete | 2026-11-19 |
-| 2. Нативный P2P и первый кадр | 12/13 | In Progress | - |
+| 2. Нативный P2P и первый кадр | 13/13 | Complete | 2026-11-19 |
 | 3. Полноценный live-view | 0/TBD | Complete    | 2026-10-30 |
 | 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
@@ -268,7 +268,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 **Decision:** user chose [C] Continue and defer to backlog
 **Plans:**
 
-- [ ] 02-12: device verification of native P2P live (ran; no `02-12-SUMMARY.md`)
+- [x] 02-12: device verification of native P2P live — resolved 2026-11-19 by `02-12-SUMMARY.md` (UAT 7/7 pass on Mi 9 with a real TNP camera)
 
 **Outstanding:** `02-HUMAN-UAT.md` is `status: partial` with 6 `[pending]` items;
 `02-VERIFICATION.md` is `human_needed`. The plan is `autonomous: false` and needs a real phone
