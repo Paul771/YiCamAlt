@@ -3,11 +3,11 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 03
 current_phase_name: Полноценный live-view
-status: planning
-stopped_at: Phase 02 complete, ready to plan Phase 03
-last_updated: "2026-11-19T18:32:24.235Z"
+status: in_progress
+stopped_at: Phase 03 verification human_needed — 14/14 plans summarized, UAT required
+last_updated: "2026-11-19T18:40:00.000Z"
 last_activity: 2026-11-19
-last_activity_desc: Phase 02 complete, transitioned to Phase 03
+last_activity_desc: Phase 02 closed on device; active phase restored to 03 for UAT
 state_head: 2de49fac246e36f541c4a837f17799af31c8778b
 progress:
   total_phases: 7
@@ -25,14 +25,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 02 — Нативный P2P и первый кадр
+**Current focus:** Phase 03 — Полноценный live-view
 
 ## Current Position
 
 Phase: 03 — Полноценный live-view
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-19 — Phase 02 complete, transitioned to Phase 03
+Plan: 14 of 14 (all summarized)
+Status: human_needed — device UAT pending (see 03-VERIFICATION.md)
+Last activity: 2026-11-19 — Phase 02 closed on device (UAT 7/7), Phase 03 needs UAT
 
 Progress: [██████████] 100% (74/75 plans)
 
