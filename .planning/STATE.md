@@ -1,20 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 1
-current_phase_name: Секреты и реальный список камер
-status: planning
-stopped_at: Phase 07 complete, ready to plan Phase 1
-last_updated: "2026-11-19T17:14:09.075Z"
+current_phase: 2
+current_phase_name: Нативный P2P и первый кадр
+status: in_progress
+stopped_at: Phase 02 pending human verification (6 [pending] UAT items) and 02-12 plan without SUMMARY (deferred to backlog 999.1)
+last_updated: "2026-11-19T17:30:00.000Z"
 last_activity: 2026-11-19
-last_activity_desc: Phase 07 complete, transitioned to Phase 1
-state_head: d5727f19ea635b59fcbafd68e0784f9f47061739
+last_activity_desc: Roadmap flag for Phase 1 corrected; active phase restored to 02
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 75
   completed_plans: 74
-  percent: 71
+  percent: 98
 milestone_name: milestone
 ---
 
@@ -25,16 +24,16 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 07 — regression-fixes
+**Current focus:** Phase 02 — Нативный P2P и первый кадр
 
 ## Current Position
 
-Phase: 1 — Секреты и реальный список камер
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-19 — Phase 07 complete, transitioned to Phase 1
+Phase: 2 — Нативный P2P и первый кадр
+Plan: 12 of 13 (02-12 deferred to backlog 999.1 — needs a physical device)
+Status: human_needed — 6 [pending] items in 02-HUMAN-UAT.md
+Last activity: 2026-11-19 — Phase 1 roadmap flag corrected; active phase restored to 02
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 98% (74/75 plans)
 
 ## Performance Metrics
 
