@@ -1,4 +1,4 @@
-# Phase 2 device verification (PARTIAL, in progress)
+# Phase 2 device verification (CLOSED 2026-11-19)
 
 Date: 2026-10-16 (user was away from home, remote session). Commit: a90e4dc.
 Evidence source so far: status line read by the user from the on-screen debug live screen. No device log pulled yet,
@@ -57,4 +57,23 @@ evidence is the on-screen status line read by the user):
 - Criterion 3 / LIVE-02: PASS for the TUTK camera over mobile data (direct P2P path). Relay-only mode and the TNP camera are still NOT exercised.
 - Earlier remote run (user away from home, other network) gave the same result with fps=21.9.
 
-RESULT: PARTIAL (pending TNP camera, home Wi-Fi, relay, parallel-use checks and log sweep)
+## Update 2026-11-19 — final UAT on Mi 9 with a real TNP camera
+
+Full 7-item UAT completed; see `02-HUMAN-UAT.md` for per-test results and evidence.
+
+- **H1 TNP on home Wi-Fi:** adb logcat — `BLOCK_AUTH_REPLY authResult=0 outcome=OK`,
+  `BLOCK_FIRST_VIDEO codecId=78 key=true decryptOk=true 1920x1080`, `BLOCK_FIRST_KEYFRAME
+  codec=H264`, `BLOCK_FIRST_RENDER ms=83`, UI badge `LAN`. Picture movement attested by user.
+- **H2 TNP on mobile data:** user-attested — picture moves, `lan=no`, P2P or relay mode.
+- **H3 Relay-only:** user-attested — relay mode engaged, picture moves; TUTK relay checkbox disabled.
+- **H4 H.265:** no H.265 camera available — recorded "H.265 path not exercised on device".
+- **H5 TUTK regression:** user-attested — connect/stop/reconnect/reopen all produce video, no queue-overflow reset.
+- **H6 Hand-over with official app:** user-attested — both apps work one after the other (BUSY/KICKED is Phase 3 scope).
+- **H7 Log pull + redaction sweep:** 45 010 logcat lines captured, 200 app-tagged lines;
+  0 unredacted `password=` / `account=` / `token=` / `Authorization` in app messages;
+  `RealLogScanTest` passes 2/2 on message values. On the raw log the scanner false-positives on
+  the tag name `YiCamAlt/EncryptedP2pCredentialStore` (36 chars matched the base64 regex) —
+  a tooling false positive, not a data leak.
+
+RESULT: PASS — all 7 UAT items closed on the physical device (Mi 9, Android 11, APK v1.0.2/10002).
+H.265 was not exercised (no such camera); that limitation is recorded, not treated as a failure.
