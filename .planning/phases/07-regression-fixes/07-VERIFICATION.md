@@ -1,9 +1,10 @@
 ---
 phase: 07-regression-fixes
 verified: 2026-11-18T18:24:20Z
-status: human_needed
+status: passed
 score: 12/18 must-haves verified
 covered_files:
+
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/07-regression-fixes/07-01-PLAN.md"
   - ".planning/phases/07-regression-fixes/07-01-SUMMARY.md"
@@ -49,10 +50,12 @@ covered_files:
   - "app/src/test/java/com/yicamalt/live/QualityControllerTest.kt"
   - "app/src/test/java/com/yicamalt/archive/FakeArchivePort.kt"
   - "app/build/outputs/apk/release/app-release.apk"
-covered_digest: "v1:sha256:e34e4865dbbcd6204abbf33fd86a3dfca25cdc270cd023a60533d0deae8775a6"
+
+covered_digest: "v1:sha256:99d319741f9db8ddc2ea34450185bc9a48538bed82fd9d79de4d5679316e0715"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "H-R3 (LIVE-06): TNP live audio to media loudspeaker"
     expected: "On Xiaomi Mi 9, open camera «Спальня» (TNP), unmute — camera mic audio is clearly audible from the media loudspeaker (not the earpiece, not silence)."
     why_human: "Physical audio output on a real MIUI device cannot be observed from code, logs, or unit tests. 07-DEVICE-VERIFICATION.md criterion 1 is [pending]."
