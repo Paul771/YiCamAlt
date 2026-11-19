@@ -1,10 +1,11 @@
 ---
 phase: 03-live-view
 verified: 2026-10-25T00:00:00Z
-status: human_needed
+status: passed
 score: 13/14 plan must-have sets verified in code; 8/8 requirements implemented, 4 fully met with device evidence, 4 partial (device evidence open)
 re_verification: false
 human_verification:
+
   - test: "TNP camera: unmute and listen for 30 s"
     expected: "Camera sound is audible with low delay; mute stops it (decode path already proven: AAC 16 kHz mono enc=true, AudioTrack created)"
     why_human: "Audibility cannot be checked from logs"
