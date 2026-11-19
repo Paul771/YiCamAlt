@@ -1,5 +1,5 @@
 ---
-status: partial
+status: complete
 phase: 03-live-view
 source: [03-RESEARCH.md "Human checks", 03-12-PLAN.md]
 started: 2026-10-23

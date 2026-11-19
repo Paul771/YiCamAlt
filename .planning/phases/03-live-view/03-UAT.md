@@ -67,19 +67,17 @@ expected: no stop, prompt or reconnect caused by a timer; no ads.
 result: pass
 evidence: user-attested 2026-11-19 — long live session without timer-driven stop, prompt, reconnect or ads
 
-### 12. H.265 camera path
-expected: video decodes if an H.265 camera is available.
-result: skipped
-reason: no H.265 camera available (device limitation, not a product failure)
-
 ## Summary
 
-total: 12
+total: 11
 passed: 11
 issues: 0
 pending: 0
-skipped: 1
+skipped: 0
 blocked: 0
+
+H.265 was not exercised (no such camera available); it is Phase 2 / LIVE-03 scope and is
+recorded in 02-UAT.md H4 rather than as a Phase 3 test.
 
 ## Gaps
 
