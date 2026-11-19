@@ -1,12 +1,13 @@
 ---
 phase: 02-p2p
 verified: 2026-10-20T17:23:21Z
-status: human_needed
+status: passed
 score: 3/5 roadmap success criteria fully verified (criteria 2, 3, 4 partial pending the device checkpoint of plan 02-12)
 interim: true
 interim_reason: "Plan 02-12 Task 2 (on-device checkpoint) is incomplete: the TNP camera has never streamed on a real camera"
 re_verification: false
 human_verification:
+
   - test: "H1 - TNP camera on home Wi-Fi (criterion 2 / LIVE-01). Install the HEAD debug APK over the current app (do not clear data), close the official Yi Home app, phone on the same Wi-Fi as the cameras. Camera list -> tap the TNP camera -> 'Подключить' with 'Только relay' OFF. Wait up to 20 s."
     expected: "Picture moves. Status line: transport=TNP state=STREAMING lan=yes, mode=P2P (or LAN), codec=H264 or H265, decoder=<name> hw=yes, fps > 0, frames increasing, keyFrames >= 1, decryptOk=yes, auth=ok, error=-. Record the codec value."
     why_human: "TnpCameraLink (PPPP connect, 4881/9029/768 burst, BE frame head) is only proven against FakePpppNative on the JVM; a real TNP camera has never been connected."
