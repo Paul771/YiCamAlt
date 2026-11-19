@@ -51,7 +51,7 @@ covered_files:
   - "app/src/test/java/com/yicamalt/archive/FakeArchivePort.kt"
   - "app/build/outputs/apk/release/app-release.apk"
 
-covered_digest: "v1:sha256:99d319741f9db8ddc2ea34450185bc9a48538bed82fd9d79de4d5679316e0715"
+covered_digest: "v1:sha256:d0f67fd912e8a1cd89bb4d3c0357e4d9d7593d9c31ddc238377c8072ef00d77d"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
