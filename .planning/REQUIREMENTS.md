@@ -53,7 +53,7 @@
 
 ### Release
 
-- [ ] **REL-01**: Собирается подписанный APK (arm64-v8a / armeabi-v7a), вендорские .so извлекаются из локального APK при сборке
+- [x] **REL-01**: Собирается подписанный APK (arm64-v8a / armeabi-v7a), вендорские .so извлекаются из локального APK при сборке
 - [x] **REL-02**: Все v1-сценарии проверены на реальном телефоне пользователя: LAN, удалённо, при открытом официальном приложении
 
 ## v2 Requirements
@@ -131,7 +131,7 @@
 | EVT-04 | Phase 5 | Complete |
 | EVT-05 | Phase 5 | Complete |
 | EVT-06 | Phase 5 | Complete |
-| REL-01 | Phase 6 | Pending |
+| REL-01 | Phase 6 | Complete |
 | REL-02 | Phase 6 | Complete |
 
 **Coverage:**
