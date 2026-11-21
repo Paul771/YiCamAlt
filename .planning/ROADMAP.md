@@ -159,10 +159,10 @@ Plans:
 - [x] 04-07-PLAN.md — Archive UI under the video: timeline ruler, day month-grid dialog, pause/«Живой», D-07 texts
 - [x] 04-08-PLAN.md — GRACE docs sync (M-SD-ARCHIVE, V-M-SD-ARCHIVE, graph) + 04-HUMAN-UAT.md
 - [x] 04-09-PLAN.md — Device verification H-SD1..H-SD9, D-06 decision for TUTK
-- [ ] 04-10-PLAN.md — Gap W-2: past-end ENDED, silent re-seek cap (Paused SILENT), ARCHIVE-stall links keep the attempt counter
-- [ ] 04-11-PLAN.md — Gaps (device 1, 2): ruler follows live time after «Живой» (rulerMs), spinner only while a fetch is in flight (IDLE)
-- [ ] 04-12-PLAN.md — Gap W-1: index refresh on reconnect / every 60 s / before seeks (pending seek ≤3 s), SILENT hint
-- [ ] 04-13-PLAN.md — GRACE docs sync, full gate, device re-check of defects 1-4 (H-SD11..H-SD14)
+- [x] 04-10-PLAN.md — Gap W-2: past-end ENDED, silent re-seek cap (Paused SILENT), ARCHIVE-stall links keep the attempt counter
+- [x] 04-11-PLAN.md — Gaps (device 1, 2): ruler follows live time after «Живой» (rulerMs), spinner only while a fetch is in flight (IDLE)
+- [x] 04-12-PLAN.md — Gap W-1: index refresh on reconnect / every 60 s / before seeks (pending seek ≤3 s), SILENT hint
+- [x] 04-13-PLAN.md — GRACE docs sync, full gate, device re-check of defects 1-4 (H-SD11..H-SD14)
 
 **Research**: needs `/gsd:research-phase` (HIGH) — недокументированные IOCTRL-пакеты SD-воспроизведения (9030, ch4/5), формат индекса дней/отрезков
 **UI hint**: yes
@@ -253,7 +253,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 1. Секреты и реальный список камер | 13/13 | Complete | 2026-11-19 |
 | 2. Нативный P2P и первый кадр | 13/13 | Complete    | 2026-11-19 |
 | 3. Полноценный live-view | 14/14 | Complete    | 2026-10-30 |
-| 4. Архив SD-карты | 10/10 | Complete    | 2026-10-31 |
+| 4. Архив SD-карты | 14/14 | Complete    | 2026-10-31 |
 | 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
 | 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
 | 7. Устранение гэпов регрессии | 4/4 | Complete    | 2026-11-19 |
