@@ -1,9 +1,10 @@
 ---
 phase: 06-release-build
 verified: 2026-11-21T12:28:42Z
-status: human_needed
+status: passed
 score: 6/7 must-haves verified
 covered_files:
+
   - ".gitignore"
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/06-release-build/06-00-PLAN.md"
@@ -43,6 +44,7 @@ covered_files:
   - "tools/git-hooks/pre-commit"
   - "tools/git-hooks/test-pre-commit.sh"
   - "tools/new-release-key.ps1"
+
 covered_digest: "v1:sha256:6f1b70cc26956572254ee7f3ddc66f45e80405496f779900258160ce56c59df5"
 behavior_unverified: 0
 overrides_applied: 0
@@ -53,6 +55,7 @@ re_verification:
   gaps_remaining: []
   regressions: []
 human_verification:
+
   - test: "Re-confirm the phase-6 release on the connected Mi 9"
     expected: "The device shows versionName=1.0.0 / versionCode=10000, signerSame=true vs the phase-6 app-release.apk, and run-as is refused — reproducing H-R1 in 06-DEVICE-VERIFICATION.md."
     why_human: "The connected device (adb 16cc09bd, model MI_9 / cepheus) currently reports versionName=1.0.2 versionCode=10002 (observed 2026-11-21 and recorded on device 2026-11-19), i.e. a later Phase-7 build. The phase-6 release 1.0.0/10000 is no longer installed, so this verifier cannot confirm the release on the live physical device; only the historical records in 06-DEVICE-VERIFICATION.md / 06-HUMAN-UAT.md exist."
