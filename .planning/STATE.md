@@ -3,9 +3,9 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 06
 current_phase_name: Релизная сборка и проверка на телефоне
-status: planning
-stopped_at: Phase 05 complete, ready to plan Phase 06
-last_updated: "2026-11-21T11:59:26.840Z"
+status: in_progress
+stopped_at: Phase 06 verification missing — all 9 plans summarized, verification gates not yet run
+last_updated: "2026-11-21T12:10:00.000Z"
 last_activity: 2026-11-21
 last_activity_desc: Phase 05 complete, transitioned to Phase 06
 state_head: 2a002fa6c1586dd98c9bfd6e36ffb0d5284e5a3f
@@ -25,14 +25,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 05 — Лента событий
+**Current focus:** Phase 06 — Релизная сборка и проверка на телефоне
 
 ## Current Position
 
 Phase: 06 — Релизная сборка и проверка на телефоне
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-21 — Phase 05 complete, transitioned to Phase 06
+Plan: 9 of 9 (all summarized)
+Status: verification missing — run /gsd-execute-phase 06 to resume at the verification gates
+Last activity: 2026-11-21 — Phase 05 closed on device (UAT 12/12), Phase 06 needs verification
 
 Progress: [██████████] 100% (74/75 plans)
 
