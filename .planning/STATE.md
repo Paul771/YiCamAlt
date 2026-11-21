@@ -3,11 +3,11 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 05
 current_phase_name: Лента событий
-status: planning
-stopped_at: Phase 04 complete, ready to plan Phase 05
-last_updated: "2026-11-21T09:13:28.322Z"
+status: in_progress
+stopped_at: Phase 05 verification human_needed — 8/8 plans summarized, UAT required
+last_updated: "2026-11-21T09:25:00.000Z"
 last_activity: 2026-11-21
-last_activity_desc: Phase 04 complete, transitioned to Phase 05
+last_activity_desc: Phase 04 closed on device; active phase restored to 05 for UAT
 state_head: c757e70f7f048c6e648aa14bebe94b4a1be7403e
 progress:
   total_phases: 7
@@ -25,14 +25,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 04 — Архив SD-карты
+**Current focus:** Phase 05 — Лента событий
 
 ## Current Position
 
 Phase: 05 — Лента событий
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-21 — Phase 04 complete, transitioned to Phase 05
+Plan: 8 of 8 (all summarized)
+Status: human_needed — device UAT pending (see 05-VERIFICATION.md)
+Last activity: 2026-11-21 — Phase 04 closed on device (UAT 14/14), Phase 05 needs UAT
 
 Progress: [██████████] 100% (74/75 plans)
 
