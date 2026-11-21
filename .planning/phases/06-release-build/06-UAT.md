@@ -40,7 +40,7 @@ evidence: verified myself on Mi 9 2026-11-21 via adb — CLIP_OPEN_SD state=open
 ### 6. Резервная копия ключа подписи
 expected: пользователь подтверждает, что оба файла ключа подписи сохранены вне репозитория (в Git их нет — `.gitignore` + pre-commit hook).
 result: pass
-evidence: 2026-11-21 — key found locally at C:\Users\Pavel\.yicamalt\yicamalt-release.p12 (4284 B) with release-signing.properties pointing to it; no key in Git or its history; user accepted with an explicit follow-up TODO to make an offline backup. Signature NOT rotated — a new key would break updates for installed app users.
+evidence: 2026-11-21 — key found locally at <userprofile>/.yicamalt/yicamalt-release.p12 (4284 B) with release-signing.properties pointing to it; no key in Git or its history; user accepted with an explicit follow-up TODO to make an offline backup. Signature NOT rotated — a new key would break updates for installed app users.
 
 ## Summary
 
@@ -58,5 +58,5 @@ none
 ## Deferred Follow-Ups
 
 - test: 6
-  idea: "Сделать офлайн-копию ключа подписи C:\\Users\\Pavel\\.yicamalt\\yicamalt-release.p12 и release-signing.properties (вне этого компа). Подпись НЕ менять — новый ключ сломает обновление уже установленного приложения."
+  idea: "Сделать офлайн-копию ключа подписи <userprofile>/.yicamalt/yicamalt-release.p12 и release-signing.properties (вне этого компа). Подпись НЕ менять — новый ключ сломает обновление уже установленного приложения."
   deferred_at: 2026-11-21
