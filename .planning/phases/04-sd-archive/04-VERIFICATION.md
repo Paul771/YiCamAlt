@@ -1,10 +1,11 @@
 ---
 phase: 04-sd-archive
 verified: 2026-10-31T09:30:00Z
-status: human_needed
+status: passed
 score: 4/4 success criteria implemented and wired in code (JVM-tested); device-verified 0/4 fully, 1/4 partially (SC-4 no-card state only)
 re_verification: false
 human_verification:
+
   - test: "H-SD1 day dialog (SD-01): on a camera with a microSD card that has recorded for at least 1 h, tap the day button under the video"
     expected: "Recorded days have a dot and can be tapped; other days are grey and cannot be tapped (today always can); «Сегодня ▾» is selected by default; picking a recorded day changes the button label and the timeline"
     why_human: "Needs a real 9032/793 index; no reachable camera has a card (TNP tfstat=5, TUTK unreachable)"
@@ -58,6 +59,7 @@ The review found two medium-severity robustness defects (W-1 and W-2 below). Nei
 ## Gradle evidence (run by the verifier)
 
 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/gradle.ps1 :app:testDebugUnitTest :app:assembleDebug --rerun`
+
 - Result: BUILD SUCCESSFUL, exit 0. `:app:testDebugUnitTest` actually executed (not UP-TO-DATE; the result XMLs are timestamped 2026-10-31 12:19 local).
 - JUnit totals from `app/build/test-results/testDebugUnitTest/*.xml`: **903 tests, 0 failures, 0 errors, 1 skipped**. The skipped test is `RealLogScanTest`, which only runs when a log file is passed.
 - `app/build/outputs/apk/debug/app-debug.apk` was rebuilt at 12:20.
@@ -171,26 +173,32 @@ No TODO / FIXME / placeholder / empty-handler patterns in the phase files. `empt
 ## Findings (by severity)
 
 ### W-1 (Warning, medium): the index goes stale during a session, so today's recent footage cannot be reached by drag
+
 - **Where:** `ui/live/ArchiveCoordinator.kt`. The index is loaded only on the first liveEpoch (and on later epochs only while LOADING or LIST_FAILED), on «Повторить», and in `openDays()` when older than `refreshMs` = 60 s (line 243). There is no refresh on entering the archive, after a reconnect, or periodically while the TIMELINE is visible. Research Pattern 4 recommended all three (the vendor polls every 60 s).
 - **Effect:** today's timeline stops at the load time. `SdTimeline.resolveSeek` clamps any target at or after the last known end to `last.end − 6 s` (line 119). A user who opened the screen 30 min ago and drags to 5 min ago is sent back to roughly 30 min ago, unless they first open and close the day dialog. That weakens SD-02/SD-03 for the most common case (recent events on today).
 - **Fix:** refresh the index (`launchLoad(full = false)`) when it is older than `refreshMs` and (a) the first seek from Live happens, (b) a seek on today targets beyond `all.last().endMs`, then resolve after the refresh, (c) a new liveEpoch arrives, and/or (d) every 60 s while the panel is TIMELINE. Add a test in `ArchiveCoordinatorTest`.
 
 ### W-2 (Warning, medium): unbounded reconnect loop when archive silence falls outside a known segment
+
 - **Where:** `archive/PlaybackController.kt` `tickPlaying` (lines 407-420) and `tickStarting` (384-392), plus `live/LiveSessionSupervisor.kt` `tick` (lines 594-602).
 - **Mechanism:** ENDED requires `nearEnd`, which requires the position to be *inside* a known segment. Once the position reaches or passes `last.endMs` (typically because of W-1: playback continued past the stale end and the recording then stops), `seg == null` and `next == null`, so nothing ever fires. The start timeout counts only while units of any generation arrive, so a camera that goes fully silent after a seek never reaches Failed(NO_FRAMES). In both cases the supervisor's 35 s ARCHIVE stall closes the link. But `w.healthy` is already true after 30 s of Streaming, so `attempt` resets to 1 and the retry budget never exhausts. The next liveEpoch re-seeks the same position, and the cycle repeats indefinitely: «Подключение…» about every 37 s on a frozen frame.
 - **Tests:** `mid-segment silence waits for the stall and reconnect` and `camera loss while starting … waits for the stall` assert the first hop only. No test covers repeated hops or a position past the last segment.
 - **Fix (one or more):** treat `pos >= last.endMs && next == null` as end-near; count consecutive re-seeks of the same position without a recorded key frame and after 2 go to Paused(ENDED) or Failed(NO_FRAMES); or do not mark a link healthy when it ends with an ARCHIVE stall.
 
 ### I-1 (Info): a failed start leaves a frozen frame instead of live
+
 `tickStarting` timeout → `sendPause()` → Failed(NO_FRAMES): the camera is told to stop, so live does not resume until the user taps «Живой» or «Продолжить». The hint «Не удалось начать воспроизведение» is shown. This is acceptable, but D-07's "live keeps going" spirit could suggest going live automatically. That is a product choice.
 
 ### I-2 (Info): wire-time base is an assumption
+
 `SdTime.WIRE_IS_UTC = true` follows the research's reading of the vendor code for gw-us; the single seam exists. A 3 h offset (Moscow) would place segments and seeks wrongly. H-SD3 decides it.
 
 ### I-3 (Info): TUTK live regression not re-checked on the device
+
 04-02 changed the TUTK link (rxc publishes every reply, 793 paging, the -20012 limit only in LIVE, a shared useCount). It is JVM-tested (46 tests), but the TUTK camera was unreachable on 2026-10-31. TNP live with the new ch4/5/7 readers *was* re-checked (LAN Live, background resume in 0.6 s).
 
 ### I-4 (Info): no explicit decoder reset per seek
+
 The design relies on the generation gate and re-arming on a key frame (the assembler disarms on a new uc) rather than resetting MediaCodec as the research suggested. This is fine for H.264/H.265 in principle; H-SD3 should watch for smearing right after a seek.
 
 ## Human Verification Required
