@@ -45,7 +45,7 @@ covered_files:
   - "tools/git-hooks/test-pre-commit.sh"
   - "tools/new-release-key.ps1"
 
-covered_digest: "v1:sha256:6f1b70cc26956572254ee7f3ddc66f45e80405496f779900258160ce56c59df5"
+covered_digest: "v1:sha256:9e2e447dd5bafec8d52fae6bbf57a9572f2c0a9be3f4cbc79fdb4a5058e7fefa"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
