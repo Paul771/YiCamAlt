@@ -9,6 +9,9 @@ captures/
 .venv/
 # GSD runtime lock: holds a PID and session id, machine/session-local by design
 .planning/milestone.lock
+# JVM crash dumps from a failed Gradle daemon — machine-local only
+hs_err_pid*.log
+replay_pid*.log
 
 # Vendor binaries and reverse-engineering output: local only, never in this public repo
 _apk/
