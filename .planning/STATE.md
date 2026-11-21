@@ -1,14 +1,14 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 05
-current_phase_name: Лента событий
-status: in_progress
-stopped_at: Phase 05 verification human_needed — 8/8 plans summarized, UAT required
-last_updated: "2026-11-21T09:25:00.000Z"
+current_phase: 06
+current_phase_name: Релизная сборка и проверка на телефоне
+status: planning
+stopped_at: Phase 05 complete, ready to plan Phase 06
+last_updated: "2026-11-21T11:59:26.840Z"
 last_activity: 2026-11-21
-last_activity_desc: Phase 04 closed on device; active phase restored to 05 for UAT
-state_head: c757e70f7f048c6e648aa14bebe94b4a1be7403e
+last_activity_desc: Phase 05 complete, transitioned to Phase 06
+state_head: 2a002fa6c1586dd98c9bfd6e36ffb0d5284e5a3f
 progress:
   total_phases: 7
   completed_phases: 7
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 
 ## Current Position
 
-Phase: 05 — Лента событий
-Plan: 8 of 8 (all summarized)
-Status: human_needed — device UAT pending (see 05-VERIFICATION.md)
-Last activity: 2026-11-21 — Phase 04 closed on device (UAT 14/14), Phase 05 needs UAT
+Phase: 06 — Релизная сборка и проверка на телефоне
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-21 — Phase 05 complete, transitioned to Phase 06
 
 Progress: [██████████] 100% (74/75 plans)
 
@@ -40,7 +40,7 @@ Progress: [██████████] 100% (74/75 plans)
 
 **Velocity:**
 
-- Total plans completed: 45
+- Total plans completed: 53
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100% (74/75 plans)
 | 02 | 13 | - | - |
 | 03 | 14 | - | - |
 | 04 | 14 | - | - |
+| 05 | 8 | - | - |
 
 **Recent Trend:**
 
@@ -203,5 +204,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-11-14T20:25:00.000Z
-Stopped at: Phase 04 complete, ready to plan Phase 05
+Stopped at: Phase 05 complete, ready to plan Phase 06
 Resume file: .planning/v1.0-MILESTONE-AUDIT.md

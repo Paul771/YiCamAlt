@@ -184,14 +184,14 @@ Plans:
 
 Plans:
 
-- [ ] 05-00-PLAN.md — Wave 1: MediaCrypto + AlertWire (TDD), debug-проба `/v2/alert/list` + одно превью + один клип из Настроек, запуск пользователем на Mi 9 (checkpoint)
-- [ ] 05-01-PLAN.md — 05-PROBE.md (D-PROBE-1..8, гейт продолжения) + реальный слой `v2/alert/list`: AlertListApi, AlertMapper, ForbiddenEndpointsTest; старый клиент событий удалён (wave 2)
-- [ ] 05-02-PLAN.md — Room v3 кэш событий, очистка при выходе, AlertSyncService: 5-минутный гейт в app_meta, ≤10 страниц, один запрос, очистка 30 дней, ключи медиа только в памяти (wave 3)
-- [ ] 05-03-PLAN.md — EventMediaRepository: превью (расшифровка, tar, 480 px в filesDir), клипы в локальный MP4, обновление URL ±5 с, LRU и очистка файлов (wave 4)
-- [ ] 05-04-PLAN.md — Вкладка «События»: карточки по дням, чипы камер, календарь дней, pull-to-refresh, «обновлено N мин назад», офлайн-кэш (wave 5)
-- [ ] 05-05-PLAN.md — Диалог клипа (MediaPlayer на TextureView) и «Открыть запись на SD»: LiveViewScreen(initialArchiveMs) → ArchiveCoordinator.openAt (wave 6)
-- [ ] 05-06-PLAN.md — Синхронизация GRACE (development-plan, verification-plan, knowledge-graph), 05-HUMAN-UAT.md (H-EV1..H-EV10), полный прогон (wave 7)
-- [ ] 05-07-PLAN.md — Проверка на телефоне Mi 9: H-EV1..H-EV10, 05-DEVICE-VERIFICATION.md (wave 8, checkpoint)
+- [x] 05-00-PLAN.md — Wave 1: MediaCrypto + AlertWire (TDD), debug-проба `/v2/alert/list` + одно превью + один клип из Настроек, запуск пользователем на Mi 9 (checkpoint)
+- [x] 05-01-PLAN.md — 05-PROBE.md (D-PROBE-1..8, гейт продолжения) + реальный слой `v2/alert/list`: AlertListApi, AlertMapper, ForbiddenEndpointsTest; старый клиент событий удалён (wave 2)
+- [x] 05-02-PLAN.md — Room v3 кэш событий, очистка при выходе, AlertSyncService: 5-минутный гейт в app_meta, ≤10 страниц, один запрос, очистка 30 дней, ключи медиа только в памяти (wave 3)
+- [x] 05-03-PLAN.md — EventMediaRepository: превью (расшифровка, tar, 480 px в filesDir), клипы в локальный MP4, обновление URL ±5 с, LRU и очистка файлов (wave 4)
+- [x] 05-04-PLAN.md — Вкладка «События»: карточки по дням, чипы камер, календарь дней, pull-to-refresh, «обновлено N мин назад», офлайн-кэш (wave 5)
+- [x] 05-05-PLAN.md — Диалог клипа (MediaPlayer на TextureView) и «Открыть запись на SD»: LiveViewScreen(initialArchiveMs) → ArchiveCoordinator.openAt (wave 6)
+- [x] 05-06-PLAN.md — Синхронизация GRACE (development-plan, verification-plan, knowledge-graph), 05-HUMAN-UAT.md (H-EV1..H-EV10), полный прогон (wave 7)
+- [x] 05-07-PLAN.md — Проверка на телефоне Mi 9: H-EV1..H-EV10, 05-DEVICE-VERIFICATION.md (wave 8, checkpoint)
 
 **Research**: done — `.planning/phases/05-events-feed/05-RESEARCH.md` (лента = `GET /v2/alert/list`; захват apk-mitm + mitmproxy только запасной путь, если проба вернёт не 20000 или пустой список)
 **UI hint**: yes
@@ -254,7 +254,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 6. Phase 5 can run in p
 | 2. Нативный P2P и первый кадр | 13/13 | Complete    | 2026-11-19 |
 | 3. Полноценный live-view | 14/14 | Complete    | 2026-10-30 |
 | 4. Архив SD-карты | 14/14 | Complete    | 2026-10-31 |
-| 5. Лента событий | 0/8 | Complete    | 2026-11-04 |
+| 5. Лента событий | 8/8 | Complete    | 2026-11-04 |
 | 6. Релизная сборка и проверка на телефоне | 9/9 | Complete | 2026-11-14 |
 | 7. Устранение гэпов регрессии | 4/4 | Complete    | 2026-11-19 |
 
