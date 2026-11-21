@@ -3,11 +3,11 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 07
 current_phase_name: Устранение гэпов регрессии
-status: planning
-stopped_at: Phase 06 complete, ready to plan Phase 07
-last_updated: "2026-11-21T14:32:09.680Z"
+status: complete
+stopped_at: All 7 phases complete with passing verification — milestone v1.0 ready to close
+last_updated: "2026-11-21T14:45:00.000Z"
 last_activity: 2026-11-21
-last_activity_desc: Phase 06 complete, transitioned to Phase 07
+last_activity_desc: All phases verified on the device; milestone v1.0 ready to complete
 state_head: 08a941b2b047fa32b8257140ebc3a4024ad397a0
 progress:
   total_phases: 7
@@ -25,14 +25,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-10)
 
 **Core value:** Открыть приложение → увидеть свои камеры → смотреть живое видео с любой из них, из любой сети, без подписки.
-**Current focus:** Phase 06 — Релизная сборка и проверка на телефоне
+**Current focus:** Milestone v1.0 — готов к закрытию
 
 ## Current Position
 
-Phase: 07 — Устранение гэпов регрессии
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-21 — Phase 06 complete, transitioned to Phase 07
+Phase: all 7 complete
+Plan: 75 of 75
+Status: complete — all phases have passing verification; run /gsd-complete-milestone
+Last activity: 2026-11-21 — all phases verified on Mi 9, verification fingerprints refreshed
 
 Progress: [██████████] 100% (74/75 plans)
 
