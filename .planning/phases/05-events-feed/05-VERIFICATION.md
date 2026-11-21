@@ -1,11 +1,12 @@
 ---
 phase: 05-events-feed
 verified: 2026-11-04
-status: human_needed
+status: passed
 score: 5/5 success criteria implemented and wired in code (JVM-tested); device-verified 5/5, SC-3 only on the happy path (with SD and a recording); no failed device check
 re_verification: false
 open_blockers: 0
 human_verification:
+
   - test: "H-EV3 label decision (EVT-02, D-03): look at the day button with no day selected on the «События» tab"
     expected: "The user confirms «Все дни ▾» (deviation from the letter of D-03, which says «Сегодня ▾») or asks to change it; a change is a small UI follow-up, the filter itself passed"
     why_human: "Product wording decision only the user can make"
