@@ -1,5 +1,5 @@
 ---
-status: partial
+status: complete
 phase: 05-events-feed
 source: [05-CONTEXT.md, 05-RESEARCH.md, 05-PROBE.md, 05-00-SUMMARY.md .. 05-05-SUMMARY.md, 05-06-PLAN.md]
 started: 2026-11-04
