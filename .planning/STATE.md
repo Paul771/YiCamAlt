@@ -1,21 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 07
-current_phase_name: Устранение гэпов регрессии
-status: complete
+status: Awaiting next milestone
 stopped_at: All 7 phases complete with passing verification — milestone v1.0 ready to close
-last_updated: "2026-11-21T14:45:00.000Z"
+last_updated: "2026-11-21T14:42:04.167Z"
 last_activity: 2026-11-21
-last_activity_desc: All phases verified on the device; milestone v1.0 ready to complete
-state_head: 08a941b2b047fa32b8257140ebc3a4024ad397a0
+last_activity_desc: Milestone v1.0 completed and archived
+state_head: 22333f496782074f4901ae912f77392e7f007ae6
 progress:
   total_phases: 7
   completed_phases: 7
   total_plans: 75
   completed_plans: 75
-  percent: 100
 milestone_name: milestone
+current_phase: 07
+current_phase_name: Устранение гэпов регрессии
 ---
 
 # Project State
@@ -29,12 +28,10 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 
 ## Current Position
 
-Phase: all 7 complete
-Plan: 75 of 75
-Status: complete — all phases have passing verification; run /gsd-complete-milestone
-Last activity: 2026-11-21 — all phases verified on Mi 9, verification fingerprints refreshed
-
-Progress: [██████████] 100% (74/75 plans)
+Phase: Milestone v1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-21 — Milestone v1.0 completed and archived
 
 ## Performance Metrics
 
@@ -192,6 +189,16 @@ Recent decisions affecting current work:
 - [Phase 06]: 06-07: инжектированные тапы по ruler архива не доходят до seek-хендлера (0 BLOCK_SEEK; кнопки Пауза/Живой/звук/HD работают) — seek выполняет пользователь вручную; не дефект приложения
 - [Phase 06]: 06-08: Phase 6 GRACE records closed, status and handoff updated; milestone v1.0 ready for audit
 
+## Deferred Items
+
+Items acknowledged and deferred at milestone close, most recent first:
+
+| Category | Item | Status | Deferred At | Milestone |
+|----------|------|--------|-------------|-----------|
+| deferred_items | 05/deferred-items.md: EventMediaFiles.wipeAll ignores deleteRecursively() result (flaky on Windows; Android lock case unlikely) | acknowledged | 2026-11-21 | v1.0 |
+
+closeout_type: override_closeout
+
 ### Pending Todos
 
 None yet.
@@ -207,3 +214,7 @@ None yet.
 Last session: 2026-11-14T20:25:00.000Z
 Stopped at: Phase 06 complete, ready to plan Phase 07
 Resume file: .planning/v1.0-MILESTONE-AUDIT.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
